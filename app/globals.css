@@ -24,3 +24,33 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.badge {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.badge-complete {
+  background-color: #dcfce7;
+  color: #166534;
+}
+.badge-incomplete {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+.badge-img-yes {
+  background-color: #dbeafe;
+  color: #1e40af;
+}
+.badge-img-no {
+  background-color: #f3f4f6;
+  color: #6b7280;
+}
+
+/* Missing required field highlight */
+.missing {
+  border-color: #f87171 !important;
+  background-color: #fef2f2 !important;
+}

@@ -1,0 +1,15 @@
+import { z } from "zod";
+
+export const EXTRACTION_SCHEMA = z.object({
+  vin: z.string().nullable().optional(),
+  make: z.string().nullable().optional(),
+  model: z.string().nullable().optional(),
+  year: z.union([z.string(), z.number()]).nullable().optional(),
+  body_style: z.string().nullable().optional(),
+  price: z.union([z.string(), z.number()]).nullable().optional(),
+  mileage_value: z.union([z.string(), z.number()]).nullable().optional(),
+  state_of_vehicle: z.string().nullable().optional(),
+  exterior_color: z.string().nullable().optional(),
+  image_url: z.string().nullable().optional(),
+  description: z.string().nullable().optional(),
+});
