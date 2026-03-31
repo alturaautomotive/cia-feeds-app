@@ -48,6 +48,22 @@ export async function POST(request: Request) {
         data: { subscriptionStatus: "past_due" },
       });
       break;
+          case "checkout.session.completed": {
+      const session = event.data.object as Stripe.Checkout.Session;
+      if (session.mode === "subscription" && session.customer && session.subscription) {
+        const subscription = await stripeClient.subscriptions.retrieve(
+          session.subscription as string
+        );
+        await prisma.dealer.updateMany({
+          where: { stripeCustomerId: session.customer as string },
+          data: {
+            subscriptionStatus: subscription.status,
+            stripeSubscriptionId: subscription.id,
+          },
+        });
+      }
+      break;
+    }
     }
   }
 
