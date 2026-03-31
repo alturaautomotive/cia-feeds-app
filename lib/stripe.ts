@@ -7,7 +7,7 @@ const globalForStripe = globalThis as unknown as {
 export const stripeClient =
   globalForStripe.stripeClient ??
   new Stripe(process.env.STRIPE_SECRET_KEY!, {
-    apiVersion: "2025-01-27.acacia",
+          apiVersion: "2025-02-24.acacia",
   });
 
 if (process.env.NODE_ENV !== "production") globalForStripe.stripeClient = stripeClient;

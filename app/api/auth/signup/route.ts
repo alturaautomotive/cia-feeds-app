@@ -36,42 +36,51 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const existing = await prisma.dealer.findUnique({
-    where: { email },
-  });
+  try {
+    const existing = await prisma.dealer.findUnique({
+      where: { email },
+    });
 
-  if (existing) {
-    return NextResponse.json({ error: "email_taken" }, { status: 409 });
+    if (existing) {
+      return NextResponse.json({ error: "email_taken" }, { status: 409 });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    const slug = await generateUniqueSlug(trimmedName, prisma);
+
+    const dealer = await prisma.dealer.create({
+      data: {
+        name: trimmedName,
+        email,
+        passwordHash,
+        slug,
+        active: true,
+      },
+    });
+
+    const baseUrl = process.env.NEXTAUTH_URL ?? new URL(request.url).origin;
+    const feedUrl = `${baseUrl}/feeds/${slug}.csv`;
+
+    Promise.all([
+      sendWelcomeEmail(dealer.name, dealer.email),
+      sendAdminNewSignupEmail(dealer.name, dealer.email),
+    ]).catch((err) => console.error("[signup] email notification failed:", err));
+
+    return NextResponse.json(
+      {
+        id: dealer.id,
+        name: dealer.name,
+        slug: dealer.slug,
+        feedUrl,
+      },
+      { status: 201 }
+    );
+  } catch (err) {
+    console.error("[signup] Error creating dealer:", err);
+    const message = err instanceof Error ? err.message : "unknown_error";
+    return NextResponse.json(
+      { error: "signup_failed", detail: message },
+      { status: 500 }
+    );
   }
-
-  const passwordHash = await bcrypt.hash(password, 10);
-  const slug = await generateUniqueSlug(trimmedName, prisma);
-
-  const dealer = await prisma.dealer.create({
-    data: {
-      name: trimmedName,
-      email,
-      passwordHash,
-      slug,
-      active: true,
-    },
-  });
-
-  const baseUrl = process.env.NEXTAUTH_URL ?? new URL(request.url).origin;
-  const feedUrl = `${baseUrl}/feeds/${slug}.csv`;
-
-  Promise.all([
-    sendWelcomeEmail(dealer.name, dealer.email),
-    sendAdminNewSignupEmail(dealer.name, dealer.email),
-  ]).catch((err) => console.error("[signup] email notification failed:", err));
-
-  return NextResponse.json(
-    {
-      id: dealer.id,
-      name: dealer.name,
-      slug: dealer.slug,
-      feedUrl,
-    },
-    { status: 201 }
-  );
 }
