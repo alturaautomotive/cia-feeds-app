@@ -92,6 +92,14 @@ export async function PATCH(
     }
   }
 
+  // Validate images field
+  if ("images" in b) {
+    const imgs = b.images;
+    if (!Array.isArray(imgs) || !imgs.every((item) => typeof item === "string")) {
+      validationErrors["images"] = "images must be an array of strings";
+    }
+  }
+
   if (Object.keys(validationErrors).length > 0) {
     return NextResponse.json(
       { error: "validation_error", fields: validationErrors },
@@ -112,6 +120,7 @@ export async function PATCH(
     "exteriorColor",
     "imageUrl",
     "description",
+    "images",
   ];
 
   const updates: Record<string, unknown> = {};
@@ -119,6 +128,11 @@ export async function PATCH(
     if (key in b) {
       updates[key] = b[key];
     }
+  }
+
+  // Sync imageUrl from images[0] when images array is updated
+  if ("images" in updates) {
+    updates.imageUrl = ((updates.images as string[])[0]) ?? null;
   }
 
   // Normalize year to string (Prisma schema defines Vehicle.year as String?)

@@ -1,8 +1,16 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, useRef, FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { DndContext, DragEndEvent, closestCenter } from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  arrayMove,
+  rectSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 interface Vehicle {
   id: string;
@@ -17,13 +25,152 @@ interface Vehicle {
   stateOfVehicle: string | null;
   exteriorColor: string | null;
   imageUrl: string | null;
+  images: string[];
   description: string | null;
   isComplete: boolean;
   missingFields: string[];
 }
 
+interface ImageItem {
+  id: string;
+  url: string;
+}
+
 interface Props {
   vehicle: Vehicle;
+}
+
+function makeImageItems(urls: string[]): ImageItem[] {
+  return urls.map((url) => ({ id: crypto.randomUUID(), url }));
+}
+
+function SortableImageTile({
+  id,
+  url,
+  index,
+  total,
+  onDelete,
+}: {
+  id: string;
+  url: string;
+  index: number;
+  total: number;
+  onDelete: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition } =
+    useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        ...style,
+        aspectRatio: "4/3",
+        position: "relative",
+        overflow: "hidden",
+        borderRadius: "0.375rem",
+        border: "1px solid #e5e7eb",
+      }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={url}
+        alt="Vehicle"
+        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+        onError={(e) => {
+          (e.target as HTMLImageElement).src =
+            "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300' viewBox='0 0 400 300'%3E%3Crect width='400' height='300' fill='%23d1d5db'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-size='14' fill='%236b7280'%3EImage not found%3C/text%3E%3C/svg%3E";
+        }}
+      />
+      {/* Drag handle */}
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        style={{
+          position: "absolute",
+          top: 4,
+          left: 4,
+          cursor: "grab",
+          background: "rgba(0,0,0,0.4)",
+          color: "white",
+          border: "none",
+          borderRadius: "0.25rem",
+          padding: "2px 5px",
+          fontSize: "14px",
+          lineHeight: 1,
+        }}
+        aria-label="Drag to reorder"
+      >
+        ⠿
+      </button>
+      {/* Delete button */}
+      <button
+        type="button"
+        onClick={onDelete}
+        style={{
+          position: "absolute",
+          top: 4,
+          right: 4,
+          cursor: "pointer",
+          background: "rgba(0,0,0,0.5)",
+          color: "white",
+          border: "none",
+          borderRadius: "9999px",
+          width: 22,
+          height: 22,
+          fontSize: "12px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+        aria-label="Remove image"
+      >
+        ✕
+      </button>
+      {/* Primary badge */}
+      {index === 0 && (
+        <span
+          style={{
+            position: "absolute",
+            bottom: 4,
+            left: 4,
+            background: "#4f46e5",
+            color: "white",
+            fontSize: "10px",
+            fontWeight: 700,
+            borderRadius: "0.25rem",
+            padding: "1px 5px",
+          }}
+        >
+          Primary
+        </span>
+      )}
+      {/* Required warning badge */}
+      {total === 1 && (
+        <span
+          style={{
+            position: "absolute",
+            bottom: 4,
+            right: 4,
+            background: "#f59e0b",
+            color: "white",
+            fontSize: "10px",
+            fontWeight: 700,
+            borderRadius: "0.25rem",
+            padding: "1px 5px",
+          }}
+        >
+          ⚠ Required
+        </span>
+      )}
+    </div>
+  );
 }
 
 export default function VehicleEditForm({ vehicle: initialVehicle }: Props) {
@@ -43,16 +190,25 @@ export default function VehicleEditForm({ vehicle: initialVehicle }: Props) {
         : "",
     exteriorColor: initialVehicle.exteriorColor ?? "",
     description: initialVehicle.description ?? "",
-    imageUrl: initialVehicle.imageUrl ?? "",
   };
 
   const [formData, setFormData] = useState(originalForm);
   const [missingFields, setMissingFields] = useState<string[]>(
     initialVehicle.missingFields
   );
-  const [imageUrlInput, setImageUrlInput] = useState(
-    initialVehicle.imageUrl ?? ""
+  const [images, setImages] = useState<ImageItem[]>(() =>
+    makeImageItems(
+      initialVehicle.images?.length
+        ? initialVehicle.images
+        : initialVehicle.imageUrl
+        ? [initialVehicle.imageUrl]
+        : []
+    )
   );
+  const [imageUrlInput, setImageUrlInput] = useState("");
+  const [imageUrlError, setImageUrlError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -68,16 +224,55 @@ export default function VehicleEditForm({ vehicle: initialVehicle }: Props) {
     setSaved(false);
   }
 
-  function handleUseImageUrl() {
-    setFormData((prev) => ({ ...prev, imageUrl: imageUrlInput }));
-    setSaved(false);
-  }
-
   function handleCancel() {
     setFormData(originalForm);
-    setImageUrlInput(initialVehicle.imageUrl ?? "");
+    setImages(
+      makeImageItems(
+        initialVehicle.images?.length
+          ? initialVehicle.images
+          : initialVehicle.imageUrl
+          ? [initialVehicle.imageUrl]
+          : []
+      )
+    );
     setSaved(false);
     setSaveError(null);
+  }
+
+  async function handleUpload(file: File) {
+    setUploading(true);
+    setSaveError(null);
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("vehicleId", initialVehicle.id);
+    try {
+      const res = await fetch("/api/vehicles/upload", {
+        method: "POST",
+        body: fd,
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setSaveError(data.error || "Upload failed.");
+        return;
+      }
+      const data = await res.json();
+      setImages((prev) => [...prev, { id: crypto.randomUUID(), url: data.url }]);
+    } catch {
+      setSaveError("Network error during upload. Please try again.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setImages((prev) => {
+        const oldIndex = prev.findIndex((img) => img.id === active.id);
+        const newIndex = prev.findIndex((img) => img.id === over.id);
+        return arrayMove(prev, oldIndex, newIndex);
+      });
+    }
   }
 
   async function handleDelete() {
@@ -127,7 +322,7 @@ export default function VehicleEditForm({ vehicle: initialVehicle }: Props) {
         : null,
       exteriorColor: formData.exteriorColor || null,
       description: formData.description || null,
-      imageUrl: formData.imageUrl || null,
+      images: images.map((img) => img.url),
     };
 
     try {
@@ -406,41 +601,108 @@ export default function VehicleEditForm({ vehicle: initialVehicle }: Props) {
             </div>
           </div>
 
-          {/* Image card */}
+          {/* Images card */}
           <div className="bg-white rounded-lg shadow-sm p-6 mb-5">
             <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">
-              Image
+              Images
             </h2>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={
-                formData.imageUrl ||
-                "https://placehold.co/800x180?text=No+Image+Scraped"
-              }
-              alt={formData.imageUrl ? "Vehicle" : "No image"}
-              className="w-full max-h-48 object-cover rounded-md border border-gray-200 mb-3"
-              onError={(e) => {
-                (e.target as HTMLImageElement).src =
-                  "https://placehold.co/800x180?text=Image+Not+Found";
-              }}
-            />
-            <div className="flex gap-2">
+
+            {/* Empty state */}
+            {images.length === 0 && (
+              <div className="border-2 border-dashed border-red-400 rounded-lg p-8 text-center text-red-500 text-sm mb-4">
+                At least one image is required. Add a URL or upload a photo below.
+              </div>
+            )}
+
+            {/* Sortable grid */}
+            {images.length > 0 && (
+              <DndContext
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext items={images.map((img) => img.id)} strategy={rectSortingStrategy}>
+                  <div className="grid grid-cols-3 gap-3 mb-4">
+                    {images.map((img, i) => (
+                      <SortableImageTile
+                        key={img.id}
+                        id={img.id}
+                        url={img.url}
+                        index={i}
+                        total={images.length}
+                        onDelete={() =>
+                          setImages((prev) =>
+                            prev.filter((item) => item.id !== img.id)
+                          )
+                        }
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
+            )}
+
+            {/* URL add row */}
+            <div className="flex gap-2 mb-3">
               <input
                 data-element-id="image-url-input"
                 type="url"
                 value={imageUrlInput}
-                onChange={(e) => setImageUrlInput(e.target.value)}
+                onChange={(e) => {
+                  setImageUrlInput(e.target.value);
+                  setImageUrlError(null);
+                }}
                 placeholder="Paste image URL…"
-                className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className={`flex-1 border rounded-md px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${imageUrlError ? "border-red-400" : "border-gray-300"}`}
               />
               <button
                 type="button"
-                onClick={handleUseImageUrl}
+                onClick={() => {
+                  const trimmed = imageUrlInput.trim();
+                  if (!trimmed) return;
+                  let parsed: URL;
+                  try {
+                    parsed = new URL(trimmed);
+                  } catch {
+                    setImageUrlError("Please enter a valid URL.");
+                    return;
+                  }
+                  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+                    setImageUrlError("Only http and https URLs are allowed.");
+                    return;
+                  }
+                  setImageUrlError(null);
+                  setImages((prev) => [...prev, { id: crypto.randomUUID(), url: trimmed }]);
+                  setImageUrlInput("");
+                }}
                 className="bg-white border border-gray-300 text-gray-700 px-3.5 py-2 rounded-md text-sm cursor-pointer hover:bg-gray-50"
               >
-                Use This URL
+                Add URL
               </button>
             </div>
+            {imageUrlError && (
+              <p className="text-xs text-red-600 mt-1 mb-2">{imageUrlError}</p>
+            )}
+
+            {/* Upload button */}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="w-full border-2 border-dashed border-indigo-400 text-indigo-600 rounded-md py-2 text-sm cursor-pointer hover:bg-indigo-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {uploading ? "Uploading…" : "⬆ Upload Image"}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleUpload(f);
+                e.target.value = "";
+              }}
+            />
           </div>
 
           {/* Delete error */}
@@ -470,7 +732,7 @@ export default function VehicleEditForm({ vehicle: initialVehicle }: Props) {
             <button
               data-element-id="save-btn"
               type="submit"
-              disabled={saving}
+              disabled={saving || images.length === 0}
               className="bg-indigo-500 text-white border-none px-6 py-2 rounded-md text-sm font-semibold cursor-pointer hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {saving ? "Saving…" : "Save Changes"}

@@ -41,6 +41,7 @@ model Vehicle {
   exteriorColor  String?
   url            String
   imageUrl       String?
+  images         String[] @default([])
   isComplete     Boolean  @default(false)
   missingFields  String[]
   createdAt      DateTime @default(now())

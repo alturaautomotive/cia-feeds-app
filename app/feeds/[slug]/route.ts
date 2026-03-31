@@ -35,6 +35,7 @@ function mapVehicleToRow(v: {
   exteriorColor: string | null;
   url: string;
   imageUrl: string | null;
+  images: string[];
 }): Record<string, unknown> {
   return {
     vehicle_id: v.id,
@@ -49,7 +50,7 @@ function mapVehicleToRow(v: {
     state_of_vehicle: v.stateOfVehicle ?? "",
     exterior_color: v.exteriorColor ?? "",
     url: v.url,
-    image_url: v.imageUrl ?? "",
+    image_url: v.images?.[0] ?? v.imageUrl ?? "",
   };
 }
 
