@@ -18,7 +18,8 @@ Extract the following vehicle information from this Vehicle Detail Page (VDP):
 - mileage_value: the odometer reading as a string (e.g., "18,200 mi")
 - state_of_vehicle: New, Used, Pre-Owned, or Certified Pre-Owned
 - exterior_color: the exterior color name
-- image_url: the URL of the main/largest vehicle image
+- image_url: URL of the **first** vehicle image in the photo gallery
+- image_url_2: URL of the **second** vehicle image in the photo gallery (the photo right after the first one)
 - description: a brief description of the vehicle
 
 Return null for any field you cannot find.

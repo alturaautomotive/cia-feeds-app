@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { generateUniqueSlug } from "@/lib/slug";
+import { sendWelcomeEmail, sendAdminNewSignupEmail } from "@/lib/email";
 
 export async function POST(request: NextRequest) {
   let body: unknown;
@@ -58,6 +59,11 @@ export async function POST(request: NextRequest) {
 
   const baseUrl = process.env.NEXTAUTH_URL ?? new URL(request.url).origin;
   const feedUrl = `${baseUrl}/feeds/${slug}.csv`;
+
+  Promise.all([
+    sendWelcomeEmail(dealer.name, dealer.email),
+    sendAdminNewSignupEmail(dealer.name, dealer.email),
+  ]).catch((err) => console.error("[signup] email notification failed:", err));
 
   return NextResponse.json(
     {

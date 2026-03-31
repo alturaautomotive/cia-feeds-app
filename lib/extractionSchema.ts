@@ -11,5 +11,6 @@ export const EXTRACTION_SCHEMA = z.object({
   state_of_vehicle: z.string().nullable().optional(),
   exterior_color: z.string().nullable().optional(),
   image_url: z.string().nullable().optional(),
+  image_url_2: z.string().nullable().optional(),
   description: z.string().nullable().optional(),
 });

@@ -9,6 +9,7 @@ export interface FirecrawlRawVehicle {
   state_of_vehicle?: string | null;
   exterior_color?: string | null;
   image_url?: string | null;
+  image_url_2?: string | null;
   description?: string | null;
 }
 
@@ -132,7 +133,7 @@ export function mapFirecrawlToVehicle(
     mileageValue,
     stateOfVehicle,
     exteriorColor: raw?.exterior_color ?? null,
-    imageUrl: raw?.image_url ?? null,
+    imageUrl: raw?.image_url_2 ?? raw?.image_url ?? null,
     description,
     isComplete,
     missingFields,
