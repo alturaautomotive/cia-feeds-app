@@ -12,7 +12,7 @@ export async function POST() {
     return NextResponse.json({ error: "Stripe key not configured" }, { status: 500 });
   }
 
-  const stripe = new Stripe(stripeKey, { apiVersion: "2025-04-30.basil" });
+  const stripe = new Stripe(stripeKey);
 
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
