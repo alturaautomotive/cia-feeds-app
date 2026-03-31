@@ -43,10 +43,9 @@ export async function scrapeVehicleUrl(
 ): Promise<ScrapeResult> {
   const startMs = Date.now();
 
-  const response = await firecrawlClient.scrape(url, {
-    formats: ["json"],
-    jsonOptions: { prompt: EXTRACTION_PROMPT, schema: EXTRACTION_SCHEMA },
-  });
+      const response = await firecrawlClient.scrape(url, {
+      formats: [{ type: "json", prompt: EXTRACTION_PROMPT, schema: EXTRACTION_SCHEMA }],
+    });
 
   const durationMs = Date.now() - startMs;
   const extractionPayload = (response as { json?: unknown })?.json;
