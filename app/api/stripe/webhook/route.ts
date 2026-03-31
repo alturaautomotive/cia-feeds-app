@@ -1,5 +1,4 @@
 export const dynamic = "force-dynamic";
-
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { stripeClient } from "@/lib/stripe";
@@ -48,7 +47,8 @@ export async function POST(request: Request) {
         data: { subscriptionStatus: "past_due" },
       });
       break;
-          case "checkout.session.completed": {
+    }
+    case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
       if (session.mode === "subscription" && session.customer && session.subscription) {
         const subscription = await stripeClient.subscriptions.retrieve(
@@ -63,7 +63,6 @@ export async function POST(request: Request) {
         });
       }
       break;
-    }
     }
   }
 
