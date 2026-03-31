@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # CIAfeeds — Automotive Inventory Ads
 
 SaaS platform that enables automotive dealers to generate Meta-compatible catalog feed CSVs from Vehicle Detail Pages (VDPs).
@@ -105,3 +106,6 @@ https://app.ciafeeds.com/feeds/{dealer-slug}.csv
 ```
 
 Compatible with Meta Catalog Manager → Automotive Inventory Ads.
+=======
+# cia-feeds-app
+>>>>>>> 86e0d7806680fc6e32d6905645389be2989badbc
