@@ -43,7 +43,7 @@ export async function scrapeVehicleUrl(
 ): Promise<ScrapeResult> {
   const startMs = Date.now();
 
-  const response = await firecrawlClient.scrapeUrl(url, {
+  const response = await firecrawlClient.scrape(url, {
     formats: ["json"],
     jsonOptions: { prompt: EXTRACTION_PROMPT, schema: EXTRACTION_SCHEMA },
   });
