@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
-function Nav() {
+function Nav({ session }: { session: Awaited<ReturnType<typeof getServerSession>> }) {
   return (
     <nav className="sticky top-0 z-50 bg-white border-b border-gray-200">
       <div className="flex items-center justify-between px-6 md:px-12 py-4 max-w-6xl mx-auto">
@@ -10,9 +12,23 @@ function Nav() {
           <Link href="#pricing" className="text-sm text-gray-600 hover:text-gray-900">Pricing</Link>
           <Link href="#faq" className="text-sm text-gray-600 hover:text-gray-900">FAQ</Link>
         </div>
-        <Link href="/signup" className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-md">
-          Get Started →
-        </Link>
+        {session ? (
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-500">Welcome back, {session.user?.name || "Dealer"}</span>
+            <Link href="/dashboard" className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-md">
+              Go to Dashboard →
+            </Link>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <Link href="/login" className="border border-indigo-600 text-indigo-600 bg-white hover:bg-indigo-50 text-sm font-semibold px-4 py-2 rounded-md">
+              Log In
+            </Link>
+            <Link href="/signup" className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-md">
+              Get Started →
+            </Link>
+          </div>
+        )}
       </div>
     </nav>
   );
@@ -164,10 +180,11 @@ function Footer() {
   );
 }
 
-export default function Home() {
+export default async function Home() {
+  const session = await getServerSession(authOptions);
   return (
     <>
-      <Nav />
+      <Nav session={session} />
       <Hero />
       <HowItWorks />
       <Features />
