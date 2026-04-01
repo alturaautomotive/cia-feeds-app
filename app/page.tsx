@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { getServerSession } from "next-auth";
+import { getServerSession, Session } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
-function Nav({ session }: { session: Awaited<ReturnType<typeof getServerSession>> }) {
+function Nav({ session }: { session: Session | null }) {
   return (
     <nav className="sticky top-0 z-50 bg-white border-b border-gray-200">
       <div className="flex items-center justify-between px-6 md:px-12 py-4 max-w-6xl mx-auto">
