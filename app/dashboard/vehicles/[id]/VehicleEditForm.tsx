@@ -886,7 +886,7 @@ export default function VehicleEditForm({ vehicle: initialVehicle, dealerProfile
                           <img
                             src={spotlightUrl}
                             alt="CIA Spotlight"
-                            className="w-full object-cover"
+                            className="w-full object-cover block mx-auto"
                           />
                           <div className="p-3">
                             <button

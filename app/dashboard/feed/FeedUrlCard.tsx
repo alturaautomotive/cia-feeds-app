@@ -86,6 +86,14 @@ export default function FeedUrlCard({ feedUrl, userName }: FeedUrlCardProps) {
             >
               {copied ? "Copied!" : "Copy URL"}
             </button>
+            <a
+              href={feedUrl}
+              download
+              data-element-id="download-feed-csv-btn"
+              className="whitespace-nowrap px-4 py-2.5 rounded-md text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
+            >
+              Download CSV
+            </a>
           </div>
 
           <hr className="border-gray-200 mb-5" />

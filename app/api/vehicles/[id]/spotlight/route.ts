@@ -86,9 +86,16 @@ export async function POST(
 
   // Build prompt
   const signPart = signMessage
-    ? `Have them hold a sign that reads: '${signMessage}'.`
-    : "Have them giving a thumbs up.";
-  const promptText = `Keep the vehicle image exactly as-is — same background, same car, same lighting. Composite the person from the second image standing naturally next to the car. ${signPart} Maintain photorealistic quality.`;
+    ? `The person is holding a rectangular sign at chest height with both hands gripping the sides naturally. The sign reads: '${signMessage}'. Both arms are bent at the elbows at a natural angle, wrists straight, fingers wrapped around the sign edges. The sign is level and facing the camera.`
+    : "The person has one arm relaxed at their side and the other raised with a natural thumbs-up gesture — elbow slightly bent, wrist straight, thumb pointing upward, remaining fingers loosely curled. No awkward bends or unnatural joint angles.";
+  const promptText = `You are compositing a person into an existing car photo. Rules:
+1. The car photo (first image) must remain completely unchanged — same background, lighting, colors, and perspective.
+2. Place the person from the second image standing upright beside the car on the ground plane, as if they were physically present at the same location.
+3. The person must have correct human anatomy: straight spine, shoulders level, arms hanging or posed naturally from the shoulder joints, elbows bent at realistic angles, wrists aligned with forearms, hands with all five fingers visible and naturally positioned — no extra fingers, no missing fingers, no twisted wrists, no floating hands.
+4. ${signPart}
+5. The person's feet must be on the ground, legs straight or slightly relaxed, no floating or cropped legs unless the car naturally occludes them.
+6. Lighting on the person must match the car photo's light direction and color temperature.
+7. Output a single photorealistic image combining both elements seamlessly.`;
 
   const contents = [
     { inlineData: { mimeType: vehicleMimeType, data: vehicleBase64 } },
