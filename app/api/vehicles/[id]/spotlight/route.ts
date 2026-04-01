@@ -110,7 +110,6 @@ export async function POST(
       contents,
       config: {
         responseModalities: ["Image"],
-        imageConfig: { aspectRatio: "1:1" },
       },
     });
   } catch {
