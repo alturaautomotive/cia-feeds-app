@@ -29,6 +29,7 @@ interface Vehicle {
   description: string | null;
   isComplete: boolean;
   missingFields: string[];
+  spotlightImageUrl?: string | null;
 }
 
 interface ImageItem {
@@ -38,6 +39,7 @@ interface ImageItem {
 
 interface Props {
   vehicle: Vehicle;
+  dealerProfileImageUrl: string | null;
 }
 
 function makeImageItems(urls: string[]): ImageItem[] {
@@ -173,7 +175,7 @@ function SortableImageTile({
   );
 }
 
-export default function VehicleEditForm({ vehicle: initialVehicle }: Props) {
+export default function VehicleEditForm({ vehicle: initialVehicle, dealerProfileImageUrl }: Props) {
   const router = useRouter();
   const originalForm = {
     url: initialVehicle.url ?? "",
@@ -205,15 +207,28 @@ export default function VehicleEditForm({ vehicle: initialVehicle }: Props) {
         : []
     )
   );
+  const persistedImagesRef = useRef<string[]>(
+    initialVehicle.images?.length
+      ? initialVehicle.images
+      : initialVehicle.imageUrl
+      ? [initialVehicle.imageUrl]
+      : []
+  );
   const [imageUrlInput, setImageUrlInput] = useState("");
   const [imageUrlError, setImageUrlError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadSaved, setUploadSaved] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [spotlightEnabled, setSpotlightEnabled] = useState(!!initialVehicle.spotlightImageUrl);
+  const [signMessage, setSignMessage] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [spotlightUrl, setSpotlightUrl] = useState<string | null>(initialVehicle.spotlightImageUrl ?? null);
+  const [spotlightError, setSpotlightError] = useState<string | null>(null);
 
   function isMissing(field: string): boolean {
     return missingFields.includes(field);
@@ -226,21 +241,14 @@ export default function VehicleEditForm({ vehicle: initialVehicle }: Props) {
 
   function handleCancel() {
     setFormData(originalForm);
-    setImages(
-      makeImageItems(
-        initialVehicle.images?.length
-          ? initialVehicle.images
-          : initialVehicle.imageUrl
-          ? [initialVehicle.imageUrl]
-          : []
-      )
-    );
+    setImages(makeImageItems(persistedImagesRef.current));
     setSaved(false);
     setSaveError(null);
   }
 
   async function handleUpload(file: File) {
     setUploading(true);
+    setUploadSaved(false);
     setSaveError(null);
     const fd = new FormData();
     fd.append("file", file);
@@ -256,7 +264,10 @@ export default function VehicleEditForm({ vehicle: initialVehicle }: Props) {
         return;
       }
       const data = await res.json();
-      setImages((prev) => [...prev, { id: crypto.randomUUID(), url: data.url }]);
+      persistedImagesRef.current = data.images;
+      setImages(makeImageItems(data.images));
+      setUploadSaved(true);
+      setTimeout(() => setUploadSaved(false), 3000);
     } catch {
       setSaveError("Network error during upload. Please try again.");
     } finally {
@@ -340,11 +351,53 @@ export default function VehicleEditForm({ vehicle: initialVehicle }: Props) {
 
       const data = await res.json();
       setMissingFields(data.missingFields ?? []);
+      if (Array.isArray(data.vehicle?.images)) {
+        persistedImagesRef.current = data.vehicle.images;
+        setImages(makeImageItems(data.vehicle.images));
+      }
       setSaved(true);
     } catch {
       setSaveError("Network error. Please try again.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleGenerateSpotlight() {
+    setGenerating(true);
+    setSpotlightError(null);
+    try {
+      const res = await fetch(`/api/vehicles/${initialVehicle.id}/spotlight`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ signMessage: signMessage.trim() || undefined }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const code = data.error;
+        if (code === "no_profile_image") {
+          setSpotlightError("Add a sales manager photo in your Profile to use CIA Spotlight.");
+        } else if (code === "no_vehicle_image") {
+          setSpotlightError("This vehicle needs at least one image before generating a Spotlight.");
+        } else if (code === "generation_failed") {
+          setSpotlightError("Image generation failed. Please try again.");
+        } else if (code === "upload_failed") {
+          setSpotlightError("Failed to save the generated image. Please try again.");
+        } else if (code === "db_update_failed") {
+          setSpotlightError("The image was generated but could not be saved. Please try again.");
+        } else if (code === "misconfigured_gemini") {
+          setSpotlightError("Spotlight is temporarily unavailable. Please contact support.");
+        } else {
+          setSpotlightError("Something went wrong. Please try again.");
+        }
+        return;
+      }
+      const data = await res.json();
+      setSpotlightUrl(data.spotlightImageUrl);
+    } catch {
+      setSpotlightError("Network error. Please try again.");
+    } finally {
+      setGenerating(false);
     }
   }
 
@@ -692,6 +745,11 @@ export default function VehicleEditForm({ vehicle: initialVehicle }: Props) {
             >
               {uploading ? "Uploading…" : "⬆ Upload Image"}
             </button>
+            {uploadSaved && (
+              <p className="text-xs text-green-600 mt-1.5 text-center">
+                ✓ Image saved
+              </p>
+            )}
             <input
               ref={fileInputRef}
               type="file"
@@ -703,6 +761,108 @@ export default function VehicleEditForm({ vehicle: initialVehicle }: Props) {
                 e.target.value = "";
               }}
             />
+          </div>
+
+          {/* CIA Spotlight card */}
+          <div className="bg-white rounded-lg shadow-sm p-6 mb-5">
+            {/* Header row */}
+            <div className="flex items-center gap-2 mb-4">
+              <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                ✨ CIA Spotlight
+              </h2>
+              <span className="bg-yellow-100 text-yellow-800 text-[10px] font-bold px-1.5 py-0.5 rounded">
+                AI-POWERED
+              </span>
+            </div>
+
+            {/* Toggle row */}
+            <div className="flex justify-between items-center mb-4">
+              <span className="text-sm text-gray-700">Enable CIA Spotlight for this listing</span>
+              <button
+                type="button"
+                onClick={() => setSpotlightEnabled((prev) => !prev)}
+                className={`relative inline-flex w-11 h-6 rounded-full transition-colors focus:outline-none ${
+                  spotlightEnabled ? "bg-indigo-500" : "bg-gray-200"
+                }`}
+                aria-pressed={spotlightEnabled}
+              >
+                <span
+                  className={`inline-block w-5 h-5 bg-white rounded-full shadow transform transition-transform mt-0.5 ${
+                    spotlightEnabled ? "translate-x-5" : "translate-x-0.5"
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* Description */}
+            <p className="text-sm text-gray-500 mb-4">
+              Generate a composite image of your sales manager standing next to this vehicle, holding a custom sign. The vehicle photo stays untouched.
+            </p>
+
+            {/* Conditional content */}
+            {spotlightEnabled && (
+              <>
+                {!dealerProfileImageUrl ? (
+                  <div className="bg-yellow-50 border border-yellow-300 rounded-md px-4 py-3 text-sm text-yellow-800 mb-4">
+                    Add a sales manager photo in your Profile to use CIA Spotlight.
+                    <Link href="/dashboard/profile" className="underline ml-1">
+                      Go to Profile →
+                    </Link>
+                  </div>
+                ) : (
+                  <>
+                    {/* Sign message input */}
+                    <div className="mb-4">
+                      <label className="text-xs font-semibold text-gray-500 block mb-1">
+                        Sign Message (optional)
+                      </label>
+                      <input
+                        type="text"
+                        value={signMessage}
+                        onChange={(e) => setSignMessage(e.target.value)}
+                        maxLength={100}
+                        placeholder="e.g. I&apos;m willing to lose money on this one!"
+                        className="border border-gray-300 rounded-md px-3 py-2 text-sm w-full text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <p className="text-xs text-gray-400 mt-1">
+                        Leave blank and the manager will give a thumbs up with no sign text.
+                      </p>
+                    </div>
+
+                    {/* Generate button */}
+                    <button
+                      type="button"
+                      onClick={handleGenerateSpotlight}
+                      disabled={generating}
+                      className="w-full bg-indigo-500 text-white rounded-md py-2.5 text-sm font-semibold cursor-pointer hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {generating ? "Generating your Spotlight image…" : "✨ Generate Spotlight Image"}
+                    </button>
+
+                    {/* Error */}
+                    {spotlightError && (
+                      <p className="text-sm text-red-600 mt-2">{spotlightError}</p>
+                    )}
+
+                    {/* Preview */}
+                    <div className="mt-4 border border-gray-200 rounded-lg overflow-hidden">
+                      {spotlightUrl ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img
+                          src={spotlightUrl}
+                          alt="CIA Spotlight"
+                          className="w-full object-cover"
+                        />
+                      ) : (
+                        <div className="h-44 bg-gray-100 flex items-center justify-center text-sm text-gray-400">
+                          Generated image will appear here
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </>
+            )}
           </div>
 
           {/* Delete error */}

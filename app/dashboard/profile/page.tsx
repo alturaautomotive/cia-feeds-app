@@ -3,13 +3,9 @@ import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { checkSubscription } from "@/lib/checkSubscription";
-import VehicleEditForm from "./VehicleEditForm";
+import ProfileClient from "./ProfileClient";
 
-export default async function VehicleDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function ProfilePage() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
     redirect("/login");
@@ -20,20 +16,10 @@ export default async function VehicleDetailPage({
     redirect("/subscribe");
   }
 
-  const { id } = await params;
-
-  const vehicle = await prisma.vehicle.findFirst({
-    where: { id, dealerId: session.user.id },
-  });
-
-  if (!vehicle) {
-    redirect("/dashboard");
-  }
-
   const dealer = await prisma.dealer.findUnique({
     where: { id: session.user.id },
     select: { profileImageUrl: true },
   });
 
-  return <VehicleEditForm vehicle={vehicle} dealerProfileImageUrl={dealer?.profileImageUrl ?? null} />;
+  return <ProfileClient profileImageUrl={dealer?.profileImageUrl ?? null} />;
 }

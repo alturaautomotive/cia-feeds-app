@@ -98,6 +98,9 @@ export function DashboardClient({ vehicles: initialVehicles, dealerName }: Props
           <span className="font-bold text-lg text-gray-900">CIAfeeds</span>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-500">{dealerName}</span>
+            <Link href="/dashboard/profile" className="text-sm text-indigo-600 hover:text-indigo-500">
+              Profile
+            </Link>
             <button
               onClick={async () => {
                 setBillingLoading(true);

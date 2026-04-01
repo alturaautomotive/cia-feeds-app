@@ -22,6 +22,7 @@ model Dealer {
   stripeSubscriptionId  String?
   subscriptionStatus    String?
   createdAt             DateTime  @default(now())
+  profileImageUrl       String?
   vehicles     Vehicle[]
 }
 
@@ -42,6 +43,7 @@ model Vehicle {
   url            String
   imageUrl       String?
   images         String[] @default([])
+  spotlightImageUrl String?
   isComplete     Boolean  @default(false)
   missingFields  String[]
   createdAt      DateTime @default(now())

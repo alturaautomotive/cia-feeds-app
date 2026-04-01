@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { supabaseAdmin } from "@/lib/supabase";
+import { checkSubscription } from "@/lib/checkSubscription";
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -10,26 +11,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
+  const isSubscribed = await checkSubscription(session.user.id);
+  if (!isSubscribed) {
+    return NextResponse.json({ error: "subscription_required" }, { status: 403 });
+  }
+
   const formData = await request.formData();
   const fileRaw = formData.get("file");
-  const vehicleIdRaw = formData.get("vehicleId");
 
   if (!(fileRaw instanceof File)) {
     return NextResponse.json({ error: "file must be a file upload" }, { status: 400 });
   }
-  if (typeof vehicleIdRaw !== "string" || !vehicleIdRaw) {
-    return NextResponse.json({ error: "vehicleId must be a non-empty string" }, { status: 400 });
-  }
 
   const file = fileRaw;
-  const vehicleId = vehicleIdRaw;
-
-  const vehicle = await prisma.vehicle.findFirst({
-    where: { id: vehicleId, dealerId: session.user.id },
-  });
-  if (!vehicle) {
-    return NextResponse.json({ error: "not_found" }, { status: 404 });
-  }
 
   if (!file.type.startsWith("image/")) {
     return NextResponse.json({ error: "File must be an image" }, { status: 400 });
@@ -39,14 +33,14 @@ export async function POST(request: NextRequest) {
   }
 
   const sanitizedName = file.name.replace(/[^a-zA-Z0-9.\-]/g, "_");
-  const path = `${vehicleId}/${Date.now()}-${sanitizedName}`;
+  const path = `profiles/${session.user.id}-${Date.now()}-${sanitizedName}`;
 
   const arrayBuffer = await file.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
 
   const { error: uploadError } = await supabaseAdmin.storage
     .from("vehicle-images")
-    .upload(path, buffer, { contentType: file.type, upsert: false });
+    .upload(path, buffer, { contentType: file.type, upsert: true });
 
   if (uploadError) {
     return NextResponse.json({ error: "Upload failed", details: uploadError.message }, { status: 502 });
@@ -54,24 +48,15 @@ export async function POST(request: NextRequest) {
 
   const { data } = supabaseAdmin.storage.from("vehicle-images").getPublicUrl(path);
 
-  const publicUrl = data.publicUrl;
-
-  let updatedVehicle;
   try {
-    updatedVehicle = await prisma.vehicle.update({
-      where: { id: vehicleId },
-      data: {
-        images: { push: publicUrl },
-        imageUrl: vehicle.images.length === 0 ? publicUrl : undefined,
-      },
+    await prisma.dealer.update({
+      where: { id: session.user.id },
+      data: { profileImageUrl: data.publicUrl },
     });
   } catch (dbError) {
     await supabaseAdmin.storage.from("vehicle-images").remove([path]);
-    return NextResponse.json(
-      { error: "Database update failed", details: dbError instanceof Error ? dbError.message : "Unknown error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to save profile image", details: (dbError as Error).message }, { status: 500 });
   }
 
-  return NextResponse.json({ url: publicUrl, images: updatedVehicle.images });
+  return NextResponse.json({ profileImageUrl: data.publicUrl });
 }
