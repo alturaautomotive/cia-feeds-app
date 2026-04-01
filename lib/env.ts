@@ -3,6 +3,7 @@ export function validateEnv() {
     "DATABASE_URL",
     "NEXTAUTH_SECRET",
     "NEXTAUTH_URL",
+    "NEXT_PUBLIC_APP_URL",
     "FIRECRAWL_API_KEY",
     "STRIPE_SECRET_KEY",
     "STRIPE_PRICE_ID",

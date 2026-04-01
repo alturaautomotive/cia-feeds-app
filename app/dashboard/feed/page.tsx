@@ -31,7 +31,7 @@ export default async function FeedPage() {
     redirect("/login");
   }
 
-  const feedUrl = `https://app.ciafeeds.com/feeds/${slug}.csv`;
+  const feedUrl = `${process.env.NEXT_PUBLIC_APP_URL}/feeds/${slug}.csv`;
 
   return (
     <FeedUrlCard

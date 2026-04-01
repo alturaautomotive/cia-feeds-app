@@ -29,6 +29,7 @@ Fill in `.env` with your values:
 | `DATABASE_URL` | PostgreSQL connection string (e.g. `postgresql://user:pass@localhost:5432/ciafeeds`) |
 | `NEXTAUTH_SECRET` | Random secret string for NextAuth JWT signing |
 | `NEXTAUTH_URL` | App base URL (e.g. `http://localhost:3000`) |
+| `NEXT_PUBLIC_APP_URL` | Publicly accessible base URL used to construct feed links (e.g. `http://localhost:3000`) |
 | `FIRECRAWL_API_KEY` | Your Firecrawl API key |
 
 ### 3. Run database migrations
@@ -70,7 +71,8 @@ npm test
 3. Add the following environment variables in Vercel:
    - `DATABASE_URL` — production PostgreSQL connection string
    - `NEXTAUTH_SECRET` — random secret string
-   - `NEXTAUTH_URL` — production domain (e.g. `https://app.ciafeeds.com`)
+   - `NEXTAUTH_URL` — production domain (e.g. `https://www.ciafeed.com`)
+   - `NEXT_PUBLIC_APP_URL` — production domain (e.g. `https://www.ciafeed.com`)
    - `FIRECRAWL_API_KEY` — your Firecrawl API key
 4. Run `npx prisma migrate deploy` against the production DB (one-time, from local with production `DATABASE_URL`).
 5. Deploy — Vercel will automatically run `prisma generate && next build`.
@@ -101,7 +103,7 @@ prisma/
 ## Feed URL Format
 
 ```
-https://app.ciafeeds.com/feeds/{dealer-slug}.csv
+https://www.ciafeed.com/feeds/{dealer-slug}.csv
 ```
 
 Compatible with Meta Catalog Manager → Automotive Inventory Ads.
