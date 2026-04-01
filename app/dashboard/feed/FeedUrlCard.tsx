@@ -11,6 +11,7 @@ interface FeedUrlCardProps {
 
 export default function FeedUrlCard({ feedUrl, userName }: FeedUrlCardProps) {
   const [copied, setCopied] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   async function handleCopy() {
     try {
@@ -25,6 +26,34 @@ export default function FeedUrlCard({ feedUrl, userName }: FeedUrlCardProps) {
     }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function handleDownload() {
+    setDownloadError(null);
+    let objectUrl: string | null = null;
+    try {
+      const res = await fetch(feedUrl);
+      if (!res.ok) {
+        setDownloadError(`Download failed: ${res.status} ${res.statusText}`);
+        return;
+      }
+      const blob = await res.blob();
+      objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = "feed.csv";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (err) {
+      setDownloadError(
+        err instanceof Error ? err.message : "Download failed. Please try again."
+      );
+    } finally {
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    }
   }
 
   return (
@@ -86,15 +115,18 @@ export default function FeedUrlCard({ feedUrl, userName }: FeedUrlCardProps) {
             >
               {copied ? "Copied!" : "Copy URL"}
             </button>
-            <a
-              href={feedUrl}
-              download
+            <button
               data-element-id="download-feed-csv-btn"
+              onClick={handleDownload}
               className="whitespace-nowrap px-4 py-2.5 rounded-md text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
             >
               Download CSV
-            </a>
+            </button>
           </div>
+
+          {downloadError && (
+            <p className="text-sm text-red-600 mb-4">{downloadError}</p>
+          )}
 
           <hr className="border-gray-200 mb-5" />
 
