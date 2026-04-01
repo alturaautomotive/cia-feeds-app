@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { supabaseAdmin } from "@/lib/supabase";
 import { GoogleGenAI } from "@google/genai";
+import sharp from "sharp";
 
 export async function POST(
   request: NextRequest,
@@ -107,7 +108,10 @@ export async function POST(
     response = await ai.models.generateContent({
       model: "gemini-2.5-flash-image",
       contents,
-      config: { responseModalities: ["Image"] },
+      config: {
+        responseModalities: ["Image"],
+        imageConfig: { aspectRatio: "1:1" },
+      },
     });
   } catch {
     return NextResponse.json({ error: "generation_failed" }, { status: 502 });
@@ -122,11 +126,22 @@ export async function POST(
   }
 
   const resultBuffer = Buffer.from(imagePart.inlineData.data, "base64");
+
+  let resizedBuffer: Buffer;
+  try {
+    resizedBuffer = await sharp(resultBuffer)
+      .resize(1080, 1080, { fit: "cover", position: "center" })
+      .jpeg({ quality: 90 })
+      .toBuffer();
+  } catch {
+    return NextResponse.json({ error: "generation_failed" }, { status: 502 });
+  }
+
   const storagePath = `spotlights/${vehicle.id}-${Date.now()}.jpg`;
 
   const { error: uploadError } = await supabaseAdmin.storage
     .from("vehicle-images")
-    .upload(storagePath, resultBuffer, { contentType: "image/jpeg", upsert: true });
+    .upload(storagePath, resizedBuffer, { contentType: "image/jpeg", upsert: true });
 
   if (uploadError) {
     return NextResponse.json({ error: "upload_failed", details: uploadError.message }, { status: 502 });

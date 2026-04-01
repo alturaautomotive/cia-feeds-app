@@ -229,6 +229,7 @@ export default function VehicleEditForm({ vehicle: initialVehicle, dealerProfile
   const [generating, setGenerating] = useState(false);
   const [spotlightUrl, setSpotlightUrl] = useState<string | null>(initialVehicle.spotlightImageUrl ?? null);
   const [spotlightError, setSpotlightError] = useState<string | null>(null);
+  const [spotlightAdded, setSpotlightAdded] = useState(false);
 
   function isMissing(field: string): boolean {
     return missingFields.includes(field);
@@ -394,10 +395,43 @@ export default function VehicleEditForm({ vehicle: initialVehicle, dealerProfile
       }
       const data = await res.json();
       setSpotlightUrl(data.spotlightImageUrl);
+      setSpotlightAdded(false);
     } catch {
       setSpotlightError("Network error. Please try again.");
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function handleUseSpotlightImage() {
+    if (!spotlightUrl || images.some(i => i.url === spotlightUrl)) return;
+    const newImages = [...images.map(i => i.url), spotlightUrl];
+    try {
+      const res = await fetch(`/api/vehicles/${initialVehicle.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ images: newImages }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const code = data.error;
+        if (code === "validation_error") {
+          setSpotlightError("The image could not be added due to a validation error. Please try again.");
+        } else if (code === "unauthorized") {
+          setSpotlightError("You are not authorized to update this listing.");
+        } else if (code === "not_found") {
+          setSpotlightError("This vehicle listing could not be found. Please refresh and try again.");
+        } else {
+          setSpotlightError("Failed to add the spotlight image to your listing. Please try again.");
+        }
+        return;
+      }
+      const data = await res.json();
+      persistedImagesRef.current = data.vehicle.images;
+      setImages(makeImageItems(data.vehicle.images));
+      setSpotlightAdded(true);
+    } catch {
+      setSpotlightError("Network error. Please try again.");
     }
   }
 
@@ -847,12 +881,27 @@ export default function VehicleEditForm({ vehicle: initialVehicle, dealerProfile
                     {/* Preview */}
                     <div className="mt-4 border border-gray-200 rounded-lg overflow-hidden">
                       {spotlightUrl ? (
-                        /* eslint-disable-next-line @next/next/no-img-element */
-                        <img
-                          src={spotlightUrl}
-                          alt="CIA Spotlight"
-                          className="w-full object-cover"
-                        />
+                        <>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={spotlightUrl}
+                            alt="CIA Spotlight"
+                            className="w-full object-cover"
+                          />
+                          <div className="p-3">
+                            <button
+                              type="button"
+                              onClick={handleUseSpotlightImage}
+                              disabled={spotlightAdded || images.some(i => i.url === spotlightUrl) || saving}
+                              className="mt-3 w-full border border-indigo-500 text-indigo-600 bg-white rounded-md py-2 text-sm font-semibold cursor-pointer hover:bg-indigo-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {spotlightAdded ? "✓ Added to listing" : "✅ Use this image"}
+                            </button>
+                            {spotlightAdded && (
+                              <p className="text-xs text-green-600 mt-1 text-center">✓ Spotlight image added to your listing</p>
+                            )}
+                          </div>
+                        </>
                       ) : (
                         <div className="h-44 bg-gray-100 flex items-center justify-center text-sm text-gray-400">
                           Generated image will appear here
