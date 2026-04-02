@@ -89,17 +89,18 @@ export async function POST(
     ? `The person is holding a rectangular sign at chest height with both hands gripping the sides naturally. The sign reads: '${signMessage}'. Both arms are bent at the elbows at a natural angle, wrists straight, fingers wrapped around the sign edges. The sign is level and facing the camera.`
     : "The person has one arm relaxed at their side and the other raised with a natural thumbs-up gesture — elbow slightly bent, wrist straight, thumb pointing upward, remaining fingers loosely curled. No awkward bends or unnatural joint angles.";
   const promptText = `You are compositing a person into an existing car photo. Rules:
-1. The car photo (first image) must remain completely unchanged — same background, lighting, colors, and perspective.
-2. Place the person from the second image standing upright beside the car on the ground plane, as if they were physically present at the same location.
-3. The person must have correct human anatomy: straight spine, shoulders level, arms hanging or posed naturally from the shoulder joints, elbows bent at realistic angles, wrists aligned with forearms, hands with all five fingers visible and naturally positioned — no extra fingers, no missing fingers, no twisted wrists, no floating hands.
-4. ${signPart}
-5. The person's feet must be on the ground, legs straight or slightly relaxed, no floating or cropped legs unless the car naturally occludes them.
-6. Lighting on the person must match the car photo's light direction and color temperature.
-7. Output a single photorealistic image combining both elements seamlessly.`;
+1. IDENTITY PRESERVATION — HIGHEST PRIORITY. The person in the output image MUST be the exact same individual shown in the first image. Reproduce their face shape, facial features, skin tone, eye color, hair color, hair style, and hair length with pixel-accurate fidelity. Preserve all distinguishing marks including freckles, scars, moles, and tattoos exactly as they appear — do NOT remove, alter, or obscure any of them. Do NOT generate a new person. Do NOT alter, idealise, or approximate their appearance in any way.
+2. The car photo (second image) must remain completely unchanged — same background, lighting, colors, and perspective. Do not modify, recolor, or reframe the vehicle scene.
+3. Place that exact person standing upright beside the car on the ground plane, full body visible, as if they were physically present at the same location.
+4. Correct human anatomy throughout: straight spine, level shoulders, arms hanging or posed naturally from the shoulder joints, elbows at realistic angles, wrists aligned with forearms, all five fingers naturally positioned — no extra fingers, no missing fingers, no twisted wrists, no floating hands.
+5. ${signPart}
+6. Feet flat on the ground, legs straight or slightly relaxed — no floating or cropped legs unless the car naturally occludes them.
+7. Lighting on the person must match the car photo's light direction and color temperature exactly.
+8. Output a single seamless photorealistic composite image.`;
 
   const contents = [
-    { inlineData: { mimeType: vehicleMimeType, data: vehicleBase64 } },
     { inlineData: { mimeType: profileMimeType, data: profileBase64 } },
+    { inlineData: { mimeType: vehicleMimeType, data: vehicleBase64 } },
     { text: promptText },
   ];
 
