@@ -1,21 +1,21 @@
-import { getServerSession } from "next-auth";
-import { redirect } from "next/navigation";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export default async function AdminPage() {
-  const session = await getServerSession(authOptions);
-  if (!session || session.user.email !== process.env.ADMIN_EMAIL) {
-    redirect("/dashboard");
-  }
-
   const dealers = await prisma.dealer.findMany({
     orderBy: { createdAt: "desc" },
     include: {
       _count: { select: { vehicles: true } },
-      vehicles: { select: { isComplete: true } },
     },
   });
+
+  const completeCounts = await prisma.vehicle.groupBy({
+    by: ['dealerId'],
+    where: { isComplete: true },
+    _count: true,
+  });
+  const completeMap = new Map<string, number>(
+    completeCounts.map((row) => [row.dealerId, row._count])
+  );
 
   const totalDealers = dealers.length;
   const activeCount = dealers.filter(
@@ -125,9 +125,7 @@ export default async function AdminPage() {
                 const { label, classes } = getSubscriptionBadge(
                   dealer.subscriptionStatus
                 );
-                const completeCount = dealer.vehicles.filter(
-                  (v) => v.isComplete
-                ).length;
+                const completeCount = completeMap.get(dealer.id) ?? 0;
                 const totalVehicles = dealer._count.vehicles;
 
                 return (

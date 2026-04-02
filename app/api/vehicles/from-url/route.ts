@@ -5,6 +5,8 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { scrapeVehicleUrl } from "@/lib/scrape";
 import { logScrapeStart, logScrapeEnd } from "@/lib/logger";
+import { checkSubscription } from "@/lib/checkSubscription";
+import { rateLimit } from "@/lib/rateLimit";
 
 function isValidUrl(url: string): boolean {
   try {
@@ -20,6 +22,16 @@ export async function POST(request: NextRequest) {
 
   if (!session?.user?.id) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const isSubscribed = await checkSubscription(session.user.id);
+  if (!isSubscribed) {
+    return NextResponse.json({ error: "subscription_required" }, { status: 403 });
+  }
+
+  const rl = rateLimit(`scrape:${session.user.id}`, 10, 60_000);
+  if (!rl.allowed) {
+    return NextResponse.json({ error: "rate_limited", retryAfterMs: rl.retryAfterMs }, { status: 429 });
   }
 
   let body: unknown;

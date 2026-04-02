@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { supabaseAdmin } from "@/lib/supabase";
 import { GoogleGenAI } from "@google/genai";
 import sharp from "sharp";
+import { checkSubscription } from "@/lib/checkSubscription";
+import { rateLimit } from "@/lib/rateLimit";
 
 export async function POST(
   request: NextRequest,
@@ -13,6 +15,16 @@ export async function POST(
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const isSubscribed = await checkSubscription(session.user.id);
+  if (!isSubscribed) {
+    return NextResponse.json({ error: "subscription_required" }, { status: 403 });
+  }
+
+  const rl = rateLimit(`spotlight:${session.user.id}`, 5, 60_000);
+  if (!rl.allowed) {
+    return NextResponse.json({ error: "rate_limited", retryAfterMs: rl.retryAfterMs }, { status: 429 });
   }
 
   const { id } = await params;
@@ -143,6 +155,16 @@ export async function POST(
   } catch {
     return NextResponse.json({ error: "generation_failed" }, { status: 502 });
   }
+
+  try {
+    if (vehicle.spotlightImageUrl) {
+      const url = new URL(vehicle.spotlightImageUrl);
+      const pathParts = url.pathname.split('/vehicle-images/');
+      if (pathParts[1]) {
+        await supabaseAdmin.storage.from("vehicle-images").remove([decodeURIComponent(pathParts[1])]);
+      }
+    }
+  } catch { /* Non-fatal */ }
 
   const storagePath = `spotlights/${vehicle.id}-${Date.now()}.jpg`;
 

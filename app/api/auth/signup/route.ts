@@ -3,8 +3,15 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { generateUniqueSlug } from "@/lib/slug";
 import { sendWelcomeEmail, sendAdminNewSignupEmail } from "@/lib/email";
+import { rateLimit } from "@/lib/rateLimit";
 
 export async function POST(request: NextRequest) {
+  const ip = (request.headers.get("x-forwarded-for") ?? "unknown").split(",")[0].trim();
+  const rl = rateLimit(`signup:${ip}`, 5, 60_000);
+  if (!rl.allowed) {
+    return NextResponse.json({ error: "rate_limited", retryAfterMs: rl.retryAfterMs }, { status: 429 });
+  }
+
   let body: unknown;
   try {
     body = await request.json();

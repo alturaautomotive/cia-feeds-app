@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { computeCompleteness } from "@/lib/vehicleCompleteness";
 import { Prisma } from "@prisma/client";
+import { checkSubscription } from "@/lib/checkSubscription";
 
 async function getVehicleForDealer(id: string, dealerId: string) {
   return prisma.vehicle.findFirst({
@@ -36,6 +37,11 @@ export async function PATCH(
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const isSubscribed = await checkSubscription(session.user.id);
+  if (!isSubscribed) {
+    return NextResponse.json({ error: "subscription_required" }, { status: 403 });
   }
 
   const { id } = await params;
@@ -179,6 +185,11 @@ export async function DELETE(
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const isSubscribed = await checkSubscription(session.user.id);
+  if (!isSubscribed) {
+    return NextResponse.json({ error: "subscription_required" }, { status: 403 });
   }
 
   const { id } = await params;

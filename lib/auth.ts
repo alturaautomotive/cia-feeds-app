@@ -33,6 +33,10 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
+        if (!dealer.active) {
+          return null;
+        }
+
         return {
           id: dealer.id,
           name: dealer.name,

@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { getServerSession, Session } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { checkSubscription } from "@/lib/checkSubscription";
 
-function Nav({ session }: { session: Session | null }) {
+function Nav({ session, isSubscribed }: { session: Session | null; isSubscribed: boolean }) {
   return (
     <nav className="sticky top-0 z-50 bg-white border-b border-gray-200">
       <div className="flex items-center justify-between px-6 md:px-12 py-4 max-w-6xl mx-auto">
@@ -12,11 +13,18 @@ function Nav({ session }: { session: Session | null }) {
           <Link href="#pricing" className="text-sm text-gray-600 hover:text-gray-900">Pricing</Link>
           <Link href="#faq" className="text-sm text-gray-600 hover:text-gray-900">FAQ</Link>
         </div>
-        {session ? (
+        {session && isSubscribed ? (
           <div className="flex items-center gap-3">
             <span className="text-sm text-gray-500">Welcome back, {session.user?.name || "Dealer"}</span>
             <Link href="/dashboard" className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-md">
               Go to Dashboard →
+            </Link>
+          </div>
+        ) : session && !isSubscribed ? (
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-500">Complete your signup</span>
+            <Link href="/subscribe" className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-md">
+              Complete Signup →
             </Link>
           </div>
         ) : (
@@ -182,9 +190,10 @@ function Footer() {
 
 export default async function Home() {
   const session = await getServerSession(authOptions);
+  const isSubscribed = session?.user?.id ? await checkSubscription(session.user.id) : false;
   return (
     <>
-      <Nav session={session} />
+      <Nav session={session} isSubscribed={isSubscribed} />
       <Hero />
       <HowItWorks />
       <Features />

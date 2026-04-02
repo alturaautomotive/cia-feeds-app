@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendPasswordResetEmail } from "@/lib/email";
+import { rateLimit } from "@/lib/rateLimit";
 
 export async function POST(request: NextRequest) {
+  const ip = (request.headers.get("x-forwarded-for") ?? "unknown").split(",")[0].trim();
+  const rl = rateLimit(`forgot:${ip}`, 3, 60_000);
+  if (!rl.allowed) {
+    return NextResponse.json({ error: "rate_limited", retryAfterMs: rl.retryAfterMs }, { status: 429 });
+  }
+
   let body: unknown;
   try {
     body = await request.json();
@@ -22,6 +29,10 @@ export async function POST(request: NextRequest) {
     if (dealer) {
       const token = crypto.randomUUID();
       const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+      await prisma.passwordResetToken.deleteMany({
+        where: { email, expiresAt: { lt: new Date() } },
+      });
 
       await prisma.passwordResetToken.create({
         data: { email, token, expiresAt },

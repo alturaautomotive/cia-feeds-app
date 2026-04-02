@@ -51,6 +51,7 @@ model Vehicle {
   updatedAt      DateTime @updatedAt
 
   @@unique([dealerId, url])
+  @@index([dealerId])
 }
 
 model PasswordResetToken {

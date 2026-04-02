@@ -367,8 +367,36 @@ export default function VehicleEditForm({ vehicle: initialVehicle, dealerProfile
   async function handleGenerateSpotlight() {
     setSpotlightUrl(null);
     setSpotlightAdded(false);
-    setGenerating(true);
     setSpotlightError(null);
+    setGenerating(true);
+
+    const currentUrls = images.map((i) => i.url);
+    const persistedUrls = persistedImagesRef.current;
+    const imagesChanged =
+      currentUrls.length !== persistedUrls.length ||
+      currentUrls.some((url, idx) => url !== persistedUrls[idx]);
+    if (imagesChanged) {
+      try {
+        const saveRes = await fetch(`/api/vehicles/${initialVehicle.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ images: currentUrls }),
+        });
+        if (!saveRes.ok) {
+          setSpotlightError("Could not save image changes before generating. Please try again.");
+          setGenerating(false);
+          return;
+        }
+        const saveData = await saveRes.json();
+        if (Array.isArray(saveData.vehicle?.images)) {
+          persistedImagesRef.current = saveData.vehicle.images;
+        }
+      } catch {
+        setSpotlightError("Could not save image changes before generating. Please try again.");
+        setGenerating(false);
+        return;
+      }
+    }
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
       controller.abort();
