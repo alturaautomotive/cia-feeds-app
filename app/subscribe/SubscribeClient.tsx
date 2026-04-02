@@ -4,9 +4,10 @@ import { useState } from "react";
 
 interface Props {
   canceled: boolean;
+  priceLabel: string | null;
 }
 
-export function SubscribeClient({ canceled }: Props) {
+export function SubscribeClient({ canceled, priceLabel }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,7 +52,7 @@ export function SubscribeClient({ canceled }: Props) {
 
         <div className="flex justify-center">
           <div className="bg-indigo-50 text-indigo-600 font-semibold text-lg px-6 py-3 rounded-lg">
-            $99 / month
+            {priceLabel ?? "Contact us for pricing"}
           </div>
         </div>
 

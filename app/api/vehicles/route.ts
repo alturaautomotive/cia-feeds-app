@@ -28,6 +28,7 @@ export async function GET() {
       imageUrl: true,
       isComplete: true,
       missingFields: true,
+      scrapeStatus: true,
       createdAt: true,
       updatedAt: true,
     },

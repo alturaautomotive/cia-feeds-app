@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, useEffect, useRef, FormEvent } from "react";
 import Link from "next/link";
 import { signOut } from "next-auth/react";
 import type { Vehicle } from "@prisma/client";
@@ -8,6 +8,8 @@ import { AddVehicleForm } from "./components/AddVehicleForm";
 import { VehiclesTable } from "./components/VehiclesTable";
 import { SuccessBanner } from "./components/SuccessBanner";
 import { ErrorBanner } from "./components/ErrorBanner";
+
+type VehicleRow = Vehicle & { scrapeStatus: string };
 
 // Vehicle data fields (excludes system/metadata fields) used to detect auto-filled values
 const VEHICLE_DATA_FIELDS: Array<{ key: keyof Vehicle; label: string }> = [
@@ -25,14 +27,13 @@ const VEHICLE_DATA_FIELDS: Array<{ key: keyof Vehicle; label: string }> = [
 ];
 
 interface Props {
-  vehicles: Vehicle[];
+  vehicles: VehicleRow[];
   dealerName: string;
 }
 
 export function DashboardClient({ vehicles: initialVehicles, dealerName }: Props) {
-  const [vehicles, setVehicles] = useState<Vehicle[]>(initialVehicles);
+  const [vehicles, setVehicles] = useState<VehicleRow[]>(initialVehicles);
   const [vdpUrl, setVdpUrl] = useState("");
-  const [adding, setAdding] = useState(false);
   const [billingLoading, setBillingLoading] = useState(false);
   const [successInfo, setSuccessInfo] = useState<{
     autoFilledFields: string[];
@@ -40,53 +41,141 @@ export function DashboardClient({ vehicles: initialVehicles, dealerName }: Props
   } | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const statusMapRef = useRef<Map<string, string>>(new Map());
+
+  // Initialize status map from initial vehicles
+  useEffect(() => {
+    for (const v of initialVehicles) {
+      statusMapRef.current.set(v.id, v.scrapeStatus);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Polling effect: start/stop interval based on whether pending rows exist
+  useEffect(() => {
+    const hasPending = vehicles.some((v) => v.scrapeStatus === "pending");
+
+    if (hasPending && pollIntervalRef.current === null) {
+      pollIntervalRef.current = setInterval(async () => {
+        try {
+          const res = await fetch("/api/vehicles");
+          if (!res.ok) return;
+          const data = await res.json();
+          const fresh: VehicleRow[] = data.vehicles ?? [];
+
+          // Detect transitions
+          for (const v of fresh) {
+            const prev = statusMapRef.current.get(v.id);
+            if (prev === "pending" && v.scrapeStatus === "complete") {
+              const autoFilledFields = VEHICLE_DATA_FIELDS
+                .filter(({ key }) => {
+                  const val = v[key];
+                  return val !== null && val !== undefined && val !== "";
+                })
+                .map(({ label }) => label);
+              setSuccessInfo({ autoFilledFields, missingFields: v.missingFields ?? [] });
+            } else if (prev === "pending" && v.scrapeStatus === "failed") {
+              setErrorMsg(`Scrape failed for ${v.url}. Please try again.`);
+            }
+            statusMapRef.current.set(v.id, v.scrapeStatus);
+          }
+
+          setVehicles(fresh);
+
+          // Stop polling if no pending rows remain
+          const stillPending = fresh.some((v) => v.scrapeStatus === "pending");
+          if (!stillPending && pollIntervalRef.current !== null) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
+        } catch {
+          // silently ignore poll errors
+        }
+      }, 3000);
+    } else if (!hasPending && pollIntervalRef.current !== null) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+
+    return () => {
+      // Cleanup on unmount only — don't clear on every render
+    };
+  }, [vehicles]);
+
+  // Final cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current !== null) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, []);
+
   async function handleAddVehicle(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSuccessInfo(null);
     setErrorMsg(null);
-    setAdding(true);
+
+    const tempId = "pending-" + Date.now();
+    const submittedUrl = vdpUrl;
+
+    // Immediately append optimistic pending row and clear the input
+    const tempRow: VehicleRow = {
+      id: tempId,
+      url: submittedUrl,
+      scrapeStatus: "pending",
+      dealerId: "",
+      description: null,
+      vin: null,
+      make: null,
+      model: null,
+      year: null,
+      bodyStyle: null,
+      price: null,
+      mileageValue: null,
+      stateOfVehicle: null,
+      exteriorColor: null,
+      imageUrl: null,
+      images: [],
+      spotlightImageUrl: null,
+      isComplete: false,
+      missingFields: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    setVehicles((prev) => [tempRow, ...prev]);
+    setVdpUrl("");
 
     try {
       const res = await fetch("/api/vehicles/from-url", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: vdpUrl }),
+        body: JSON.stringify({ url: submittedUrl }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
+        setVehicles((prev) => prev.filter((v) => v.id !== tempId));
         setErrorMsg(data.message || data.error || "Failed to add vehicle.");
         return;
       }
 
-      const { vehicle, missingFields } = data as { vehicle: Vehicle; missingFields: string[] };
+      const { vehicle: returned } = data as { vehicle: { id: string; scrapeStatus: string; url: string } };
 
-      // Refresh vehicle list from server
-      const listRes = await fetch("/api/vehicles");
-      if (listRes.ok) {
-        const listData = await listRes.json();
-        setVehicles(listData.vehicles ?? []);
-      } else {
-        // Optimistic update
-        setVehicles((prev) => [vehicle, ...prev]);
-      }
-
-      setVdpUrl("");
-
-      // Derive auto-filled fields: fields with a non-null, non-empty value in the returned payload
-      const autoFilledFields = VEHICLE_DATA_FIELDS
-        .filter(({ key }) => {
-          const val = vehicle[key];
-          return val !== null && val !== undefined && val !== "";
-        })
-        .map(({ label }) => label);
-
-      setSuccessInfo({ autoFilledFields, missingFields: missingFields ?? [] });
+      // Replace temp row with real id, keeping pending status.
+      // Remove any pre-existing row with the same returned ID (duplicate URL case)
+      // so there is always exactly one row per vehicle ID.
+      statusMapRef.current.set(returned.id, "pending");
+      setVehicles((prev) =>
+        prev
+          .filter((v) => v.id !== returned.id || v.id === tempId)
+          .map((v) => (v.id === tempId ? { ...tempRow, id: returned.id, url: returned.url } : v))
+      );
     } catch {
+      setVehicles((prev) => prev.filter((v) => v.id !== tempId));
       setErrorMsg("Network error. Please try again.");
-    } finally {
-      setAdding(false);
     }
   }
 
@@ -145,7 +234,7 @@ export function DashboardClient({ vehicles: initialVehicles, dealerName }: Props
             url={vdpUrl}
             onChange={setVdpUrl}
             onSubmit={handleAddVehicle}
-            isLoading={adding}
+            isLoading={false}
           />
         </div>
 

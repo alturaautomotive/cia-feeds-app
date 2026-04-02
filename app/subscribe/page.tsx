@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { stripeClient } from "@/lib/stripe";
 import { SubscribeClient } from "./SubscribeClient";
 
 export default async function SubscribePage({
@@ -26,5 +27,21 @@ export default async function SubscribePage({
   const params = await searchParams;
   const canceled = params.canceled === "true";
 
-  return <SubscribeClient canceled={canceled} />;
+  let priceLabel: string | null = null;
+  try {
+    const price = await stripeClient.prices.retrieve(process.env.STRIPE_PRICE_ID!);
+    if (price.unit_amount != null) {
+      const amount = (price.unit_amount / 100).toLocaleString("en-US", {
+        style: "currency",
+        currency: price.currency.toUpperCase(),
+        minimumFractionDigits: 0,
+      });
+      const interval = price.recurring?.interval ?? "month";
+      priceLabel = `${amount} / ${interval}`;
+    }
+  } catch {
+    priceLabel = null;
+  }
+
+  return <SubscribeClient canceled={canceled} priceLabel={priceLabel} />;
 }

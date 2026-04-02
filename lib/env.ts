@@ -8,6 +8,8 @@ export function validateEnv() {
     "STRIPE_SECRET_KEY",
     "STRIPE_PRICE_ID",
     "STRIPE_WEBHOOK_SECRET",
+    "GEMINI_API_KEY",
+    "RESEND_API_KEY",
   ];
 
   for (const name of required) {

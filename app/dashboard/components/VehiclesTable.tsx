@@ -3,8 +3,10 @@
 import { useRouter } from "next/navigation";
 import type { Vehicle } from "@prisma/client";
 
+type VehicleRow = Vehicle & { scrapeStatus: string };
+
 interface Props {
-  vehicles: Vehicle[];
+  vehicles: VehicleRow[];
 }
 
 function formatPrice(price: number | null): string {
@@ -59,50 +61,63 @@ export function VehiclesTable({ vehicles }: Props) {
           </tr>
         </thead>
         <tbody>
-          {vehicles.map((vehicle) => (
-            <tr
-              key={vehicle.id}
-              data-element-id={`vehicle-row-${vehicle.id}`}
-              onClick={() => router.push(`/dashboard/vehicles/${vehicle.id}`)}
-              className="border-t border-gray-100 hover:bg-gray-50 cursor-pointer"
-            >
-              <td className="px-3.5 py-3 text-sm text-gray-700">
-                {vehicle.year ?? "—"}
-              </td>
-              <td className="px-3.5 py-3 text-sm text-gray-700">
-                {vehicle.make ?? "—"}
-              </td>
-              <td className="px-3.5 py-3 text-sm text-gray-700">
-                {vehicle.model ?? "—"}
-              </td>
-              <td className="px-3.5 py-3 text-sm text-gray-700">
-                {formatPrice(vehicle.price)}
-              </td>
-              <td className="px-3.5 py-3 text-sm text-gray-700">
-                {formatMileage(vehicle.mileageValue)}
-              </td>
-              <td className="px-3.5 py-3 text-sm text-gray-700">
-                {vehicle.stateOfVehicle ?? "—"}
-              </td>
-              <td className="px-3.5 py-3 text-sm text-gray-700">
-                {vehicle.exteriorColor ?? "—"}
-              </td>
-              <td className="px-3.5 py-3 text-sm">
-                {vehicle.imageUrl ? (
-                  <span className="badge badge-img-yes">✓ Image</span>
-                ) : (
-                  <span className="badge badge-img-no">No Image</span>
-                )}
-              </td>
-              <td className="px-3.5 py-3 text-sm">
-                {vehicle.isComplete ? (
-                  <span className="badge badge-complete">Complete</span>
-                ) : (
-                  <span className="badge badge-incomplete">Incomplete</span>
-                )}
-              </td>
-            </tr>
-          ))}
+          {vehicles.map((vehicle) => {
+            const isPending = vehicle.scrapeStatus === "pending";
+            const isFailed = vehicle.scrapeStatus === "failed";
+
+            return (
+              <tr
+                key={vehicle.id}
+                data-element-id={`vehicle-row-${vehicle.id}`}
+                onClick={() => {
+                  if (!isPending) router.push(`/dashboard/vehicles/${vehicle.id}`);
+                }}
+                className={`border-t border-gray-100 ${isPending ? "opacity-60 cursor-default" : "hover:bg-gray-50 cursor-pointer"}`}
+              >
+                <td className="px-3.5 py-3 text-sm text-gray-700">
+                  {isPending ? "—" : (vehicle.year ?? "—")}
+                </td>
+                <td className="px-3.5 py-3 text-sm text-gray-700">
+                  {isPending ? "—" : (vehicle.make ?? "—")}
+                </td>
+                <td className="px-3.5 py-3 text-sm text-gray-700">
+                  {isPending ? "—" : (vehicle.model ?? "—")}
+                </td>
+                <td className="px-3.5 py-3 text-sm text-gray-700">
+                  {isPending ? "—" : formatPrice(vehicle.price)}
+                </td>
+                <td className="px-3.5 py-3 text-sm text-gray-700">
+                  {isPending ? "—" : formatMileage(vehicle.mileageValue)}
+                </td>
+                <td className="px-3.5 py-3 text-sm text-gray-700">
+                  {isPending ? "—" : (vehicle.stateOfVehicle ?? "—")}
+                </td>
+                <td className="px-3.5 py-3 text-sm text-gray-700">
+                  {isPending ? "—" : (vehicle.exteriorColor ?? "—")}
+                </td>
+                <td className="px-3.5 py-3 text-sm">
+                  {isPending ? (
+                    "—"
+                  ) : vehicle.imageUrl ? (
+                    <span className="badge badge-img-yes">✓ Image</span>
+                  ) : (
+                    <span className="badge badge-img-no">No Image</span>
+                  )}
+                </td>
+                <td className="px-3.5 py-3 text-sm">
+                  {isPending ? (
+                    <span className="animate-pulse text-indigo-500 text-sm">Scraping…</span>
+                  ) : isFailed ? (
+                    <span className="badge badge-incomplete" style={{ backgroundColor: "#fee2e2", color: "#b91c1c" }}>Failed</span>
+                  ) : vehicle.isComplete ? (
+                    <span className="badge badge-complete">Complete</span>
+                  ) : (
+                    <span className="badge badge-incomplete">Incomplete</span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

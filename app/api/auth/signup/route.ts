@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    const baseUrl = process.env.NEXTAUTH_URL ?? new URL(request.url).origin;
+    const baseUrl = (process.env.NEXT_PUBLIC_APP_URL ?? new URL(request.url).origin).replace(/\/+$/, "");
     const feedUrl = `${baseUrl}/feeds/${slug}.csv`;
 
     Promise.all([

@@ -31,7 +31,8 @@ export default async function FeedPage() {
     redirect("/login");
   }
 
-  const feedUrl = `${process.env.NEXT_PUBLIC_APP_URL}/feeds/${slug}.csv`;
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/+$/, "");
+  const feedUrl = `${appUrl}/feeds/${slug}.csv`;
 
   return (
     <FeedUrlCard
