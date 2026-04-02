@@ -365,13 +365,22 @@ export default function VehicleEditForm({ vehicle: initialVehicle, dealerProfile
   }
 
   async function handleGenerateSpotlight() {
+    setSpotlightUrl(null);
+    setSpotlightAdded(false);
     setGenerating(true);
     setSpotlightError(null);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+      setGenerating(false);
+      setSpotlightError("Generation timed out. Please try again.");
+    }, 55000);
     try {
       const res = await fetch(`/api/vehicles/${initialVehicle.id}/spotlight`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ signMessage: signMessage.trim() || undefined }),
+        signal: controller.signal,
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -396,9 +405,11 @@ export default function VehicleEditForm({ vehicle: initialVehicle, dealerProfile
       const data = await res.json();
       setSpotlightUrl(data.spotlightImageUrl);
       setSpotlightAdded(false);
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") return;
       setSpotlightError("Network error. Please try again.");
     } finally {
+      clearTimeout(timeoutId);
       setGenerating(false);
     }
   }
@@ -884,6 +895,7 @@ export default function VehicleEditForm({ vehicle: initialVehicle, dealerProfile
                         <>
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
+                            key={spotlightUrl ?? "empty"}
                             src={spotlightUrl}
                             alt="CIA Spotlight"
                             className="w-full object-cover block mx-auto"
