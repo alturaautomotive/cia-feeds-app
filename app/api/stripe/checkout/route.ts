@@ -4,7 +4,9 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { stripeClient } from "@/lib/stripe";
 
-export async function POST() {
+export async function POST(request: Request) {
+  const { promoCodeId } = await request.json().catch(() => ({})) as { promoCodeId?: string };
+
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -31,15 +33,35 @@ export async function POST() {
     dealer = { ...dealer, stripeCustomerId: customer.id };
   }
 
+  if (promoCodeId && !/^promo_[a-zA-Z0-9]+$/.test(promoCodeId)) {
+    return NextResponse.json({ error: "Invalid promo code." }, { status: 400 });
+  }
+
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/+$/, '');
-  const checkoutSession = await stripeClient.checkout.sessions.create({
-    mode: "subscription",
-    customer: dealer.stripeCustomerId!,
-    line_items: [{ price: process.env.STRIPE_PRICE_ID!, quantity: 1 }],
-    success_url: `${appUrl}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${appUrl}/subscribe?canceled=true`,
-    allow_promotion_codes: true,
-  });
+
+  let checkoutSession;
+  try {
+    checkoutSession = await stripeClient.checkout.sessions.create({
+      mode: "subscription",
+      customer: dealer.stripeCustomerId!,
+      line_items: [{ price: process.env.STRIPE_PRICE_ID!, quantity: 1 }],
+      success_url: `${appUrl}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${appUrl}/subscribe?canceled=true`,
+      ...(promoCodeId
+        ? { discounts: [{ promotion_code: promoCodeId }] }
+        : { allow_promotion_codes: true }),
+    });
+  } catch (err: unknown) {
+    const stripeError = err as { type?: string; code?: string; message?: string };
+    if (
+      stripeError?.type === "StripeInvalidRequestError" ||
+      stripeError?.code === "resource_missing" ||
+      stripeError?.code === "promotion_code_invalid"
+    ) {
+      return NextResponse.json({ error: "Invalid or expired promo code." }, { status: 400 });
+    }
+    return NextResponse.json({ error: "Failed to create checkout session." }, { status: 500 });
+  }
 
   return NextResponse.json({ url: checkoutSession.url });
 }

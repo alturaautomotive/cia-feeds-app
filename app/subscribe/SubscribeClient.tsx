@@ -10,12 +10,46 @@ interface Props {
 export function SubscribeClient({ canceled, priceLabel }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [promoCode, setPromoCode] = useState("");
+  const [promoStatus, setPromoStatus] = useState<"idle" | "loading" | "valid" | "invalid">("idle");
+  const [promoLabel, setPromoLabel] = useState<string | null>(null);
+  const [promotionCodeId, setPromotionCodeId] = useState<string | null>(null);
+
+  async function handleApplyPromo() {
+    if (!promoCode.trim()) return;
+    setPromoStatus("loading");
+    try {
+      const res = await fetch("/api/stripe/validate-promo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: promoCode.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setPromoStatus("valid");
+        setPromoLabel(data.label);
+        setPromotionCodeId(data.promotionCodeId);
+      } else {
+        setPromoStatus("invalid");
+        setPromoLabel(null);
+        setPromotionCodeId(null);
+      }
+    } catch {
+      setPromoStatus("invalid");
+      setPromoLabel(null);
+      setPromotionCodeId(null);
+    }
+  }
 
   async function handleSubscribe() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/stripe/checkout", { method: "POST" });
+      const res = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ promoCodeId }),
+      });
       const data = await res.json();
       if (!res.ok) {
         setError(data.error || "Something went wrong. Please try again.");
@@ -54,6 +88,41 @@ export function SubscribeClient({ canceled, priceLabel }: Props) {
           <div className="bg-indigo-50 text-indigo-600 font-semibold text-lg px-6 py-3 rounded-lg">
             {priceLabel ?? "Contact us for pricing"}
           </div>
+        </div>
+
+        <div className="space-y-1">
+          <div className="flex">
+            <input
+              type="text"
+              value={promoCode}
+              onChange={(e) => {
+                setPromoCode(e.target.value);
+                if (promoStatus === "valid") {
+                  setPromoStatus("idle");
+                  setPromoLabel(null);
+                  setPromotionCodeId(null);
+                }
+              }}
+              placeholder="Promo code"
+              className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 flex-1"
+            />
+            <button
+              onClick={handleApplyPromo}
+              disabled={promoStatus === "loading" || loading}
+              className="ml-2 px-4 py-2 text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Apply
+            </button>
+          </div>
+          {promoStatus === "valid" && (
+            <p className="text-sm text-green-600">✓ {promoLabel} applied!</p>
+          )}
+          {promoStatus === "invalid" && (
+            <p className="text-sm text-red-600">Invalid or expired promo code.</p>
+          )}
+          {promoStatus === "loading" && (
+            <p className="text-sm text-gray-500">Checking…</p>
+          )}
         </div>
 
         {error && (
