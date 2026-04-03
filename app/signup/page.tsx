@@ -45,7 +45,7 @@ export default function SignupPage() {
     const result = await signIn("credentials", {
       email,
       password,
-      callbackUrl: "/subscribe",
+      callbackUrl: `${window.location.origin}/subscribe`,
       redirect: false,
     });
 
