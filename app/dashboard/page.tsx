@@ -20,9 +20,9 @@ export default async function DashboardPage({
   // Post-checkout reconciliation: if Stripe redirected here with a session_id,
   // persist the subscription before the layout's checkSubscription runs on the
   // next request (webhooks may not have arrived yet).
-  const { session_id } = await searchParams;
-  if (session_id) {
-    try {
+  try {
+    const { session_id } = await searchParams;
+    if (session_id) {
       const checkoutSession = await stripeClient.checkout.sessions.retrieve(
         session_id,
         { expand: ["subscription"] }
@@ -54,12 +54,18 @@ export default async function DashboardPage({
           },
         });
       }
-    } catch {
-      // Non-fatal: webhook will eventually sync the subscription state.
     }
+  } catch {
+    // Non-fatal: webhook will eventually sync the subscription state.
   }
 
-  const isSubscribed = await checkSubscription(session.user.id);
+  let isSubscribed = false;
+  try {
+    isSubscribed = await checkSubscription(session.user.id);
+  } catch {
+    // Default to false on any DB/network error; redirect will handle it.
+  }
+
   if (!isSubscribed) {
     redirect("/subscribe");
   }
