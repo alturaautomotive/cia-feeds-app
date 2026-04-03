@@ -48,7 +48,7 @@ export function SubscribeClient({ canceled, priceLabel }: Props) {
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ promoCodeId }),
+        body: JSON.stringify({ promoCodeId: promotionCodeId }),
       });
       const data = await res.json();
       if (!res.ok) {
