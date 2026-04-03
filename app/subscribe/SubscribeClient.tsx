@@ -104,7 +104,7 @@ export function SubscribeClient({ canceled, priceLabel }: Props) {
                 }
               }}
               placeholder="Promo code"
-              className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 flex-1"
+              className="border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 flex-1"
             />
             <button
               onClick={handleApplyPromo}
