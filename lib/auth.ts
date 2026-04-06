@@ -3,6 +3,29 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 
+if (process.env.NODE_ENV === "production") {
+  if (!process.env.NEXTAUTH_SECRET) {
+    console.error(
+      "[auth] NEXTAUTH_SECRET is not set. Sessions will fail. " +
+        "Set it in your Vercel Environment Variables."
+    );
+  }
+  if (!process.env.NEXTAUTH_URL) {
+    console.error(
+      "[auth] NEXTAUTH_URL is not set in production. " +
+        "Set it to your deployed domain (e.g. https://yourapp.vercel.app) " +
+        "in Vercel Environment Variables."
+    );
+  } else if (process.env.NEXTAUTH_URL.includes("localhost")) {
+    console.error(
+      "[auth] NEXTAUTH_URL is set to a localhost address in production. " +
+        "This will cause session cookies to use the wrong domain, " +
+        "resulting in redirect loops after login. " +
+        "Update it in Vercel Environment Variables to your deployed domain."
+    );
+  }
+}
+
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
