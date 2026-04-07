@@ -17,17 +17,13 @@ export default async function FeedPage() {
     redirect("/subscribe");
   }
 
-  let slug = session.user.slug as string | undefined;
-  let dealerVertical = session.user.vertical ?? "automotive";
+  const dealer = await prisma.dealer.findUnique({
+    where: { id: session.user.id },
+    select: { slug: true, vertical: true },
+  });
 
-  if (!slug) {
-    const dealer = await prisma.dealer.findUnique({
-      where: { id: session.user.id },
-      select: { slug: true, vertical: true },
-    });
-    slug = dealer?.slug ?? "";
-    dealerVertical = dealer?.vertical ?? "automotive";
-  }
+  const slug = dealer?.slug ?? (session.user.slug as string | undefined) ?? "";
+  const dealerVertical = dealer?.vertical ?? "automotive";
 
   if (!slug) {
     redirect("/login");

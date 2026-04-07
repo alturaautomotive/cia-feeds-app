@@ -26,6 +26,14 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
   const fields = getFieldsForVertical(vertical);
   const label = VERTICAL_LABELS[vertical];
 
+  const VERTICAL_ACTION_LABELS: Record<Vertical, { title: string; submit: string }> = {
+    automotive: { title: "Add New Vehicle", submit: "Add Vehicle" },
+    services: { title: "Add New Service", submit: "Add Service" },
+    ecommerce: { title: "Add New Product", submit: "Add Product" },
+    realestate: { title: "Add New Listing", submit: "Add Listing" },
+  };
+  const actionLabels = VERTICAL_ACTION_LABELS[vertical];
+
   function setField(key: string, value: string) {
     setFormData((prev) => ({ ...prev, [key]: value }));
     // Clear field error on change
@@ -223,7 +231,7 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5">
       <div className="flex items-center justify-between mb-4">
-        <span className="text-sm font-semibold text-gray-900">Add New Listing</span>
+        <span className="text-sm font-semibold text-gray-900">{actionLabels.title}</span>
         <span className="bg-indigo-50 text-indigo-600 text-xs font-semibold px-2 py-0.5 rounded-full">
           {label}
         </span>
@@ -379,7 +387,7 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
               disabled={loading}
               className="bg-indigo-600 text-white px-5 py-2 rounded-md text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? "Adding\u2026" : "Add Listing"}
+              {loading ? "Adding\u2026" : actionLabels.submit}
             </button>
           </div>
         </form>

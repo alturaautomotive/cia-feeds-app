@@ -72,7 +72,7 @@ export function SubscribeClient({ canceled, priceLabel }: Props) {
             One last step — activate your account
           </h1>
           <p className="mt-2 text-sm text-gray-600">
-            Subscribe to get full access to your dealer feed and all CIAfeeds features.
+            Subscribe to get full access to your catalog feed and all CIAfeeds features.
           </p>
         </div>
 

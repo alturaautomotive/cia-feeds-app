@@ -15,7 +15,7 @@ function Nav({ session, isSubscribed }: { session: Session | null; isSubscribed:
         </div>
         {session && isSubscribed ? (
           <div className="flex items-center gap-3">
-            <span className="text-sm text-gray-500">Welcome back, {session.user?.name || "Dealer"}</span>
+            <span className="text-sm text-gray-500">Welcome back, {session.user?.name || "there"}</span>
             <Link href="/dashboard" className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-md">
               Go to Dashboard →
             </Link>
@@ -46,15 +46,15 @@ function Hero() {
   return (
     <section className="bg-gray-50 py-20 px-6 text-center">
       <h1 className="text-4xl md:text-5xl font-extrabold text-gray-900 max-w-3xl mx-auto leading-tight mb-4">
-        Turn Any Dealer Website Into a Meta Inventory Feed — In Minutes
+        Turn Any Website Into a Meta Catalog Feed — In Minutes
       </h1>
       <p className="text-lg text-gray-500 max-w-xl mx-auto mb-8">
-        CIAfeeds scrapes your Vehicle Detail Pages and generates a Meta-compatible CSV feed automatically. No dev work. No manual exports.
+        CIAfeeds scrapes your product, vehicle, property, or service pages and generates a Meta-compatible CSV feed automatically. No dev work. No manual exports.
       </p>
       <Link href="/signup" className="inline-block bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-base px-8 py-4 rounded-lg">
         Start for $99/mo →
       </Link>
-      <p className="mt-4 text-sm text-gray-400">No setup fees · Cancel anytime · Works with any dealer website</p>
+      <p className="mt-4 text-sm text-gray-400">No setup fees · Cancel anytime · Works with any website</p>
     </section>
   );
 }
@@ -63,13 +63,13 @@ function HowItWorks() {
   const steps = [
     {
       emoji: "🔗",
-      title: "Paste a VDP URL",
-      description: "Drop in any Vehicle Detail Page URL from your dealer website",
+      title: "Paste a Listing URL",
+      description: "Drop in any product, vehicle, property, or service page URL",
     },
     {
       emoji: "⚡",
       title: "We Scrape It Instantly",
-      description: "CIAfeeds extracts make, model, year, price, images and more automatically",
+      description: "CIAfeeds extracts title, price, images, and all relevant fields automatically",
     },
     {
       emoji: "📋",
@@ -96,19 +96,20 @@ function HowItWorks() {
 
 function Features() {
   const items = [
-    "✅ Works with any dealer website — no API needed",
-    "✅ Meta Automotive Inventory Ads compatible CSV format",
-    "✅ Auto-extracts: VIN, make, model, year, price, mileage, condition, color, images",
+    "✅ Works with any website — no API needed",
+    "✅ Meta Catalog Ads compatible CSV — for all supported verticals",
+    "✅ Auto-extracts: title, price, images, condition, location, and more",
     "✅ Edit & fill in missing fields from the dashboard",
     "✅ Live feed URL — Meta pulls fresh data on schedule",
-    "✅ One feed URL per dealership, forever",
+    "✅ One feed URL per account, forever",
+    "✅ Supports Automotive, E-commerce, Real Estate & Services verticals",
   ];
 
   return (
     <section id="features" className="bg-gray-50 py-16 px-6">
       <div className="max-w-5xl mx-auto">
         <h2 className="text-2xl font-bold text-center text-gray-900 mb-10">
-          Everything You Need to Run Automotive Inventory Ads
+          Everything You Need to Run Meta Catalog Ads
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-2xl mx-auto">
           {items.map((item) => (
@@ -128,7 +129,7 @@ function Pricing() {
         <div className="text-5xl font-extrabold text-indigo-600">
           $99<span className="text-lg font-normal text-gray-500">/mo</span>
         </div>
-        <p className="text-sm text-gray-500 mt-2 mb-6">Per dealership. Unlimited vehicles.</p>
+        <p className="text-sm text-gray-500 mt-2 mb-6">Per account. Unlimited listings.</p>
         <Link href="/signup" className="block bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg mb-3">
           Get Started →
         </Link>
@@ -141,8 +142,8 @@ function Pricing() {
 function FAQ() {
   const items = [
     {
-      question: "What dealer websites does it work with?",
-      answer: "Any publicly accessible VDP — franchise, independent, or aggregator pages.",
+      question: "What websites does it work with?",
+      answer: "Any publicly accessible listing page — product pages, vehicle detail pages, property listings, or service pages.",
     },
     {
       question: "How does Meta get the feed?",
@@ -153,7 +154,7 @@ function FAQ() {
       answer: "You can manually edit any field from your dashboard before it appears in the feed.",
     },
     {
-      question: "How many vehicles can I add?",
+      question: "How many listings can I add?",
       answer: "Unlimited.",
     },
   ];

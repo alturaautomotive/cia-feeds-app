@@ -9,8 +9,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "CIAfeeds — Custom Inventory Ads",
-  description: "Generate Meta-compatible automotive inventory feed CSVs",
+  title: "CIAfeeds — Meta Catalog Feeds for Any Business",
+  description: "Generate Meta-compatible catalog feed CSVs for automotive, e-commerce, real estate, and services",
 };
 
 export default function RootLayout({
