@@ -36,10 +36,10 @@ export async function POST(request: NextRequest) {
   }
 
   const VALID_VERTICALS = ["automotive", "services", "ecommerce", "realestate"];
-  const dealerVertical =
-    typeof vertical === "string" && VALID_VERTICALS.includes(vertical)
-      ? vertical
-      : "automotive";
+  if (vertical != null && (typeof vertical !== "string" || !VALID_VERTICALS.includes(vertical))) {
+    return NextResponse.json({ error: "invalid_vertical" }, { status: 400 });
+  }
+  const dealerVertical = typeof vertical === "string" ? vertical : "automotive";
 
   const trimmedName = name.trim();
   if (!trimmedName) {

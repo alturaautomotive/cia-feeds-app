@@ -52,10 +52,52 @@ export function mapListingToRow(listing: {
     title: listing.title || d.title || "",
     name: listing.title || d.name || "",
     description: d.description || "",
-    price: listing.price != null ? String(listing.price) : (d.price || ""),
+    price: listing.price != null ? String(listing.price) : (d.price ? String(d.price) : ""),
     url: listing.url || d.url || "",
     image_url: listing.imageUrls[0] ?? "",
   };
+}
+
+export function serializeEcommerceRow(listing: {
+  id: string;
+  title: string;
+  price: number | null;
+  imageUrls: string[];
+  url: string | null;
+  data: Record<string, unknown>;
+}): string {
+  const row = mapListingToRow(listing);
+  return serializeCSVRow(row, ECOMMERCE_CSV_HEADERS);
+}
+
+export function serializeServicesRow(listing: {
+  id: string;
+  title: string;
+  price: number | null;
+  imageUrls: string[];
+  url: string | null;
+  data: Record<string, unknown>;
+}): Record<string, unknown> {
+  const row = mapListingToRow(listing);
+  // Services verticals prefer raw price text (e.g. "Starting at $50/hr") over normalized numeric price
+  if (listing.data.price) {
+    row.price = String(listing.data.price);
+  }
+  // Ensure address is explicitly mapped for Meta's local_service_businesses spec
+  row.address = listing.data.address || row.address || "";
+  return row;
+}
+
+export function serializeRealEstateRow(listing: {
+  id: string;
+  title: string;
+  price: number | null;
+  imageUrls: string[];
+  url: string | null;
+  data: Record<string, unknown>;
+}): string {
+  const row = mapListingToRow(listing);
+  return serializeCSVRow(row, REALESTATE_CSV_HEADERS);
 }
 
 export function getCSVHeadersForVertical(vertical: string): string[] {

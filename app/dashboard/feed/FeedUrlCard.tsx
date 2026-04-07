@@ -3,13 +3,29 @@
 import { useState } from "react";
 import Link from "next/link";
 import { signOut } from "next-auth/react";
+import { VERTICAL_LABELS, VERTICAL_META_TYPE, type Vertical } from "@/lib/verticals";
+
+const BACK_LABEL: Record<string, string> = {
+  automotive: "Vehicles",
+  services: "Services",
+  ecommerce: "Products",
+  realestate: "Listings",
+};
+
+const FEED_SECTION_LABEL: Record<string, string> = {
+  automotive: "Vehicle Feed URL",
+  services: "Services Feed URL",
+  ecommerce: "Products Feed URL",
+  realestate: "Listings Feed URL",
+};
 
 interface FeedUrlCardProps {
   feedUrl: string;
   userName: string;
+  vertical: string;
 }
 
-export default function FeedUrlCard({ feedUrl, userName }: FeedUrlCardProps) {
+export default function FeedUrlCard({ feedUrl, userName, vertical }: FeedUrlCardProps) {
   const [copied, setCopied] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
@@ -66,7 +82,7 @@ export default function FeedUrlCard({ feedUrl, userName }: FeedUrlCardProps) {
               href="/dashboard"
               className="text-sm text-indigo-600 hover:text-indigo-500"
             >
-              ← Vehicles
+              &larr; {BACK_LABEL[vertical] ?? "Dashboard"}
             </Link>
             <span className="font-bold text-lg text-gray-900">CIAfeeds</span>
           </div>
@@ -88,14 +104,14 @@ export default function FeedUrlCard({ feedUrl, userName }: FeedUrlCardProps) {
           Your Meta Catalog Feed
         </h1>
         <p className="text-sm text-gray-500 mb-8">
-          Use this URL in Meta&apos;s catalog setup to power Automotive
-          Inventory Ads.
+          Use this URL in Meta&apos;s catalog setup to power your{" "}
+          {VERTICAL_LABELS[vertical as Vertical] ?? vertical} catalog feed.
         </p>
 
         <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-7">
           {/* Feed URL section */}
           <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
-            Feed URL
+            {FEED_SECTION_LABEL[vertical] ?? "Feed URL"}
           </p>
           <div className="flex gap-2 items-center mb-5">
             <div
@@ -140,7 +156,7 @@ export default function FeedUrlCard({ feedUrl, userName }: FeedUrlCardProps) {
               <strong>Meta Business Manager → Catalog Manager</strong>.
             </li>
             <li>
-              Create a new catalog → choose <strong>Automotive</strong>.
+              Create a new catalog &rarr; choose <strong>{VERTICAL_META_TYPE[vertical as Vertical] ?? "Automotive"}</strong>.
             </li>
             <li>
               Select <strong>Data Feed → Scheduled Feed</strong>.
@@ -150,8 +166,8 @@ export default function FeedUrlCard({ feedUrl, userName }: FeedUrlCardProps) {
               recommended).
             </li>
             <li>
-              Meta will automatically map the columns to its Automotive
-              Inventory Ads fields.
+              Meta will automatically map the columns to its{" "}
+              {VERTICAL_LABELS[vertical as Vertical] ?? vertical} catalog fields.
             </li>
           </ol>
         </div>

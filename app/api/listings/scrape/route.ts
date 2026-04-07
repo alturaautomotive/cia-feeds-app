@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
       where: { id: listingId },
       data: {
         title,
-        price: price && Number.isFinite(price) ? price : null,
+        price: price != null && Number.isFinite(price) ? price : null,
         imageUrls,
         url,
         isComplete: missingFields.length === 0,

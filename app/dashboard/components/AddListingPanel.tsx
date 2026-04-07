@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, FormEvent } from "react";
-import { getFieldsForVertical, VERTICAL_LABELS, type Vertical } from "@/lib/verticals";
+import { getFieldsForVertical, VERTICAL_LABELS, VERTICAL_REQUIRED_IMAGE, type Vertical } from "@/lib/verticals";
 
 interface Props {
   vertical: Vertical;
@@ -18,19 +18,99 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [uploadingImages, setUploadingImages] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const fields = getFieldsForVertical(vertical);
   const label = VERTICAL_LABELS[vertical];
 
   function setField(key: string, value: string) {
     setFormData((prev) => ({ ...prev, [key]: value }));
+    // Clear field error on change
+    if (fieldErrors[key]) {
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    }
+  }
+
+  function validateFields(): boolean {
+    const errors: Record<string, string> = {};
+    for (const field of fields) {
+      if (field.required) {
+        const val = formData[field.key]?.trim();
+        if (!val) {
+          errors[field.key] = `${field.label} is required`;
+        }
+      }
+    }
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  }
+
+  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    e.target.value = "";
+
+    const remaining = 10 - imageUrls.length;
+    if (remaining <= 0) {
+      setError("Maximum 10 images allowed.");
+      return;
+    }
+
+    const filesToUpload = Array.from(files).slice(0, remaining);
+    setUploadingImages(true);
+    setError(null);
+
+    try {
+      const fd = new FormData();
+      for (const file of filesToUpload) {
+        fd.append("files", file);
+      }
+
+      const res = await fetch("/api/listings/upload-image", { method: "POST", body: fd });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || "Image upload failed.");
+        return;
+      }
+
+      const data = await res.json();
+      setImageUrls((prev) => [...prev, ...data.urls].slice(0, 10));
+      // Clear image field error when images are successfully added
+      if (fieldErrors.image_url) {
+        setFieldErrors((prev) => { const next = { ...prev }; delete next.image_url; return next; });
+      }
+    } catch {
+      setError("Image upload failed. Please try again.");
+    } finally {
+      setUploadingImages(false);
+    }
+  }
+
+  function removeImage(index: number) {
+    setImageUrls((prev) => prev.filter((_, i) => i !== index));
   }
 
   async function handleManualSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setSuccess(null);
+
+    if (!validateFields()) return;
+
+    // Enforce image requirement for verticals that need image_url
+    if (VERTICAL_REQUIRED_IMAGE[vertical] && imageUrls.length === 0) {
+      setFieldErrors((prev) => ({ ...prev, image_url: "At least one image is required" }));
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -48,6 +128,7 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
 
       setFormData({});
       setImageUrls([]);
+      setFieldErrors({});
       setSuccess("Listing added successfully!");
       onListingAdded();
     } catch {
@@ -107,7 +188,7 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
       }
 
       const data = await res.json();
-      setSuccess(`${data.created} listing(s) imported.${data.errors?.length ? ` ${data.errors.length} row(s) had errors.` : ""}`);
+      setSuccess(`${data.created} listing(s) imported.${data.skipped ? ` ${data.skipped} skipped.` : ""}${data.errors?.length ? ` ${data.errors.length} row(s) had errors.` : ""}`);
       onListingAdded();
     } catch {
       setError("Network error. Please try again.");
@@ -136,23 +217,25 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-4 border-b border-gray-200 pb-2.5">
-        {availableTabs.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            data-element-id={`tab-${t.id}`}
-            onClick={() => { setTab(t.id); setError(null); setSuccess(null); }}
-            className={`text-xs px-2.5 py-1 rounded-md ${
-              tab === t.id
-                ? "bg-indigo-600 text-white"
-                : "text-gray-500 hover:bg-gray-100"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      {availableTabs.length > 1 && (
+        <div className="flex gap-2 mb-4 border-b border-gray-200 pb-2.5">
+          {availableTabs.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              data-element-id={`tab-${t.id}`}
+              onClick={() => { setTab(t.id); setError(null); setSuccess(null); setFieldErrors({}); }}
+              className={`text-xs px-2.5 py-1 rounded-md ${
+                tab === t.id
+                  ? "bg-indigo-600 text-white"
+                  : "text-gray-500 hover:bg-gray-100"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {error && (
         <div className="rounded-md bg-red-50 p-3 mb-4">
@@ -171,6 +254,7 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
           <div className="grid grid-cols-2 gap-3">
             {fields.map((field) => {
               const isFullWidth = field.type === "textarea" || field.key === "name" || field.key === "title";
+              const hasError = !!fieldErrors[field.key];
               return (
                 <div key={field.key} className={isFullWidth ? "col-span-2" : ""}>
                   <label className="block text-xs font-medium text-gray-600 mb-1">
@@ -184,14 +268,18 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
                       onChange={(e) => setField(field.key, e.target.value)}
                       placeholder={field.placeholder}
                       rows={3}
-                      className="w-full border border-gray-300 rounded-md px-2.5 py-1.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-vertical"
+                      className={`w-full border rounded-md px-2.5 py-1.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-vertical ${
+                        hasError ? "border-red-400" : "border-gray-300"
+                      }`}
                     />
                   ) : field.type === "select" ? (
                     <select
                       data-element-id={`field-${field.key}`}
                       value={formData[field.key] ?? ""}
                       onChange={(e) => setField(field.key, e.target.value)}
-                      className="w-full border border-gray-300 rounded-md px-2.5 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      className={`w-full border rounded-md px-2.5 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 ${
+                        hasError ? "border-red-400" : "border-gray-300"
+                      }`}
                     >
                       <option value="">Select...</option>
                       {field.options?.map((opt) => (
@@ -205,8 +293,13 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
                       value={formData[field.key] ?? ""}
                       onChange={(e) => setField(field.key, e.target.value)}
                       placeholder={field.placeholder}
-                      className="w-full border border-gray-300 rounded-md px-2.5 py-1.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      className={`w-full border rounded-md px-2.5 py-1.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 ${
+                        hasError ? "border-red-400" : "border-gray-300"
+                      }`}
                     />
+                  )}
+                  {hasError && (
+                    <p className="text-xs text-red-500 mt-0.5">{fieldErrors[field.key]}</p>
                   )}
                 </div>
               );
@@ -216,20 +309,53 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
               <label className="block text-xs font-medium text-gray-600 mb-1">
                 Images (up to 10)
               </label>
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={handleImageUpload}
+              />
+              {imageUrls.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {imageUrls.map((url, i) => (
+                    <div key={i} className="relative group">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={url}
+                        alt=""
+                        className="w-16 h-16 rounded object-cover border border-gray-200"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeImage(i)}
+                        className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-4 h-4 text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        x
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div
                 data-element-id="field-images"
-                className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center text-gray-400 text-sm cursor-pointer hover:border-gray-400"
-                onClick={() => {
-                  const url = prompt("Enter image URL:");
-                  if (url?.trim()) {
-                    setImageUrls((prev) => [...prev.slice(0, 9), url.trim()]);
-                  }
-                }}
+                className={`border-2 border-dashed rounded-lg p-4 text-center text-sm cursor-pointer ${
+                  fieldErrors.image_url
+                    ? "border-red-400 text-red-400 hover:border-red-500"
+                    : "border-gray-300 text-gray-400 hover:border-gray-400"
+                }`}
+                onClick={() => !uploadingImages && imageInputRef.current?.click()}
               >
-                {imageUrls.length > 0
-                  ? `${imageUrls.length} image(s) added. Click to add more.`
-                  : "Click to add image URLs"}
+                {uploadingImages
+                  ? "Uploading\u2026"
+                  : imageUrls.length > 0
+                    ? `${imageUrls.length} image(s) added. Click to add more.`
+                    : "Click to upload images"}
               </div>
+              {fieldErrors.image_url && (
+                <p className="text-xs text-red-500 mt-0.5">{fieldErrors.image_url}</p>
+              )}
             </div>
           </div>
 

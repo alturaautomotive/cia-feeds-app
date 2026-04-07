@@ -18,13 +18,15 @@ export default async function FeedPage() {
   }
 
   let slug = session.user.slug as string | undefined;
+  let dealerVertical = session.user.vertical ?? "automotive";
 
   if (!slug) {
     const dealer = await prisma.dealer.findUnique({
       where: { id: session.user.id },
-      select: { slug: true },
+      select: { slug: true, vertical: true },
     });
     slug = dealer?.slug ?? "";
+    dealerVertical = dealer?.vertical ?? "automotive";
   }
 
   if (!slug) {
@@ -38,6 +40,7 @@ export default async function FeedPage() {
     <FeedUrlCard
       feedUrl={feedUrl}
       userName={session.user.name ?? ""}
+      vertical={dealerVertical}
     />
   );
 }

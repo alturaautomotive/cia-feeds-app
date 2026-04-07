@@ -1,0 +1,2 @@
+-- NO-OP: DDL was applied in 20260407_add_verticals_and_listings.
+-- This file exists only to satisfy Prisma's migration history.

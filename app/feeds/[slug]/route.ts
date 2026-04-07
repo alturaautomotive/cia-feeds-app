@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { serializeCSVHeader, serializeCSVRow, mapListingToRow, getCSVHeadersForVertical } from "@/lib/csv";
+import { serializeCSVHeader, serializeCSVRow, mapListingToRow, serializeServicesRow, getCSVHeadersForVertical } from "@/lib/csv";
 import { logCsvGeneration } from "@/lib/logger";
 
 const VEHICLE_CSV_HEADERS = [
@@ -162,10 +162,10 @@ function streamListingsCSV(
         });
 
         for (const listing of batch) {
-          const row = mapListingToRow({
-            ...listing,
-            data: listing.data as Record<string, unknown>,
-          });
+          const data = listing.data as Record<string, unknown>;
+          const row = vertical === "services"
+            ? serializeServicesRow({ ...listing, data })
+            : mapListingToRow({ ...listing, data });
           controller.enqueue(encoder.encode(serializeCSVRow(row, csvHeaders)));
         }
 

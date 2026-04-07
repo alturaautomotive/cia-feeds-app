@@ -62,16 +62,39 @@ export async function POST(request: NextRequest) {
   const missingFields = requiredFields.filter((f) => {
     if (f === "image_url") return false; // handled separately below
     const val = data[f];
-    return val === undefined || val === null || val === "";
+    if (val === undefined || val === null) return true;
+    if (typeof val === "string" && val.trim() === "") return true;
+    return false;
   });
 
-  const price = data.price != null ? parseFloat(String(data.price).replace(/[^0-9.]/g, "")) : null;
+  let price: number | null = null;
+  if (data.price != null) {
+    const raw = String(data.price).trim();
+    // For services, only parse as numeric if the value is a single number (with optional currency symbol)
+    if (vertical === "services") {
+      const numericOnly = raw.replace(/^\$/, "").replace(/,/g, "");
+      if (/^\d+(\.\d+)?$/.test(numericOnly)) {
+        price = parseFloat(numericOnly);
+      }
+      // Otherwise keep price null; the original text is preserved in data.price
+    } else {
+      const parsed = parseFloat(raw.replace(/[^0-9.]/g, ""));
+      price = Number.isFinite(parsed) ? parsed : null;
+    }
+  }
   const imageUrls = Array.isArray(b.imageUrls) ? (b.imageUrls as string[]) : [];
   const url = typeof data.url === "string" ? data.url : null;
 
   // Validate image requirement for non-automotive verticals
   if (requiredFields.includes("image_url") && imageUrls.length === 0) {
     missingFields.push("image_url");
+  }
+
+  if (missingFields.length > 0) {
+    return NextResponse.json(
+      { error: "missing_required_fields", missingFields },
+      { status: 400 }
+    );
   }
 
   const listing = await prisma.listing.create({
@@ -88,7 +111,10 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  return NextResponse.json({ listing }, { status: 201 });
+  return NextResponse.json(
+    { listing: { id: listing.id, title: listing.title, isComplete: listing.isComplete } },
+    { status: 201 }
+  );
 }
 
 export async function GET(_request: NextRequest) {

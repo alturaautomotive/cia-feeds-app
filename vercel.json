@@ -4,6 +4,9 @@
   "functions": {
     "app/api/vehicles/scrape/route.ts": {
       "maxDuration": 300
+    },
+    "app/api/listings/scrape/route.ts": {
+      "maxDuration": 300
     }
   }
 }

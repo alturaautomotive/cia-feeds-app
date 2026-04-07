@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 interface ListingRow {
   id: string;
   title: string;
@@ -14,11 +16,30 @@ interface ListingRow {
 
 interface Props {
   listings: ListingRow[];
+  vertical: string;
+  onDelete?: () => void;
 }
 
-export function ListingsTable({ listings }: Props) {
+export function ListingsTable({ listings, vertical, onDelete }: Props) {
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
   if (listings.length === 0) {
     return null;
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm("Are you sure you want to delete this listing?")) return;
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/listings/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        onDelete?.();
+      }
+    } catch {
+      // ignore
+    } finally {
+      setDeletingId(null);
+    }
   }
 
   return (
@@ -26,56 +47,291 @@ export function ListingsTable({ listings }: Props) {
       <table className="w-full text-sm">
         <thead>
           <tr className="bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-            <th className="px-4 py-3">Title</th>
-            <th className="px-4 py-3">Price</th>
-            <th className="px-4 py-3">Status</th>
-            <th className="px-4 py-3">Date</th>
+            {vertical === "services" ? (
+              <>
+                <th className="px-4 py-3">Name</th>
+                <th className="px-4 py-3">Category</th>
+                <th className="px-4 py-3">Price</th>
+                <th className="px-4 py-3">Location</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Actions</th>
+              </>
+            ) : vertical === "ecommerce" ? (
+              <>
+                <th className="px-4 py-3">Title</th>
+                <th className="px-4 py-3">Brand</th>
+                <th className="px-4 py-3">Price</th>
+                <th className="px-4 py-3">Condition</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Actions</th>
+              </>
+            ) : vertical === "realestate" ? (
+              <>
+                <th className="px-4 py-3">Name</th>
+                <th className="px-4 py-3">Price</th>
+                <th className="px-4 py-3">Beds/Baths</th>
+                <th className="px-4 py-3">City/State</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Actions</th>
+              </>
+            ) : (
+              <>
+                <th className="px-4 py-3">Title</th>
+                <th className="px-4 py-3">Price</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Actions</th>
+              </>
+            )}
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
-          {listings.map((listing) => (
-            <tr key={listing.id} className="hover:bg-gray-50">
-              <td className="px-4 py-3">
-                <div className="flex items-center gap-2">
-                  {listing.imageUrls[0] && (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img
-                      src={listing.imageUrls[0]}
-                      alt=""
-                      className="w-8 h-8 rounded object-cover"
-                    />
-                  )}
-                  <div>
-                    <div className="font-medium text-gray-900 truncate max-w-xs">
-                      {listing.title}
-                    </div>
-                    {listing.url && (
-                      <div className="text-xs text-gray-400 truncate max-w-xs">
-                        {listing.url}
+          {listings.map((listing) => {
+            if (vertical === "services") {
+              const category = String(listing.data?.category ?? "");
+              const location = String(listing.data?.address ?? "");
+              const priceDisplay = listing.data?.price
+                ? String(listing.data.price)
+                : listing.price != null
+                  ? `$${listing.price.toLocaleString()}`
+                  : "\u2014";
+
+              return (
+                <tr key={listing.id} data-element-id={`listing-row-${listing.id}`} className="hover:bg-gray-50">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      {listing.imageUrls[0] && (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img
+                          src={listing.imageUrls[0]}
+                          alt=""
+                          className="w-8 h-8 rounded object-cover"
+                        />
+                      )}
+                      <div className="font-medium text-gray-900 truncate max-w-xs">
+                        {listing.title}
                       </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-gray-700">
+                    {category || "\u2014"}
+                  </td>
+                  <td className="px-4 py-3 text-gray-700">
+                    {priceDisplay}
+                  </td>
+                  <td className="px-4 py-3 text-gray-700 truncate max-w-[160px]">
+                    {location || "\u2014"}
+                  </td>
+                  <td className="px-4 py-3">
+                    {listing.isComplete ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        Complete
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                        Incomplete
+                      </span>
                     )}
+                  </td>
+                  <td className="px-4 py-3 flex items-center gap-2">
+                    {listing.url && (
+                      <a
+                        href={listing.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-indigo-600 hover:text-indigo-800"
+                      >
+                        Book
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(listing.id)}
+                      disabled={deletingId === listing.id}
+                      className="text-xs text-red-600 hover:text-red-800 disabled:opacity-50"
+                    >
+                      {deletingId === listing.id ? "Deleting\u2026" : "Delete"}
+                    </button>
+                  </td>
+                </tr>
+              );
+            }
+
+            if (vertical === "ecommerce") {
+              const brand = String(listing.data?.brand ?? "\u2014");
+              const condition = String(listing.data?.condition ?? "\u2014");
+              const priceDisplay = listing.price != null
+                ? `$${listing.price.toLocaleString()}`
+                : String(listing.data?.price ?? "\u2014");
+
+              return (
+                <tr key={listing.id} data-element-id={`listing-row-${listing.id}`} className="hover:bg-gray-50">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      {listing.imageUrls[0] && (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img
+                          src={listing.imageUrls[0]}
+                          alt=""
+                          className="w-8 h-8 rounded object-cover"
+                        />
+                      )}
+                      <div className="font-medium text-gray-900 truncate max-w-xs">
+                        {listing.title}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-gray-700">{brand}</td>
+                  <td className="px-4 py-3 text-gray-700">{priceDisplay}</td>
+                  <td className="px-4 py-3 text-gray-700">{condition}</td>
+                  <td className="px-4 py-3">
+                    {listing.isComplete ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        Complete
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                        Incomplete
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 flex items-center gap-2">
+                    {listing.url && (
+                      <a
+                        href={listing.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-indigo-600 hover:text-indigo-800"
+                      >
+                        View
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(listing.id)}
+                      disabled={deletingId === listing.id}
+                      className="text-xs text-red-600 hover:text-red-800 disabled:opacity-50"
+                    >
+                      {deletingId === listing.id ? "Deleting\u2026" : "Delete"}
+                    </button>
+                  </td>
+                </tr>
+              );
+            }
+
+            if (vertical === "realestate") {
+              const priceDisplay = listing.price != null
+                ? `$${listing.price.toLocaleString()}`
+                : String(listing.data?.price ?? "\u2014");
+              const bedsBaths = `${listing.data?.num_beds ?? "\u2014"} bd / ${listing.data?.num_baths ?? "\u2014"} ba`;
+              const cityState = (`${listing.data?.city ?? ""}${listing.data?.city && listing.data?.region ? ", " : ""}${listing.data?.region ?? ""}`).trim() || "\u2014";
+
+              return (
+                <tr key={listing.id} data-element-id={`listing-row-${listing.id}`} className="hover:bg-gray-50">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      {listing.imageUrls[0] && (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img
+                          src={listing.imageUrls[0]}
+                          alt=""
+                          className="w-8 h-8 rounded object-cover"
+                        />
+                      )}
+                      <div className="font-medium text-gray-900 truncate max-w-xs">
+                        {listing.title}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-gray-700">{priceDisplay}</td>
+                  <td className="px-4 py-3 text-gray-700">{bedsBaths}</td>
+                  <td className="px-4 py-3 text-gray-700 truncate max-w-[160px]">{cityState}</td>
+                  <td className="px-4 py-3">
+                    {listing.isComplete ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        Complete
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                        Incomplete
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 flex items-center gap-2">
+                    {listing.url && (
+                      <a
+                        href={listing.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-indigo-600 hover:text-indigo-800"
+                      >
+                        View
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(listing.id)}
+                      disabled={deletingId === listing.id}
+                      className="text-xs text-red-600 hover:text-red-800 disabled:opacity-50"
+                    >
+                      {deletingId === listing.id ? "Deleting\u2026" : "Delete"}
+                    </button>
+                  </td>
+                </tr>
+              );
+            }
+
+            // Generic columns for other verticals
+            return (
+              <tr key={listing.id} data-element-id={`listing-row-${listing.id}`} className="hover:bg-gray-50">
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    {listing.imageUrls[0] && (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img
+                        src={listing.imageUrls[0]}
+                        alt=""
+                        className="w-8 h-8 rounded object-cover"
+                      />
+                    )}
+                    <div>
+                      <div className="font-medium text-gray-900 truncate max-w-xs">
+                        {listing.title}
+                      </div>
+                      {listing.url && (
+                        <div className="text-xs text-gray-400 truncate max-w-xs">
+                          {listing.url}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </td>
-              <td className="px-4 py-3 text-gray-700">
-                {listing.price != null ? `$${listing.price.toLocaleString()}` : "\u2014"}
-              </td>
-              <td className="px-4 py-3">
-                {listing.isComplete ? (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                    Complete
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                    Incomplete
-                  </span>
-                )}
-              </td>
-              <td className="px-4 py-3 text-gray-500 text-xs">
-                {new Date(listing.createdAt).toLocaleDateString()}
-              </td>
-            </tr>
-          ))}
+                </td>
+                <td className="px-4 py-3 text-gray-700">
+                  {listing.price != null ? `$${listing.price.toLocaleString()}` : "\u2014"}
+                </td>
+                <td className="px-4 py-3">
+                  {listing.isComplete ? (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                      Complete
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                      Incomplete
+                    </span>
+                  )}
+                </td>
+                <td className="px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(listing.id)}
+                    disabled={deletingId === listing.id}
+                    className="text-xs text-red-600 hover:text-red-800 disabled:opacity-50"
+                  >
+                    {deletingId === listing.id ? "Deleting\u2026" : "Delete"}
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

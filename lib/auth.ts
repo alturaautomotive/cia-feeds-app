@@ -65,6 +65,7 @@ export const authOptions: NextAuthOptions = {
           name: dealer.name,
           email: dealer.email,
           slug: dealer.slug,
+          vertical: dealer.vertical,
         };
       },
     }),
@@ -78,7 +79,8 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
-        token.slug = (user as { slug: string }).slug;
+        token.slug = (user as { slug: string; vertical: string }).slug;
+        token.vertical = (user as { slug: string; vertical: string }).vertical;
       }
       return token;
     },
@@ -86,6 +88,7 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         session.user.id = token.id as string;
         session.user.slug = token.slug as string;
+        session.user.vertical = token.vertical as string;
       }
       return session;
     },

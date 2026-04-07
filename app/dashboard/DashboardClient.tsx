@@ -70,6 +70,20 @@ export function DashboardClient({
   const isAutomotive = vertical === "automotive";
   const verticalLabel = VERTICAL_LABELS[vertical as Vertical] ?? vertical;
 
+  const VERTICAL_PAGE_TITLES: Record<string, string> = {
+    automotive: "Your Vehicles",
+    services: "Your Services",
+    ecommerce: "Your Products",
+    realestate: "Your Listings",
+  };
+
+  const VERTICAL_EMPTY_STATES: Record<string, string> = {
+    automotive: "No vehicles yet. Paste a VDP URL above to get started.",
+    services: "No services yet. Add your first service above.",
+    ecommerce: "No products yet. Add your first product above.",
+    realestate: "No listings yet. Add your first listing above.",
+  };
+
   // Initialize status map from initial vehicles
   useEffect(() => {
     for (const v of initialVehicles) {
@@ -264,7 +278,7 @@ export function DashboardClient({
         {/* Page header */}
         <div className="flex items-center justify-between mb-5">
           <h1 className="text-2xl font-bold text-gray-900">
-            {isAutomotive ? "Vehicles" : "Listings"}
+            {VERTICAL_PAGE_TITLES[vertical] ?? "Your Listings"}
           </h1>
           <Link
             href="/dashboard/feed"
@@ -321,11 +335,11 @@ export function DashboardClient({
           listings.length === 0 ? (
             <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-8 text-center">
               <p className="text-gray-500 text-sm">
-                No listings yet. Add your first {verticalLabel.toLowerCase()} listing above.
+                {VERTICAL_EMPTY_STATES[vertical] ?? `No listings yet. Add your first ${verticalLabel.toLowerCase()} listing above.`}
               </p>
             </div>
           ) : (
-            <ListingsTable listings={listings} />
+            <ListingsTable listings={listings} vertical={vertical} onDelete={refreshListings} />
           )
         )}
       </div>
