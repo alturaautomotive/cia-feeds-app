@@ -28,7 +28,13 @@ export default function LoginPage() {
     if (result?.error) {
       setError("Invalid email or password.");
     } else if (result?.ok) {
-      window.location.href = "/dashboard";
+      const base = (process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, "");
+      if (!base) {
+        throw new Error(
+          "NEXT_PUBLIC_APP_URL is not set. Cannot redirect after login without an absolute base URL."
+        );
+      }
+      window.location.href = `${base}/dashboard`;
     }
   }
 
