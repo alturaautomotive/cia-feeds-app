@@ -142,13 +142,26 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
     e.preventDefault();
     setError(null);
     setSuccess(null);
+
+    let normalizedUrl = urlInput.trim();
+    if (normalizedUrl && !/^https?:\/\//i.test(normalizedUrl)) {
+      normalizedUrl = `https://${normalizedUrl}`;
+    }
+
+    try {
+      new URL(normalizedUrl);
+    } catch {
+      setError("Please enter a valid URL (e.g. https://example.com)");
+      return;
+    }
+
     setLoading(true);
 
     try {
       const res = await fetch("/api/listings/from-url", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: urlInput }),
+        body: JSON.stringify({ url: normalizedUrl }),
       });
 
       if (!res.ok) {
@@ -377,7 +390,7 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
         <form onSubmit={handleUrlSubmit} className="flex gap-2.5">
           <input
             data-element-id="url-input"
-            type="url"
+            type="text"
             value={urlInput}
             onChange={(e) => setUrlInput(e.target.value)}
             placeholder="Paste product URL to scrape\u2026"

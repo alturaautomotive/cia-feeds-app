@@ -18,10 +18,25 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "subscription_required" }, { status: 403 });
   }
 
-  const formData = await request.formData();
+  let formData: FormData;
+  try {
+    formData = await request.formData();
+  } catch (err) {
+    console.error({
+      event: "upload_formdata_parse_error",
+      message: err instanceof Error ? err.message : String(err),
+      contentType: request.headers.get("content-type"),
+    });
+    return NextResponse.json({ error: "Failed to parse form data" }, { status: 400 });
+  }
+
   const files = formData.getAll("files");
 
   if (files.length === 0) {
+    console.warn({
+      event: "upload_no_files",
+      contentType: request.headers.get("content-type"),
+    });
     return NextResponse.json({ error: "No files provided" }, { status: 400 });
   }
 
@@ -55,6 +70,11 @@ export async function POST(request: NextRequest) {
       .upload(path, buffer, { contentType: fileRaw.type, upsert: false });
 
     if (uploadError) {
+      console.error({
+        event: "upload_storage_error",
+        path,
+        message: uploadError.message,
+      });
       return NextResponse.json(
         { error: "Upload failed", details: uploadError.message },
         { status: 502 }
