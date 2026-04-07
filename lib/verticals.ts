@@ -19,7 +19,7 @@ export interface VerticalFieldDef {
   key: string;
   label: string;
   required: boolean;
-  type: "text" | "textarea" | "number" | "url" | "select";
+  type: "text" | "textarea" | "number" | "select";
   placeholder?: string;
   options?: string[];
 }
@@ -30,7 +30,7 @@ export const SERVICES_FIELDS: VerticalFieldDef[] = [
   { key: "price", label: "Price / Price Range", required: true, type: "text", placeholder: "e.g. $99 or $50\u2013$200" },
   { key: "category", label: "Category", required: true, type: "select", options: ["Home Services", "Beauty & Personal Care", "Auto Repair", "Consulting", "Other"] },
   { key: "address", label: "Service Area / Location", required: true, type: "text", placeholder: "e.g. Atlanta, GA" },
-  { key: "url", label: "Booking / Contact URL", required: true, type: "url", placeholder: "https://..." },
+  { key: "url", label: "Booking / Contact URL", required: true, type: "text", placeholder: "https://..." },
   { key: "availability", label: "Availability", required: false, type: "text", placeholder: "e.g. Mon\u2013Fri 9am\u20135pm" },
 ];
 
@@ -42,7 +42,7 @@ export const ECOMMERCE_FIELDS: VerticalFieldDef[] = [
   { key: "condition", label: "Condition", required: true, type: "select", options: ["new", "used", "refurbished"] },
   { key: "availability", label: "Availability", required: true, type: "select", options: ["in stock", "out of stock"] },
   { key: "retailer_id", label: "SKU / Retailer ID", required: true, type: "text", placeholder: "SKU-12345" },
-  { key: "url", label: "Product URL", required: true, type: "url", placeholder: "https://..." },
+  { key: "url", label: "Product URL", required: true, type: "text", placeholder: "https://..." },
   { key: "google_product_category", label: "Google Product Category", required: false, type: "text", placeholder: "Optional category" },
 ];
 
@@ -57,7 +57,7 @@ export const REALESTATE_FIELDS: VerticalFieldDef[] = [
   { key: "num_beds", label: "Bedrooms", required: true, type: "number", placeholder: "3" },
   { key: "num_baths", label: "Bathrooms", required: true, type: "number", placeholder: "2" },
   { key: "property_type", label: "Property Type", required: true, type: "select", options: ["for_sale", "for_rent"] },
-  { key: "url", label: "Listing URL", required: true, type: "url", placeholder: "https://..." },
+  { key: "url", label: "Listing URL", required: true, type: "text", placeholder: "https://..." },
   { key: "area_size", label: "Square Footage", required: false, type: "number", placeholder: "1800" },
 ];
 
