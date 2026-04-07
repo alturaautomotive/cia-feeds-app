@@ -12,18 +12,20 @@ datasource db {
 }
 
 model Dealer {
-  id           String    @id @default(uuid())
-  name         String
-  email        String    @unique
-  passwordHash String
-  slug         String    @unique
-  active                Boolean   @default(true)
-  stripeCustomerId      String?
-  stripeSubscriptionId  String?
-  subscriptionStatus    String?
-  createdAt             DateTime  @default(now())
-  profileImageUrl       String?
-  vehicles     Vehicle[]
+  id                   String    @id @default(uuid())
+  name                 String
+  email                String    @unique
+  passwordHash         String
+  slug                 String    @unique
+  vertical             String    @default("automotive")
+  active               Boolean   @default(true)
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  subscriptionStatus   String?
+  createdAt            DateTime  @default(now())
+  profileImageUrl      String?
+  vehicles             Vehicle[]
+  listings             Listing[]
 }
 
 model Vehicle {
@@ -47,11 +49,33 @@ model Vehicle {
   isComplete     Boolean  @default(false)
   missingFields  String[]
   scrapeStatus   String   @default("pending")
+  archivedAt     DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   @@unique([dealerId, url])
   @@index([dealerId])
+  @@index([dealerId, archivedAt])
+}
+
+model Listing {
+  id            String    @id @default(uuid())
+  dealerId      String
+  dealer        Dealer    @relation(fields: [dealerId], references: [id])
+  vertical      String
+  title         String
+  price         Float?
+  imageUrls     String[]  @default([])
+  url           String?
+  isComplete    Boolean   @default(false)
+  missingFields String[]
+  archivedAt    DateTime?
+  data          Json
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([dealerId, vertical])
+  @@index([dealerId, archivedAt])
 }
 
 model PasswordResetToken {

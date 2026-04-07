@@ -6,10 +6,25 @@ import { signOut } from "next-auth/react";
 import type { Vehicle } from "@prisma/client";
 import { AddVehicleForm } from "./components/AddVehicleForm";
 import { VehiclesTable } from "./components/VehiclesTable";
+import { AddListingPanel } from "./components/AddListingPanel";
+import { ListingsTable } from "./components/ListingsTable";
 import { SuccessBanner } from "./components/SuccessBanner";
 import { ErrorBanner } from "./components/ErrorBanner";
+import { VERTICAL_LABELS, type Vertical } from "@/lib/verticals";
 
 type VehicleRow = Vehicle & { scrapeStatus: string };
+
+interface ListingRow {
+  id: string;
+  title: string;
+  price: number | null;
+  imageUrls: string[];
+  url: string | null;
+  isComplete: boolean;
+  missingFields: string[];
+  data: Record<string, unknown>;
+  createdAt: string;
+}
 
 // Vehicle data fields (excludes system/metadata fields) used to detect auto-filled values
 const VEHICLE_DATA_FIELDS: Array<{ key: keyof Vehicle; label: string }> = [
@@ -28,11 +43,19 @@ const VEHICLE_DATA_FIELDS: Array<{ key: keyof Vehicle; label: string }> = [
 
 interface Props {
   vehicles: VehicleRow[];
+  listings: ListingRow[];
   dealerName: string;
+  vertical: string;
 }
 
-export function DashboardClient({ vehicles: initialVehicles, dealerName }: Props) {
+export function DashboardClient({
+  vehicles: initialVehicles,
+  listings: initialListings,
+  dealerName,
+  vertical,
+}: Props) {
   const [vehicles, setVehicles] = useState<VehicleRow[]>(initialVehicles);
+  const [listings, setListings] = useState<ListingRow[]>(initialListings);
   const [vdpUrl, setVdpUrl] = useState("");
   const [billingLoading, setBillingLoading] = useState(false);
   const [successInfo, setSuccessInfo] = useState<{
@@ -44,6 +67,9 @@ export function DashboardClient({ vehicles: initialVehicles, dealerName }: Props
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const statusMapRef = useRef<Map<string, string>>(new Map());
 
+  const isAutomotive = vertical === "automotive";
+  const verticalLabel = VERTICAL_LABELS[vertical as Vertical] ?? vertical;
+
   // Initialize status map from initial vehicles
   useEffect(() => {
     for (const v of initialVehicles) {
@@ -53,6 +79,8 @@ export function DashboardClient({ vehicles: initialVehicles, dealerName }: Props
 
   // Polling effect: start/stop interval based on whether pending rows exist
   useEffect(() => {
+    if (!isAutomotive) return;
+
     const hasPending = vehicles.some((v) => v.scrapeStatus === "pending");
 
     if (hasPending && pollIntervalRef.current === null) {
@@ -100,7 +128,7 @@ export function DashboardClient({ vehicles: initialVehicles, dealerName }: Props
     return () => {
       // Cleanup on unmount only — don't clear on every render
     };
-  }, [vehicles]);
+  }, [vehicles, isAutomotive]);
 
   // Final cleanup on unmount
   useEffect(() => {
@@ -140,6 +168,7 @@ export function DashboardClient({ vehicles: initialVehicles, dealerName }: Props
       spotlightImageUrl: null,
       isComplete: false,
       missingFields: [],
+      archivedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -165,8 +194,6 @@ export function DashboardClient({ vehicles: initialVehicles, dealerName }: Props
       const { vehicle: returned } = data as { vehicle: { id: string; scrapeStatus: string; url: string } };
 
       // Replace temp row with real id, keeping pending status.
-      // Remove any pre-existing row with the same returned ID (duplicate URL case)
-      // so there is always exactly one row per vehicle ID.
       statusMapRef.current.set(returned.id, "pending");
       setVehicles((prev) =>
         prev
@@ -179,12 +206,29 @@ export function DashboardClient({ vehicles: initialVehicles, dealerName }: Props
     }
   }
 
+  async function refreshListings() {
+    try {
+      const res = await fetch("/api/listings");
+      if (res.ok) {
+        const data = await res.json();
+        setListings(data.listings ?? []);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Top bar */}
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
-          <span className="font-bold text-lg text-gray-900">CIAfeeds</span>
+          <div className="flex items-center gap-3">
+            <span className="font-bold text-lg text-gray-900">CIAfeeds</span>
+            <span className="bg-indigo-50 text-indigo-600 text-xs font-semibold px-2 py-0.5 rounded-full">
+              {verticalLabel}
+            </span>
+          </div>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-500">{dealerName}</span>
             <Link href="/dashboard/profile" className="text-sm text-indigo-600 hover:text-indigo-500">
@@ -204,7 +248,7 @@ export function DashboardClient({ vehicles: initialVehicles, dealerName }: Props
               disabled={billingLoading}
               className="text-sm text-indigo-600 hover:text-indigo-500"
             >
-              {billingLoading ? "Loading…" : "Manage Billing"}
+              {billingLoading ? "Loading\u2026" : "Manage Billing"}
             </button>
             <button
               onClick={() => signOut({ callbackUrl: "/login" })}
@@ -219,23 +263,32 @@ export function DashboardClient({ vehicles: initialVehicles, dealerName }: Props
       <div className="max-w-6xl mx-auto px-6 py-8">
         {/* Page header */}
         <div className="flex items-center justify-between mb-5">
-          <h1 className="text-2xl font-bold text-gray-900">Vehicles</h1>
+          <h1 className="text-2xl font-bold text-gray-900">
+            {isAutomotive ? "Vehicles" : "Listings"}
+          </h1>
           <Link
             href="/dashboard/feed"
             className="text-sm text-indigo-600 hover:text-indigo-500"
           >
-            📋 View Feed URL
+            View Feed URL
           </Link>
         </div>
 
-        {/* Add vehicle form */}
+        {/* Add form — vertical-aware */}
         <div className="mb-6">
-          <AddVehicleForm
-            url={vdpUrl}
-            onChange={setVdpUrl}
-            onSubmit={handleAddVehicle}
-            isLoading={false}
-          />
+          {isAutomotive ? (
+            <AddVehicleForm
+              url={vdpUrl}
+              onChange={setVdpUrl}
+              onSubmit={handleAddVehicle}
+              isLoading={false}
+            />
+          ) : (
+            <AddListingPanel
+              vertical={vertical as Vertical}
+              onListingAdded={refreshListings}
+            />
+          )}
         </div>
 
         {/* Status banners */}
@@ -253,15 +306,27 @@ export function DashboardClient({ vehicles: initialVehicles, dealerName }: Props
           </div>
         )}
 
-        {/* Vehicles table */}
-        {vehicles.length === 0 ? (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-8 text-center">
-            <p className="text-gray-500 text-sm">
-              No vehicles yet. Paste a VDP URL above to get started.
-            </p>
-          </div>
+        {/* Inventory table — vertical-aware */}
+        {isAutomotive ? (
+          vehicles.length === 0 ? (
+            <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-8 text-center">
+              <p className="text-gray-500 text-sm">
+                No vehicles yet. Paste a VDP URL above to get started.
+              </p>
+            </div>
+          ) : (
+            <VehiclesTable vehicles={vehicles} />
+          )
         ) : (
-          <VehiclesTable vehicles={vehicles} />
+          listings.length === 0 ? (
+            <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-8 text-center">
+              <p className="text-gray-500 text-sm">
+                No listings yet. Add your first {verticalLabel.toLowerCase()} listing above.
+              </p>
+            </div>
+          ) : (
+            <ListingsTable listings={listings} />
+          )
         )}
       </div>
     </div>

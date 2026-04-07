@@ -4,16 +4,50 @@ import { useState, FormEvent } from "react";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
 
+const VERTICALS = [
+  {
+    id: "automotive",
+    icon: "\u{1F697}",
+    title: "Automotive",
+    desc: "New & used vehicle listings with VIN, mileage, and pricing",
+  },
+  {
+    id: "services",
+    icon: "\u{1F527}",
+    title: "Services",
+    desc: "Plumbing, cleaning, consulting, and other local services",
+  },
+  {
+    id: "ecommerce",
+    icon: "\u{1F4E6}",
+    title: "E-commerce",
+    desc: "Physical or digital products with SKU, brand, and availability",
+  },
+  {
+    id: "realestate",
+    icon: "\u{1F3E0}",
+    title: "Real Estate",
+    desc: "Property listings for sale or rent with beds, baths, and location",
+  },
+] as const;
+
 export default function SignupPage() {
+  const [step, setStep] = useState<1 | 2>(1);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [vertical, setVertical] = useState("automotive");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  function handleStepOne(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    setError("");
+    setStep(2);
+  }
+
+  async function handleSubmit() {
     setError("");
     setLoading(true);
 
@@ -22,7 +56,7 @@ export default function SignupPage() {
       response = await fetch("/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({ name, email, password, vertical }),
       });
     } catch {
       setError("Network error. Please try again.");
@@ -33,6 +67,7 @@ export default function SignupPage() {
     if (response.status === 409) {
       setError("Email already in use. Please use a different email or sign in.");
       setLoading(false);
+      setStep(1);
       return;
     }
 
@@ -58,11 +93,72 @@ export default function SignupPage() {
     }
   }
 
+  if (step === 2) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-[560px] w-full">
+          <p className="text-xs text-gray-400 text-center mb-4">Step 2 of 2</p>
+          <h2 className="text-center text-2xl font-bold text-gray-900 mb-1">
+            What are you selling?
+          </h2>
+          <p className="text-center text-sm text-gray-500 mb-6">
+            Choose your business type. This determines how your Meta feed is formatted.
+          </p>
+
+          {error && (
+            <div className="rounded-md bg-red-50 p-4 mb-4">
+              <p className="text-sm text-red-700">{error}</p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3 mb-6">
+            {VERTICALS.map((v) => (
+              <button
+                key={v.id}
+                type="button"
+                data-element-id={`vertical-${v.id}`}
+                onClick={() => setVertical(v.id)}
+                className={`text-left border-2 rounded-xl p-4 transition-colors cursor-pointer bg-white ${
+                  vertical === v.id
+                    ? "border-indigo-500 bg-indigo-50"
+                    : "border-gray-200 hover:border-gray-300"
+                }`}
+              >
+                <div className="text-2xl mb-2">{v.icon}</div>
+                <div className="text-sm font-semibold text-gray-900 mb-1">{v.title}</div>
+                <div className="text-xs text-gray-500 leading-snug">{v.desc}</div>
+              </button>
+            ))}
+          </div>
+
+          <button
+            data-element-id="continue-btn"
+            type="button"
+            disabled={loading}
+            onClick={handleSubmit}
+            className="w-full py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? "Creating account\u2026" : "Create Account \u2192"}
+          </button>
+          <button
+            data-element-id="back-btn"
+            type="button"
+            onClick={() => setStep(1)}
+            className="block mx-auto mt-3 text-sm text-indigo-600 hover:text-indigo-500"
+          >
+            &larr; Back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
         <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+          <p className="text-xs text-gray-400 text-center mb-2">Step 1 of 2</p>
+          <h2 className="text-center text-3xl font-extrabold text-gray-900">
             Create your account
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
@@ -76,7 +172,7 @@ export default function SignupPage() {
           </p>
         </div>
 
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+        <form className="mt-8 space-y-6" onSubmit={handleStepOne}>
           {error && (
             <div className="rounded-md bg-red-50 p-4">
               <p className="text-sm text-red-700">{error}</p>
@@ -86,7 +182,7 @@ export default function SignupPage() {
           <div className="rounded-md shadow-sm space-y-4">
             <div>
               <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                Dealership name
+                Business name
               </label>
               <input
                 id="name"
@@ -97,7 +193,7 @@ export default function SignupPage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                placeholder="Tim Short Ford"
+                placeholder="Your business name"
               />
             </div>
 
@@ -160,10 +256,9 @@ export default function SignupPage() {
           <div>
             <button
               type="submit"
-              disabled={loading}
-              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
             >
-              {loading ? "Creating account…" : "Create account"}
+              Continue &rarr;
             </button>
           </div>
         </form>

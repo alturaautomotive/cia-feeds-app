@@ -14,3 +14,16 @@ export const EXTRACTION_SCHEMA = z.object({
   image_url_2: z.string().nullable().optional(),
   description: z.string().nullable().optional(),
 });
+
+export const ECOMMERCE_EXTRACTION_SCHEMA = z.object({
+  title: z.string().nullable().optional(),
+  description: z.string().nullable().optional(),
+  price: z.union([z.string(), z.number()]).nullable().optional(),
+  brand: z.string().nullable().optional(),
+  condition: z.enum(["new", "used", "refurbished"]).nullable().optional(),
+  availability: z.enum(["in stock", "out of stock"]).nullable().optional(),
+  retailer_id: z.string().nullable().optional(),
+  image_url: z.string().nullable().optional(),
+  image_url_2: z.string().nullable().optional(),
+  google_product_category: z.string().nullable().optional(),
+});

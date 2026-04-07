@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
 
-  const { name, email, password } = body as Record<string, unknown>;
+  const { name, email, password, vertical } = body as Record<string, unknown>;
 
   if (
     !name ||
@@ -34,6 +34,12 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   }
+
+  const VALID_VERTICALS = ["automotive", "services", "ecommerce", "realestate"];
+  const dealerVertical =
+    typeof vertical === "string" && VALID_VERTICALS.includes(vertical)
+      ? vertical
+      : "automotive";
 
   const trimmedName = name.trim();
   if (!trimmedName) {
@@ -61,6 +67,7 @@ export async function POST(request: NextRequest) {
         email,
         passwordHash,
         slug,
+        vertical: dealerVertical,
         active: true,
       },
     });

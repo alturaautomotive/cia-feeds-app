@@ -29,14 +29,14 @@ export default async function DashboardPage({
       );
 
       // Verify the Checkout Session belongs to the logged-in dealer's customer.
-      const dealer = await prisma.dealer.findUnique({
+      const dealerForCheckout = await prisma.dealer.findUnique({
         where: { id: session.user.id },
         select: { stripeCustomerId: true },
       });
 
       if (
-        dealer?.stripeCustomerId &&
-        checkoutSession.customer === dealer.stripeCustomerId &&
+        dealerForCheckout?.stripeCustomerId &&
+        checkoutSession.customer === dealerForCheckout.stripeCustomerId &&
         checkoutSession.subscription
       ) {
         const subscription =
@@ -70,15 +70,45 @@ export default async function DashboardPage({
     redirect("/subscribe");
   }
 
-  const vehicles = await prisma.vehicle.findMany({
-    where: { dealerId: session.user.id },
+  const dealer = await prisma.dealer.findUnique({
+    where: { id: session.user.id },
+    select: { vertical: true, name: true },
+  });
+
+  const vertical = dealer?.vertical ?? "automotive";
+
+  if (vertical === "automotive") {
+    const vehicles = await prisma.vehicle.findMany({
+      where: { dealerId: session.user.id, archivedAt: null },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return (
+      <DashboardClient
+        vehicles={vehicles}
+        listings={[]}
+        dealerName={dealer?.name ?? session.user.name ?? "Dealer"}
+        vertical={vertical}
+      />
+    );
+  }
+
+  // Non-automotive verticals use listings
+  const listings = await prisma.listing.findMany({
+    where: {
+      dealerId: session.user.id,
+      vertical,
+      archivedAt: null,
+    },
     orderBy: { createdAt: "desc" },
   });
 
   return (
     <DashboardClient
-      vehicles={vehicles}
-      dealerName={session.user.name ?? "Dealer"}
+      vehicles={[]}
+      listings={JSON.parse(JSON.stringify(listings))}
+      dealerName={dealer?.name ?? session.user.name ?? "Dealer"}
+      vertical={vertical}
     />
   );
 }

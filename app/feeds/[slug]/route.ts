@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { serializeCSVHeader, serializeCSVRow } from "@/lib/csv";
+import { serializeCSVHeader, serializeCSVRow, mapListingToRow, getCSVHeadersForVertical } from "@/lib/csv";
 import { logCsvGeneration } from "@/lib/logger";
 
-const CSV_HEADERS = [
+const VEHICLE_CSV_HEADERS = [
   "vehicle_id",
   "description",
   "vin",
@@ -63,7 +63,7 @@ export async function GET(
 
   const dealer = await prisma.dealer.findUnique({
     where: { slug },
-    select: { id: true, name: true },
+    select: { id: true, name: true, vertical: true },
   });
 
   if (!dealer) {
@@ -73,17 +73,37 @@ export async function GET(
   const startMs = Date.now();
   const encoder = new TextEncoder();
   const dealerId = dealer.id;
+  const vertical = dealer.vertical;
 
+  // Route to the correct CSV serializer based on vertical
+  if (vertical === "automotive") {
+    return streamAutomotiveCSV(encoder, dealerId, slug, startMs);
+  }
+
+  const headers = getCSVHeadersForVertical(vertical);
+  if (headers.length === 0) {
+    return NextResponse.json({ error: "unsupported_vertical" }, { status: 400 });
+  }
+
+  return streamListingsCSV(encoder, dealerId, vertical, headers, slug, startMs);
+}
+
+function streamAutomotiveCSV(
+  encoder: TextEncoder,
+  dealerId: string,
+  slug: string,
+  startMs: number,
+) {
   const stream = new ReadableStream({
     async start(controller) {
-      controller.enqueue(encoder.encode(serializeCSVHeader(CSV_HEADERS)));
+      controller.enqueue(encoder.encode(serializeCSVHeader(VEHICLE_CSV_HEADERS)));
 
       let cursor: string | undefined;
       let vehicleCount = 0;
 
       while (true) {
         const batch = await prisma.vehicle.findMany({
-          where: { dealerId },
+          where: { dealerId, archivedAt: null },
           orderBy: { createdAt: "asc" },
           take: BATCH_SIZE,
           ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
@@ -91,7 +111,7 @@ export async function GET(
 
         for (const v of batch) {
           controller.enqueue(
-            encoder.encode(serializeCSVRow(mapVehicleToRow(v), CSV_HEADERS))
+            encoder.encode(serializeCSVRow(mapVehicleToRow(v), VEHICLE_CSV_HEADERS))
           );
         }
 
@@ -99,6 +119,60 @@ export async function GET(
 
         if (batch.length < BATCH_SIZE) {
           logCsvGeneration({ slug, dealerId, vehicleCount, durationMs: Date.now() - startMs });
+          break;
+        }
+
+        cursor = batch[batch.length - 1].id;
+      }
+
+      controller.close();
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${slug}.csv"`,
+      "Cache-Control": "public, max-age=60",
+    },
+  });
+}
+
+function streamListingsCSV(
+  encoder: TextEncoder,
+  dealerId: string,
+  vertical: string,
+  csvHeaders: string[],
+  slug: string,
+  startMs: number,
+) {
+  const stream = new ReadableStream({
+    async start(controller) {
+      controller.enqueue(encoder.encode(serializeCSVHeader(csvHeaders)));
+
+      let cursor: string | undefined;
+      let listingCount = 0;
+
+      while (true) {
+        const batch = await prisma.listing.findMany({
+          where: { dealerId, vertical, archivedAt: null },
+          orderBy: { createdAt: "asc" },
+          take: BATCH_SIZE,
+          ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        });
+
+        for (const listing of batch) {
+          const row = mapListingToRow({
+            ...listing,
+            data: listing.data as Record<string, unknown>,
+          });
+          controller.enqueue(encoder.encode(serializeCSVRow(row, csvHeaders)));
+        }
+
+        listingCount += batch.length;
+
+        if (batch.length < BATCH_SIZE) {
+          logCsvGeneration({ slug, dealerId, vehicleCount: listingCount, durationMs: Date.now() - startMs });
           break;
         }
 
