@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { after } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { scrapeVehicleUrl } from "@/lib/scrape";
-import { logScrapeStart, logScrapeEnd } from "@/lib/logger";
 import { checkSubscription } from "@/lib/checkSubscription";
 import { rateLimit } from "@/lib/rateLimit";
 
@@ -59,83 +56,25 @@ export async function POST(request: NextRequest) {
 
   const vehicleId = vehicle.id;
 
-  // Phase 2: run Firecrawl in the background after response is sent
-  after(async () => {
-    try {
-      logScrapeStart({ dealerId, url, timestamp: new Date().toISOString() });
-      const firecrawlStartMs = Date.now();
-
-      let scrapeResult: Awaited<ReturnType<typeof scrapeVehicleUrl>>;
-      try {
-        scrapeResult = await scrapeVehicleUrl(url, dealerId);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Unknown error";
-        console.error({ event: "scrape_error", url, message });
-        await prisma.vehicle.update({
-          where: { id: vehicleId },
-          data: { scrapeStatus: "failed" },
-        });
-        return;
-      }
-
-      const { vehicle: scraped, fieldsExtracted } = scrapeResult;
-      const firecrawlDurationMs = Date.now() - firecrawlStartMs;
-
-      logScrapeEnd({
-        dealerId,
-        url,
-        durationMs: firecrawlDurationMs,
-        fieldsExtracted,
-        missingFields: scraped.missingFields,
-      });
-
-      // Check for existing vehicle by VIN (idempotency merge).
-      // Always update vehicleId (the returned ID) to preserve id stability.
-      // Delete the duplicate VIN-matched row if one exists.
-      if (scraped.vin) {
-        const byVin = await prisma.vehicle.findFirst({
-          where: { dealerId, vin: scraped.vin, NOT: { id: vehicleId } },
-          select: { id: true },
-        });
-        if (byVin) {
-          try {
-            await prisma.vehicle.delete({ where: { id: byVin.id } });
-          } catch (dedupErr) {
-            console.error({ event: "vin_dedup_delete_error", byVinId: byVin.id, message: dedupErr instanceof Error ? dedupErr.message : String(dedupErr) });
-          }
-        }
-      }
-
-      await prisma.vehicle.update({
-        where: { id: vehicleId },
-        data: {
-          vin: scraped.vin,
-          make: scraped.make,
-          model: scraped.model,
-          year: scraped.year,
-          bodyStyle: scraped.bodyStyle,
-          price: scraped.price,
-          mileageValue: scraped.mileageValue,
-          stateOfVehicle: scraped.stateOfVehicle,
-          exteriorColor: scraped.exteriorColor,
-          imageUrl: scraped.imageUrl,
-          description: scraped.description,
-          isComplete: scraped.isComplete,
-          missingFields: scraped.missingFields,
-          scrapeStatus: "complete",
-        },
-      });
-    } catch (err) {
-      console.error({ event: "background_job_error", vehicleId, url, message: err instanceof Error ? err.message : String(err) });
-      try {
-        await prisma.vehicle.update({
-          where: { id: vehicleId },
-          data: { scrapeStatus: "failed" },
-        });
-      } catch (fallbackErr) {
-        console.error({ event: "background_job_fallback_error", vehicleId, message: fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr) });
-      }
-    }
+  // Fire-and-forget: dispatch scraping to dedicated long-running route
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
+  if (!process.env.NEXT_PUBLIC_APP_URL) {
+    console.warn({ event: "scrape_dispatch_url_fallback", resolvedOrigin: appUrl, hint: "NEXT_PUBLIC_APP_URL is not set; falling back to request origin" });
+  }
+  fetch(`${appUrl}/api/vehicles/scrape`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-sync-secret": process.env.SYNC_SECRET ?? "",
+    },
+    body: JSON.stringify({ vehicleId, url, dealerId }),
+  }).catch((err) => {
+    console.error({
+      event: "scrape_dispatch_error",
+      vehicleId,
+      url,
+      message: err instanceof Error ? err.message : String(err),
+    });
   });
 
   return NextResponse.json({ vehicle: { id: vehicleId, scrapeStatus: "pending", url } }, { status: 202 });
