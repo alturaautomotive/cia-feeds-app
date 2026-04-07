@@ -61,8 +61,8 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
   }
 
   async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+    const selectedFiles = Array.from(e.target.files ?? []);
+    if (selectedFiles.length === 0) return;
     e.target.value = "";
 
     const remaining = 10 - imageUrls.length;
@@ -71,7 +71,7 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
       return;
     }
 
-    const filesToUpload = Array.from(files).slice(0, remaining);
+    const filesToUpload = selectedFiles.slice(0, remaining);
     setUploadingImages(true);
     setError(null);
 
@@ -159,7 +159,7 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
     try {
       new URL(normalizedUrl);
     } catch {
-      setError("Please enter a valid URL (e.g. https://example.com)");
+      setError("Please enter a valid URL");
       return;
     }
 
