@@ -310,7 +310,7 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
                   ) : (
                     <input
                       data-element-id={`field-${field.key}`}
-                      type={field.type === "number" ? "number" : field.type === "url" ? "url" : "text"}
+                      type={field.type === "number" ? "number" : "text"}
                       value={formData[field.key] ?? ""}
                       onChange={(e) => setField(field.key, e.target.value)}
                       placeholder={field.placeholder}
