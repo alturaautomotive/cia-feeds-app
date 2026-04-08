@@ -14,7 +14,7 @@ export default async function AdminLayout({
     redirect("/login");
   }
 
-  if (session.user.email !== process.env.ADMIN_EMAIL) {
+  if (session.user.email?.toLowerCase() !== process.env.ADMIN_EMAIL?.toLowerCase()) {
     redirect("/dashboard");
   }
 
