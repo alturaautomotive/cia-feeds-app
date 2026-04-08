@@ -2,6 +2,13 @@
 
 import { useState } from "react";
 
+function normalizeUrl(url: string | null): string | null {
+  if (!url || url.trim() === "") return null;
+  const trimmed = url.trim();
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
 interface ListingRow {
   id: string;
   title: string;
@@ -135,7 +142,7 @@ export function ListingsTable({ listings, vertical, onDelete }: Props) {
                   <td className="px-4 py-3 flex items-center gap-2">
                     {listing.url && (
                       <a
-                        href={listing.url}
+                        href={normalizeUrl(listing.url) ?? ""}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-xs text-indigo-600 hover:text-indigo-800"
@@ -197,7 +204,7 @@ export function ListingsTable({ listings, vertical, onDelete }: Props) {
                   <td className="px-4 py-3 flex items-center gap-2">
                     {listing.url && (
                       <a
-                        href={listing.url}
+                        href={normalizeUrl(listing.url) ?? ""}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-xs text-indigo-600 hover:text-indigo-800"
@@ -259,7 +266,7 @@ export function ListingsTable({ listings, vertical, onDelete }: Props) {
                   <td className="px-4 py-3 flex items-center gap-2">
                     {listing.url && (
                       <a
-                        href={listing.url}
+                        href={normalizeUrl(listing.url) ?? ""}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-xs text-indigo-600 hover:text-indigo-800"

@@ -83,7 +83,8 @@ export async function POST(request: NextRequest) {
     }
   }
   const imageUrls = Array.isArray(b.imageUrls) ? (b.imageUrls as string[]) : [];
-  const url = typeof data.url === "string" ? data.url : null;
+  const rawUrl = typeof data.url === "string" ? data.url.trim() : "";
+  const url = rawUrl ? (/^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`) : null;
 
   // Validate image requirement for non-automotive verticals
   if (requiredFields.includes("image_url") && imageUrls.length === 0) {
