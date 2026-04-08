@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { checkSubscription } from "@/lib/checkSubscription";
 import { rateLimit } from "@/lib/rateLimit";
+import { getEffectiveDealerId } from "@/lib/impersonation";
 
 function isValidUrl(url: string): boolean {
   try {
@@ -21,12 +22,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const isSubscribed = await checkSubscription(session.user.id);
+  const dealerId = await getEffectiveDealerId();
+  if (!dealerId) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const isSubscribed = await checkSubscription(dealerId);
   if (!isSubscribed) {
     return NextResponse.json({ error: "subscription_required" }, { status: 403 });
   }
 
-  const rl = rateLimit(`scrape:${session.user.id}`, 10, 60_000);
+  const rl = rateLimit(`scrape:${dealerId}`, 10, 60_000);
   if (!rl.allowed) {
     return NextResponse.json({ error: "rate_limited", retryAfterMs: rl.retryAfterMs }, { status: 429 });
   }
@@ -43,8 +49,6 @@ export async function POST(request: NextRequest) {
   if (!url || typeof url !== "string" || !isValidUrl(url)) {
     return NextResponse.json({ error: "invalid_url" }, { status: 400 });
   }
-
-  const dealerId = session.user.id;
 
   // Phase 1: write a stub row immediately and respond 202
   const vehicle = await prisma.vehicle.upsert({

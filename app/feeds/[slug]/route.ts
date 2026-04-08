@@ -1,58 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { serializeCSVHeader, serializeCSVRow, mapListingToRow, serializeServicesRow, getCSVHeadersForVertical } from "@/lib/csv";
+import { serializeCSVHeader, serializeCSVRow, mapListingToRow, serializeServicesRow, getCSVHeadersForVertical, VEHICLE_CSV_HEADERS, mapVehicleToRow } from "@/lib/csv";
 import { logCsvGeneration } from "@/lib/logger";
 
-const VEHICLE_CSV_HEADERS = [
-  "vehicle_id",
-  "description",
-  "vin",
-  "make",
-  "model",
-  "year",
-  "body_style",
-  "price",
-  "mileage_value",
-  "state_of_vehicle",
-  "exterior_color",
-  "url",
-  "image_url",
-];
-
 const BATCH_SIZE = 100;
-
-function mapVehicleToRow(v: {
-  id: string;
-  description: string | null;
-  vin: string | null;
-  make: string | null;
-  model: string | null;
-  year: string | null;
-  bodyStyle: string | null;
-  price: number | null;
-  mileageValue: number | null;
-  stateOfVehicle: string | null;
-  exteriorColor: string | null;
-  url: string;
-  imageUrl: string | null;
-  images: string[];
-}): Record<string, unknown> {
-  return {
-    vehicle_id: v.id,
-    description: v.description ?? "",
-    vin: v.vin ?? "",
-    make: v.make ?? "",
-    model: v.model ?? "",
-    year: v.year ?? "",
-    body_style: v.bodyStyle ?? "",
-    price: String(v.price ?? ""),
-    mileage_value: String(v.mileageValue ?? ""),
-    state_of_vehicle: v.stateOfVehicle ?? "",
-    exterior_color: v.exteriorColor ?? "",
-    url: v.url,
-    image_url: v.images?.[0] ?? v.imageUrl ?? "",
-  };
-}
 
 export async function GET(
   _request: NextRequest,
@@ -104,6 +55,7 @@ function streamAutomotiveCSV(
       while (true) {
         const batch = await prisma.vehicle.findMany({
           where: { dealerId, archivedAt: null },
+          include: { dealer: { select: { name: true } } },
           orderBy: { createdAt: "asc" },
           take: BATCH_SIZE,
           ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),

@@ -1,20 +1,68 @@
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { stripeClient } from "@/lib/stripe";
 import { checkSubscription } from "@/lib/checkSubscription";
+import { verifyImpersonationToken, IMPERSONATION_COOKIE } from "@/lib/impersonation";
 import { DashboardClient } from "./DashboardClient";
+
+const ADMIN_EMAIL = (process.env.ADMIN_EMAIL ?? "").toLowerCase();
 
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ session_id?: string }>;
+  searchParams: Promise<{ session_id?: string; impersonate?: string }>;
 }) {
   const session = await getServerSession(authOptions);
 
   if (!session?.user?.id) {
     redirect("/login");
+  }
+
+  const isAdmin =
+    !!ADMIN_EMAIL &&
+    session.user.email?.toLowerCase() === ADMIN_EMAIL;
+
+  // Handle incoming impersonation token — set cookie and redirect to clean URL
+  const { impersonate } = await searchParams;
+  if (impersonate && isAdmin) {
+    const impersonatedDealerId = await verifyImpersonationToken(impersonate);
+    if (impersonatedDealerId) {
+      const cookieStore = await cookies();
+      // Store the signed JWT token in the cookie, not the raw dealerId
+      cookieStore.set(IMPERSONATION_COOKIE, impersonate, {
+        httpOnly: true,
+        sameSite: "strict",
+        secure: process.env.NODE_ENV === "production",
+        maxAge: 3600,
+        path: "/",
+      });
+      redirect("/dashboard");
+    }
+    // Invalid token — just continue with normal dashboard
+  }
+
+  // Check for active impersonation cookie — only admins may use impersonation
+  const cookieStore = await cookies();
+  const impersonationCookie = cookieStore.get(IMPERSONATION_COOKIE);
+  let impersonatedDealerId: string | null = null;
+
+  if (impersonationCookie?.value) {
+    if (!isAdmin) {
+      // Non-admin has an impersonation cookie — clear it
+      cookieStore.delete(IMPERSONATION_COOKIE);
+    } else {
+      // Verify the signed token
+      impersonatedDealerId = await verifyImpersonationToken(
+        impersonationCookie.value
+      );
+      if (!impersonatedDealerId) {
+        // Invalid or expired token — clear the cookie
+        cookieStore.delete(IMPERSONATION_COOKIE);
+      }
+    }
   }
 
   // Post-checkout reconciliation: if Stripe redirected here with a session_id,
@@ -59,27 +107,40 @@ export default async function DashboardPage({
     // Non-fatal: webhook will eventually sync the subscription state.
   }
 
-  let isSubscribed = false;
-  try {
-    isSubscribed = await checkSubscription(session.user.id);
-  } catch {
-    // Default to false on any DB/network error; redirect will handle it.
-  }
+  // The effective dealerId — impersonated dealer takes precedence
+  const effectiveDealerId = impersonatedDealerId ?? session.user.id;
+  const isImpersonating = !!impersonatedDealerId;
 
-  if (!isSubscribed) {
-    redirect("/subscribe");
+  // Skip subscription check when impersonating
+  if (!isImpersonating) {
+    let isSubscribed = false;
+    try {
+      isSubscribed = await checkSubscription(session.user.id);
+    } catch {
+      // Default to false on any DB/network error; redirect will handle it.
+    }
+
+    if (!isSubscribed) {
+      redirect("/subscribe");
+    }
   }
 
   const dealer = await prisma.dealer.findUnique({
-    where: { id: session.user.id },
-    select: { vertical: true, name: true },
+    where: { id: effectiveDealerId },
+    select: { vertical: true, name: true, slug: true },
   });
 
   const vertical = dealer?.vertical ?? "automotive";
+  const impersonatedDealerName = isImpersonating
+    ? dealer?.name ?? "Unknown Dealer"
+    : "";
+  const impersonatedDealerSlug = isImpersonating
+    ? dealer?.slug ?? ""
+    : "";
 
   if (vertical === "automotive") {
     const vehicles = await prisma.vehicle.findMany({
-      where: { dealerId: session.user.id, archivedAt: null },
+      where: { dealerId: effectiveDealerId, archivedAt: null },
       orderBy: { createdAt: "desc" },
     });
 
@@ -89,6 +150,9 @@ export default async function DashboardPage({
         listings={[]}
         dealerName={dealer?.name ?? session.user.name ?? "Dealer"}
         vertical={vertical}
+        isImpersonating={isImpersonating}
+        impersonatedDealerName={impersonatedDealerName}
+        impersonatedDealerSlug={impersonatedDealerSlug}
       />
     );
   }
@@ -96,7 +160,7 @@ export default async function DashboardPage({
   // Non-automotive verticals use listings
   const listings = await prisma.listing.findMany({
     where: {
-      dealerId: session.user.id,
+      dealerId: effectiveDealerId,
       vertical,
       archivedAt: null,
     },
@@ -109,6 +173,9 @@ export default async function DashboardPage({
       listings={JSON.parse(JSON.stringify(listings))}
       dealerName={dealer?.name ?? session.user.name ?? "Dealer"}
       vertical={vertical}
+      isImpersonating={isImpersonating}
+      impersonatedDealerName={impersonatedDealerName}
+      impersonatedDealerSlug={impersonatedDealerSlug}
     />
   );
 }

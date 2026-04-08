@@ -1,19 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { checkSubscription } from "@/lib/checkSubscription";
+import { getEffectiveDealerId } from "@/lib/impersonation";
 
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const effectiveDealerId = await getEffectiveDealerId();
+  if (!effectiveDealerId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const isSubscribed = await checkSubscription(session.user.id);
+  const isSubscribed = await checkSubscription(effectiveDealerId);
   if (!isSubscribed) {
     return NextResponse.json({ error: "subscription_required" }, { status: 403 });
   }
@@ -21,7 +20,7 @@ export async function DELETE(
   const { id } = await params;
 
   const listing = await prisma.listing.findFirst({
-    where: { id, dealerId: session.user.id },
+    where: { id, dealerId: effectiveDealerId },
   });
 
   if (!listing) {

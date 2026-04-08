@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { checkSubscription } from "@/lib/checkSubscription";
 import { getRequiredFields } from "@/lib/verticals";
+import { getEffectiveDealerId } from "@/lib/impersonation";
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -11,7 +12,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const isSubscribed = await checkSubscription(session.user.id);
+  const dealerId = await getEffectiveDealerId();
+  if (!dealerId) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const isSubscribed = await checkSubscription(dealerId);
   if (!isSubscribed) {
     return NextResponse.json({ error: "subscription_required" }, { status: 403 });
   }
@@ -26,7 +32,7 @@ export async function POST(request: NextRequest) {
   const b = body as Record<string, unknown>;
 
   const dealer = await prisma.dealer.findUnique({
-    where: { id: session.user.id },
+    where: { id: dealerId },
     select: { vertical: true },
   });
 
@@ -100,7 +106,7 @@ export async function POST(request: NextRequest) {
 
   const listing = await prisma.listing.create({
     data: {
-      dealerId: session.user.id,
+      dealerId,
       vertical,
       title,
       price: Number.isFinite(price) ? price : null,
@@ -119,13 +125,13 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(_request: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const dealerId = await getEffectiveDealerId();
+  if (!dealerId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
   const dealer = await prisma.dealer.findUnique({
-    where: { id: session.user.id },
+    where: { id: dealerId },
     select: { vertical: true },
   });
 
@@ -135,7 +141,7 @@ export async function GET(_request: NextRequest) {
 
   const listings = await prisma.listing.findMany({
     where: {
-      dealerId: session.user.id,
+      dealerId,
       vertical: dealer.vertical,
       archivedAt: null,
     },

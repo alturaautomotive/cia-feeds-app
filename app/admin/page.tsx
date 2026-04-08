@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/prisma";
+import Link from "next/link";
+import { ImpersonateButton } from "./ImpersonateButton";
 
 export default async function AdminPage() {
   const dealers = await prisma.dealer.findMany({
@@ -110,6 +112,7 @@ export default async function AdminPage() {
                   "Complete",
                   "Joined",
                   "Feed",
+                  "Actions",
                 ].map((col) => (
                   <th
                     key={col}
@@ -163,6 +166,15 @@ export default async function AdminPage() {
                       >
                         ↗ Feed
                       </a>
+                    </td>
+                    <td className="px-4 py-3 flex items-center gap-2">
+                      <Link
+                        href={`/admin/dealers/${dealer.id}`}
+                        className="text-indigo-600 hover:text-indigo-800 font-medium text-xs"
+                      >
+                        View Data
+                      </Link>
+                      <ImpersonateButton dealerId={dealer.id} />
                     </td>
                   </tr>
                 );

@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { computeCompleteness } from "@/lib/vehicleCompleteness";
 import { Prisma } from "@prisma/client";
 import { checkSubscription } from "@/lib/checkSubscription";
+import { getEffectiveDealerId } from "@/lib/impersonation";
 
 async function getVehicleForDealer(id: string, dealerId: string) {
   return prisma.vehicle.findFirst({
@@ -16,13 +15,13 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const effectiveDealerId = await getEffectiveDealerId();
+  if (!effectiveDealerId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
   const { id } = await params;
-  const vehicle = await getVehicleForDealer(id, session.user.id);
+  const vehicle = await getVehicleForDealer(id, effectiveDealerId);
   if (!vehicle) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
@@ -34,18 +33,18 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const effectiveDealerId = await getEffectiveDealerId();
+  if (!effectiveDealerId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const isSubscribed = await checkSubscription(session.user.id);
+  const isSubscribed = await checkSubscription(effectiveDealerId);
   if (!isSubscribed) {
     return NextResponse.json({ error: "subscription_required" }, { status: 403 });
   }
 
   const { id } = await params;
-  const vehicle = await getVehicleForDealer(id, session.user.id);
+  const vehicle = await getVehicleForDealer(id, effectiveDealerId);
   if (!vehicle) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
@@ -182,18 +181,18 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const effectiveDealerId = await getEffectiveDealerId();
+  if (!effectiveDealerId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const isSubscribed = await checkSubscription(session.user.id);
+  const isSubscribed = await checkSubscription(effectiveDealerId);
   if (!isSubscribed) {
     return NextResponse.json({ error: "subscription_required" }, { status: 403 });
   }
 
   const { id } = await params;
-  const vehicle = await getVehicleForDealer(id, session.user.id);
+  const vehicle = await getVehicleForDealer(id, effectiveDealerId);
   if (!vehicle) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }

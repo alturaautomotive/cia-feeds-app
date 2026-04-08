@@ -1,16 +1,15 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getEffectiveDealerId } from "@/lib/impersonation";
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const dealerId = await getEffectiveDealerId();
+  if (!dealerId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
   const vehicles = await prisma.vehicle.findMany({
-    where: { dealerId: session.user.id },
+    where: { dealerId },
     orderBy: { createdAt: "desc" },
     select: {
       id: true,

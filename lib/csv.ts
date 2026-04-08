@@ -102,6 +102,94 @@ export function serializeRealEstateRow(listing: {
   return serializeCSVRow(row, REALESTATE_CSV_HEADERS);
 }
 
+export const VEHICLE_CSV_HEADERS = [
+  "dealer_name",
+  "vin",
+  "year",
+  "make",
+  "model",
+  "body_style",
+  "transmission",
+  "trim",
+  "mileage.value",
+  "drivetrain",
+  "exterior_color",
+  "msrp",
+  "price",
+  "description",
+  "image[0].url",
+  "image[1].url",
+  "image[2].url",
+  "image[3].url",
+  "image[4].url",
+  "image[5].url",
+  "image[6].url",
+  "fuel_type",
+  "address",
+  "state_of_vehicle",
+  "title",
+  "url",
+  "latitude",
+  "longitude",
+  "vehicle_id",
+  "mileage.unit",
+  "days_on_lot",
+  "fb_page_id",
+];
+
+export function mapVehicleToRow(v: {
+  id: string;
+  description: string | null;
+  vin: string | null;
+  make: string | null;
+  model: string | null;
+  year: string | null;
+  bodyStyle: string | null;
+  price: number | null;
+  mileageValue: number | null;
+  stateOfVehicle: string | null;
+  exteriorColor: string | null;
+  url: string;
+  imageUrl: string | null;
+  images: string[];
+  dealer?: { name: string } | null;
+}): Record<string, unknown> {
+  return {
+    dealer_name: v.dealer?.name ?? "",
+    vin: v.vin ?? "",
+    year: v.year ?? "",
+    make: v.make ?? "",
+    model: v.model ?? "",
+    body_style: v.bodyStyle ?? "",
+    transmission: "",
+    trim: "",
+    "mileage.value": String(v.mileageValue ?? ""),
+    drivetrain: "",
+    exterior_color: v.exteriorColor ?? "",
+    msrp: "",
+    price: String(v.price ?? ""),
+    description: v.description ?? "",
+    "image[0].url": v.images[0] ?? "",
+    "image[1].url": v.images[1] ?? "",
+    "image[2].url": v.images[2] ?? "",
+    "image[3].url": v.images[3] ?? "",
+    "image[4].url": v.images[4] ?? "",
+    "image[5].url": v.images[5] ?? "",
+    "image[6].url": v.images[6] ?? "",
+    fuel_type: "",
+    address: "",
+    state_of_vehicle: v.stateOfVehicle ?? "",
+    title: `${v.make ?? ""} ${v.model ?? ""}`.trim(),
+    url: v.url,
+    latitude: "",
+    longitude: "",
+    vehicle_id: v.id,
+    "mileage.unit": "mi",
+    days_on_lot: "",
+    fb_page_id: "",
+  };
+}
+
 export function getCSVHeadersForVertical(vertical: string): string[] {
   switch (vertical) {
     case "services": return SERVICES_CSV_HEADERS;

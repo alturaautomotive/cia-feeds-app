@@ -23,6 +23,7 @@ const mockDealer = {
   id: "dealer-uuid-feeds",
   name: "Test Dealer",
   slug: "test-dealer",
+  vertical: "automotive",
 };
 
 const mockVehicles = [
@@ -41,10 +42,13 @@ const mockVehicles = [
     exteriorColor: "Silver",
     url: "https://dealer.com/camry",
     imageUrl: "https://img.com/camry.jpg",
+    images: ["https://img.com/camry.jpg"],
+    dealer: { name: "Test Dealer" },
     isComplete: true,
     missingFields: [],
     createdAt: new Date(),
     updatedAt: new Date(),
+    archivedAt: null,
   },
   {
     id: "veh-2",
@@ -61,10 +65,13 @@ const mockVehicles = [
     exteriorColor: null,
     url: "https://dealer.com/silverado",
     imageUrl: null,
+    images: [],
+    dealer: { name: "Test Dealer" },
     isComplete: false,
     missingFields: ["vin", "exteriorColor", "imageUrl"],
     createdAt: new Date(),
     updatedAt: new Date(),
+    archivedAt: null,
   },
 ];
 
@@ -97,11 +104,11 @@ describe("GET /feeds/[slug].csv", () => {
     const lines = text.split("\r\n").filter(Boolean);
 
     expect(lines[0]).toBe(
-      "vehicle_id,description,vin,make,model,year,body_style,price,mileage_value,state_of_vehicle,exterior_color,url,image_url"
+      "dealer_name,vin,year,make,model,body_style,transmission,trim,mileage.value,drivetrain,exterior_color,msrp,price,description,image[0].url,image[1].url,image[2].url,image[3].url,image[4].url,image[5].url,image[6].url,fuel_type,address,state_of_vehicle,title,url,latitude,longitude,vehicle_id,mileage.unit,days_on_lot,fb_page_id"
     );
   });
 
-  it("serializes vehicle rows with correct values", async () => {
+  it("serializes vehicle rows with correct values including dealer_name and mileage.value", async () => {
     vi.mocked(prisma.dealer.findUnique).mockResolvedValue(mockDealer as never);
     vi.mocked(prisma.vehicle.findMany).mockResolvedValue(mockVehicles as never);
 
@@ -113,8 +120,13 @@ describe("GET /feeds/[slug].csv", () => {
 
     expect(lines[1]).toContain("Toyota");
     expect(lines[1]).toContain("27500");
+    expect(lines[1]).toContain("Test Dealer"); // dealer_name
+    expect(lines[1]).toContain("5000"); // mileage.value
+    expect(lines[1]).toContain("https://img.com/camry.jpg"); // image[0].url
     expect(lines[2]).toContain("Chevrolet");
     expect(lines[2]).toContain("34000");
+    expect(lines[2]).toContain("Test Dealer"); // dealer_name
+    expect(lines[2]).toContain("45000"); // mileage.value
   });
 
   it("renders null fields as empty strings, not the literal 'null'", async () => {

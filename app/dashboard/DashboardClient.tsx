@@ -46,6 +46,9 @@ interface Props {
   listings: ListingRow[];
   dealerName: string;
   vertical: string;
+  isImpersonating?: boolean;
+  impersonatedDealerName?: string;
+  impersonatedDealerSlug?: string;
 }
 
 export function DashboardClient({
@@ -53,6 +56,9 @@ export function DashboardClient({
   listings: initialListings,
   dealerName,
   vertical,
+  isImpersonating = false,
+  impersonatedDealerName = "",
+  impersonatedDealerSlug = "",
 }: Props) {
   const [vehicles, setVehicles] = useState<VehicleRow[]>(initialVehicles);
   const [listings, setListings] = useState<ListingRow[]>(initialListings);
@@ -232,8 +238,35 @@ export function DashboardClient({
     }
   }
 
+  async function handleExitImpersonation() {
+    await fetch("/api/admin/impersonate", { method: "DELETE" });
+    window.location.href = "/admin";
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Impersonation banner */}
+      {isImpersonating && (
+        <div className="bg-amber-100 border-b-2 border-amber-400 px-6 py-2.5 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <span className="bg-amber-400 text-white text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full">
+              Impersonating
+            </span>
+            <span className="text-amber-900 text-sm font-medium">
+              You are viewing the dashboard as{" "}
+              <strong>{impersonatedDealerName}</strong>
+              {impersonatedDealerSlug && ` (${impersonatedDealerSlug})`}
+            </span>
+          </div>
+          <button
+            onClick={handleExitImpersonation}
+            className="bg-amber-900 text-white text-[13px] font-semibold px-3.5 py-1.5 rounded-md hover:bg-amber-800"
+          >
+            Exit Impersonation &rarr; Back to Admin
+          </button>
+        </div>
+      )}
+
       {/* Top bar */}
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
@@ -248,22 +281,24 @@ export function DashboardClient({
             <Link href="/dashboard/profile" className="text-sm text-indigo-600 hover:text-indigo-500">
               Profile
             </Link>
-            <button
-              onClick={async () => {
-                setBillingLoading(true);
-                const res = await fetch("/api/stripe/portal", { method: "POST" });
-                const data = await res.json();
-                if (res.ok && data.url) {
-                  window.location.href = data.url;
-                } else {
-                  setBillingLoading(false);
-                }
-              }}
-              disabled={billingLoading}
-              className="text-sm text-indigo-600 hover:text-indigo-500"
-            >
-              {billingLoading ? "Loading\u2026" : "Manage Billing"}
-            </button>
+            {!isImpersonating && (
+              <button
+                onClick={async () => {
+                  setBillingLoading(true);
+                  const res = await fetch("/api/stripe/portal", { method: "POST" });
+                  const data = await res.json();
+                  if (res.ok && data.url) {
+                    window.location.href = data.url;
+                  } else {
+                    setBillingLoading(false);
+                  }
+                }}
+                disabled={billingLoading}
+                className="text-sm text-indigo-600 hover:text-indigo-500"
+              >
+                {billingLoading ? "Loading\u2026" : "Manage Billing"}
+              </button>
+            )}
             <button
               onClick={() => signOut({ callbackUrl: "/login" })}
               className="text-sm text-indigo-600 hover:text-indigo-500"

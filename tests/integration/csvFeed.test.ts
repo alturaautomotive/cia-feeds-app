@@ -35,6 +35,7 @@ function makeVehicle(overrides: Partial<{
   url: string;
   imageUrl: string | null;
   images: string[];
+  dealer: { name: string } | null;
 }> = {}) {
   return {
     id: "v-int-default",
@@ -52,10 +53,12 @@ function makeVehicle(overrides: Partial<{
     url: "https://dealer.com/corolla",
     imageUrl: null,
     images: [],
+    dealer: { name: dealer.name },
     isComplete: true,
     missingFields: [],
     createdAt: new Date(),
     updatedAt: new Date(),
+    archivedAt: null,
     ...overrides,
   };
 }
@@ -84,10 +87,12 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     const lines = text.split("\r\n").filter(Boolean);
 
     expect(lines[0]).toBe(
-      "vehicle_id,description,vin,make,model,year,body_style,price,mileage_value,state_of_vehicle,exterior_color,url,image_url"
+      "dealer_name,vin,year,make,model,body_style,transmission,trim,mileage.value,drivetrain,exterior_color,msrp,price,description,image[0].url,image[1].url,image[2].url,image[3].url,image[4].url,image[5].url,image[6].url,fuel_type,address,state_of_vehicle,title,url,latitude,longitude,vehicle_id,mileage.unit,days_on_lot,fb_page_id"
     );
     expect(lines[1]).toContain("Honda");
     expect(lines[1]).toContain("24500");
+    expect(lines[1]).toContain("Integration Dealer");
+    expect(lines[1]).toContain("5000"); // mileage.value
     expect(lines[2]).toContain("Ford");
     // null DB values must become empty strings, never the literal word "null"
     expect(lines[2]).not.toContain("null");
@@ -223,8 +228,8 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     expect(lines2[1]).not.toContain("20000");
   });
 
-  it("images[] takes priority over imageUrl, falls back when empty", async () => {
-    // Sub-case A — images array wins and first element is used, not second
+  it("images[] populates multiple image[N].url columns", async () => {
+    // Sub-case A — images array populates image[0].url through image[6].url
     vi.mocked(prisma.dealer.findUnique).mockResolvedValue(dealer as never);
     vi.mocked(prisma.vehicle.findMany).mockResolvedValue([
       makeVehicle({
@@ -239,11 +244,13 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     const text1 = await res1.text();
     const lines1 = text1.split("\r\n").filter(Boolean);
 
+    // image[0].url gets photo1, image[1].url gets photo2
     expect(lines1[1]).toContain("https://cdn.com/photo1.jpg");
-    expect(lines1[1]).not.toContain("https://cdn.com/photo2.jpg");
+    expect(lines1[1]).toContain("https://cdn.com/photo2.jpg");
+    // imageUrl is not directly used — only images[] feeds image[N].url columns
     expect(lines1[1]).not.toContain("https://old.com/fallback.jpg");
 
-    // Sub-case B — empty images falls back to imageUrl
+    // Sub-case B — empty images produces empty image[N].url columns
     vi.mocked(prisma.dealer.findUnique).mockResolvedValue(dealer as never);
     vi.mocked(prisma.vehicle.findMany).mockResolvedValue([
       makeVehicle({
@@ -258,7 +265,8 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     const text2 = await res2.text();
     const lines2 = text2.split("\r\n").filter(Boolean);
 
-    expect(lines2[1]).toContain("https://old.com/fallback.jpg");
+    // With empty images array, all image[N].url columns are empty
+    expect(lines2[1]).not.toContain("https://old.com/fallback.jpg");
   });
 
   // ── Ecommerce vertical CSV contract ──────────────────────────────────────
