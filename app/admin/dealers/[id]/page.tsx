@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { ImpersonateButton } from "@/app/admin/ImpersonateButton";
 
 
 function getSubscriptionBadge(status: string | null): {
@@ -45,10 +46,35 @@ export default async function DealerDetailPage({
     where: { id },
     include: {
       vehicles: {
+        select: {
+          id: true,
+          make: true,
+          model: true,
+          year: true,
+          vin: true,
+          price: true,
+          scrapeStatus: true,
+          isComplete: true,
+          createdAt: true,
+          archivedAt: true,
+          spotlightImageUrl: true,
+          imageUrl: true,
+          images: true,
+        },
         orderBy: { createdAt: "desc" },
+        take: 200,
       },
       listings: {
+        select: {
+          id: true,
+          title: true,
+          price: true,
+          isComplete: true,
+          createdAt: true,
+          archivedAt: true,
+        },
         orderBy: { createdAt: "desc" },
+        take: 200,
       },
     },
   });
@@ -135,6 +161,10 @@ export default async function DealerDetailPage({
             )}
           </div>
           <div className="flex flex-col gap-2 ml-auto">
+            <ImpersonateButton
+              dealerId={dealer.id}
+              className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-semibold text-center hover:bg-indigo-700"
+            />
             <a
               href={feedUrl}
               target="_blank"
@@ -160,6 +190,7 @@ export default async function DealerDetailPage({
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
                       {[
+                        "Image",
                         "Make / Model / Year",
                         "VIN",
                         "Price",
@@ -185,6 +216,25 @@ export default async function DealerDetailPage({
                           key={v.id}
                           className={`hover:bg-gray-50 ${v.archivedAt ? "opacity-50" : ""}`}
                         >
+                          <td className="px-4 py-3">
+                            {(() => {
+                              const src =
+                                v.spotlightImageUrl ||
+                                v.imageUrl ||
+                                (v.images && v.images.length > 0 ? v.images[0] : null);
+                              return src ? (
+                                <img
+                                  src={src}
+                                  alt="Vehicle"
+                                  className="w-12 h-9 object-cover rounded border border-gray-200"
+                                />
+                              ) : (
+                                <div className="w-12 h-9 bg-gray-100 rounded border border-gray-200 flex items-center justify-center text-gray-400 text-xs">
+                                  —
+                                </div>
+                              );
+                            })()}
+                          </td>
                           <td className="px-4 py-3 text-gray-700">
                             {[v.make, v.model, v.year]
                               .filter(Boolean)
