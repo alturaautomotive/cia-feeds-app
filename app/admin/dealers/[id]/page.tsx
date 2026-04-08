@@ -62,7 +62,6 @@ export default async function DealerDetailPage({
           images: true,
         },
         orderBy: { createdAt: "desc" },
-        take: 200,
       },
       listings: {
         select: {
@@ -74,7 +73,6 @@ export default async function DealerDetailPage({
           archivedAt: true,
         },
         orderBy: { createdAt: "desc" },
-        take: 200,
       },
     },
   });
@@ -177,186 +175,198 @@ export default async function DealerDetailPage({
         </div>
 
         {/* Vehicles section */}
-        {dealer.vertical === "automotive" && (
-          <>
-            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide mt-6 mb-3">
-              Vehicles ({totalVehicles} total · {completeVehicles} complete)
-            </h3>
-            {totalVehicles === 0 ? (
-              <p className="text-sm text-gray-400">No vehicles yet.</p>
-            ) : (
-              <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      {[
-                        "Image",
-                        "Make / Model / Year",
-                        "VIN",
-                        "Price",
-                        "Scrape",
-                        "Complete",
-                        "Added",
-                        "Archived",
-                      ].map((col) => (
-                        <th
-                          key={col}
-                          className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 py-3"
+        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide mt-6 mb-3">
+          Vehicles ({totalVehicles} total · {completeVehicles} complete)
+          {dealer.vertical !== "automotive" && totalVehicles > 0 && (
+            <span className="ml-2 text-[10px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
+              Historical
+            </span>
+          )}
+          {dealer.vertical === "automotive" && (
+            <span className="ml-2 text-[10px] font-medium text-green-600 bg-green-50 px-1.5 py-0.5 rounded">
+              Active vertical
+            </span>
+          )}
+        </h3>
+        {totalVehicles === 0 ? (
+          <p className="text-sm text-gray-400">No vehicles yet.</p>
+        ) : (
+          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  {[
+                    "Image",
+                    "Make / Model / Year",
+                    "VIN",
+                    "Price",
+                    "Scrape",
+                    "Complete",
+                    "Added",
+                    "Archived",
+                  ].map((col) => (
+                    <th
+                      key={col}
+                      className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 py-3"
+                    >
+                      {col}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {dealer.vehicles.map((v) => {
+                  const pill = getScrapeStatusPill(v.scrapeStatus);
+                  return (
+                    <tr
+                      key={v.id}
+                      className={`hover:bg-gray-50 ${v.archivedAt ? "opacity-50" : ""}`}
+                    >
+                      <td className="px-4 py-3">
+                        {(() => {
+                          const src =
+                            v.spotlightImageUrl ||
+                            v.imageUrl ||
+                            (v.images && v.images.length > 0 ? v.images[0] : null);
+                          return src ? (
+                            <img
+                              src={src}
+                              alt="Vehicle"
+                              className="w-12 h-9 object-cover rounded border border-gray-200"
+                            />
+                          ) : (
+                            <div className="w-12 h-9 bg-gray-100 rounded border border-gray-200 flex items-center justify-center text-gray-400 text-xs">
+                              —
+                            </div>
+                          );
+                        })()}
+                      </td>
+                      <td className="px-4 py-3 text-gray-700">
+                        {[v.make, v.model, v.year]
+                          .filter(Boolean)
+                          .join(" ") || "—"}
+                      </td>
+                      <td className="px-4 py-3 text-gray-500 font-mono text-xs">
+                        {v.vin || "—"}
+                      </td>
+                      <td className="px-4 py-3 text-gray-700">
+                        {v.price != null
+                          ? `$${v.price.toLocaleString()}`
+                          : "—"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full ${pill.classes}`}
                         >
-                          {col}
-                        </th>
-                      ))}
+                          {v.scrapeStatus}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-gray-700">
+                        {v.isComplete ? "✓" : "—"}
+                      </td>
+                      <td className="px-4 py-3 text-gray-500">
+                        {new Date(v.createdAt).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
+                      </td>
+                      <td className="px-4 py-3 text-gray-400 text-xs">
+                        {v.archivedAt
+                          ? new Date(v.archivedAt).toLocaleDateString(
+                              "en-US",
+                              {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                              }
+                            )
+                          : "—"}
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {dealer.vehicles.map((v) => {
-                      const pill = getScrapeStatusPill(v.scrapeStatus);
-                      return (
-                        <tr
-                          key={v.id}
-                          className={`hover:bg-gray-50 ${v.archivedAt ? "opacity-50" : ""}`}
-                        >
-                          <td className="px-4 py-3">
-                            {(() => {
-                              const src =
-                                v.spotlightImageUrl ||
-                                v.imageUrl ||
-                                (v.images && v.images.length > 0 ? v.images[0] : null);
-                              return src ? (
-                                <img
-                                  src={src}
-                                  alt="Vehicle"
-                                  className="w-12 h-9 object-cover rounded border border-gray-200"
-                                />
-                              ) : (
-                                <div className="w-12 h-9 bg-gray-100 rounded border border-gray-200 flex items-center justify-center text-gray-400 text-xs">
-                                  —
-                                </div>
-                              );
-                            })()}
-                          </td>
-                          <td className="px-4 py-3 text-gray-700">
-                            {[v.make, v.model, v.year]
-                              .filter(Boolean)
-                              .join(" ") || "—"}
-                          </td>
-                          <td className="px-4 py-3 text-gray-500 font-mono text-xs">
-                            {v.vin || "—"}
-                          </td>
-                          <td className="px-4 py-3 text-gray-700">
-                            {v.price != null
-                              ? `$${v.price.toLocaleString()}`
-                              : "—"}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full ${pill.classes}`}
-                            >
-                              {v.scrapeStatus}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-gray-700">
-                            {v.isComplete ? "✓" : "—"}
-                          </td>
-                          <td className="px-4 py-3 text-gray-500">
-                            {new Date(v.createdAt).toLocaleDateString("en-US", {
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Listings section */}
+        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide mt-6 mb-3">
+          Listings ({dealer.listings.length} total)
+          {dealer.vertical === "automotive" && dealer.listings.length > 0 && (
+            <span className="ml-2 text-[10px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
+              Historical
+            </span>
+          )}
+          {dealer.vertical !== "automotive" && (
+            <span className="ml-2 text-[10px] font-medium text-green-600 bg-green-50 px-1.5 py-0.5 rounded">
+              Active vertical
+            </span>
+          )}
+        </h3>
+        {dealer.listings.length === 0 ? (
+          <p className="text-sm text-gray-400">No listings yet.</p>
+        ) : (
+          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  {[
+                    "Title",
+                    "Price",
+                    "Complete",
+                    "Added",
+                    "Archived",
+                  ].map((col) => (
+                    <th
+                      key={col}
+                      className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 py-3"
+                    >
+                      {col}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {dealer.listings.map((l) => (
+                  <tr
+                    key={l.id}
+                    className={`hover:bg-gray-50 ${l.archivedAt ? "opacity-50" : ""}`}
+                  >
+                    <td className="px-4 py-3 text-gray-700">{l.title}</td>
+                    <td className="px-4 py-3 text-gray-700">
+                      {l.price != null
+                        ? `$${l.price.toLocaleString()}`
+                        : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-gray-700">
+                      {l.isComplete ? "✓" : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-gray-500">
+                      {new Date(l.createdAt).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
+                    </td>
+                    <td className="px-4 py-3 text-gray-400 text-xs">
+                      {l.archivedAt
+                        ? new Date(l.archivedAt).toLocaleDateString(
+                            "en-US",
+                            {
                               month: "short",
                               day: "numeric",
                               year: "numeric",
-                            })}
-                          </td>
-                          <td className="px-4 py-3 text-gray-400 text-xs">
-                            {v.archivedAt
-                              ? new Date(v.archivedAt).toLocaleDateString(
-                                  "en-US",
-                                  {
-                                    month: "short",
-                                    day: "numeric",
-                                    year: "numeric",
-                                  }
-                                )
-                              : "—"}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* Listings section (non-automotive) */}
-        {dealer.vertical !== "automotive" && (
-          <>
-            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide mt-6 mb-3">
-              Listings ({dealer.listings.length} total)
-            </h3>
-            {dealer.listings.length === 0 ? (
-              <p className="text-sm text-gray-400">No listings yet.</p>
-            ) : (
-              <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      {[
-                        "Title",
-                        "Price",
-                        "Complete",
-                        "Added",
-                        "Archived",
-                      ].map((col) => (
-                        <th
-                          key={col}
-                          className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 py-3"
-                        >
-                          {col}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {dealer.listings.map((l) => (
-                      <tr
-                        key={l.id}
-                        className={`hover:bg-gray-50 ${l.archivedAt ? "opacity-50" : ""}`}
-                      >
-                        <td className="px-4 py-3 text-gray-700">{l.title}</td>
-                        <td className="px-4 py-3 text-gray-700">
-                          {l.price != null
-                            ? `$${l.price.toLocaleString()}`
-                            : "—"}
-                        </td>
-                        <td className="px-4 py-3 text-gray-700">
-                          {l.isComplete ? "✓" : "—"}
-                        </td>
-                        <td className="px-4 py-3 text-gray-500">
-                          {new Date(l.createdAt).toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                          })}
-                        </td>
-                        <td className="px-4 py-3 text-gray-400 text-xs">
-                          {l.archivedAt
-                            ? new Date(l.archivedAt).toLocaleDateString(
-                                "en-US",
-                                {
-                                  month: "short",
-                                  day: "numeric",
-                                  year: "numeric",
-                                }
-                              )
-                            : "—"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </>
+                            }
+                          )
+                        : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </main>
     </div>

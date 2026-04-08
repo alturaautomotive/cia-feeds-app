@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { checkSubscription } from "@/lib/checkSubscription";
 import { getRequiredFields } from "@/lib/verticals";
+import { getEffectiveDealerId } from "@/lib/impersonation";
 import Papa from "papaparse";
 
 /** Map common CSV column name variants to canonical Meta keys. */
@@ -66,13 +67,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const isSubscribed = await checkSubscription(session.user.id);
+  const dealerId = await getEffectiveDealerId();
+  if (!dealerId) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const isSubscribed = await checkSubscription(dealerId);
   if (!isSubscribed) {
     return NextResponse.json({ error: "subscription_required" }, { status: 403 });
   }
 
   const dealer = await prisma.dealer.findUnique({
-    where: { id: session.user.id },
+    where: { id: dealerId },
     select: { vertical: true },
   });
 
@@ -129,7 +135,7 @@ export async function POST(request: NextRequest) {
     const imageUrls = row.image_url ? [row.image_url] : [];
 
     listings.push({
-      dealerId: session.user.id,
+      dealerId,
       vertical,
       title,
       price: price != null && Number.isFinite(price) ? price : null,

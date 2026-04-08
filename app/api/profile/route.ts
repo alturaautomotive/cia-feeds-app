@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { checkSubscription } from "@/lib/checkSubscription";
+import { getEffectiveDealerContext } from "@/lib/impersonation";
 
 const VALID_VERTICALS = ["automotive", "services", "ecommerce", "realestate"];
 
@@ -16,13 +17,13 @@ const SAFE_SELECT = {
 } as const;
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const { effectiveDealerId } = await getEffectiveDealerContext();
+  if (!effectiveDealerId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
   const dealer = await prisma.dealer.findUnique({
-    where: { id: session.user.id },
+    where: { id: effectiveDealerId },
     select: SAFE_SELECT,
   });
 

@@ -1,14 +1,11 @@
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { stripeClient } from "@/lib/stripe";
 import { checkSubscription } from "@/lib/checkSubscription";
-import { verifyImpersonationToken, IMPERSONATION_COOKIE } from "@/lib/impersonation";
+import { getEffectiveDealerContext } from "@/lib/impersonation";
 import { DashboardClient } from "./DashboardClient";
-
-const ADMIN_EMAIL = (process.env.ADMIN_EMAIL ?? "").toLowerCase();
 
 export default async function DashboardPage({
   searchParams,
@@ -21,49 +18,25 @@ export default async function DashboardPage({
     redirect("/login");
   }
 
-  const isAdmin =
-    !!ADMIN_EMAIL &&
-    session.user.email?.toLowerCase() === ADMIN_EMAIL;
-
-  // Handle incoming impersonation token — set cookie and redirect to clean URL
+  // If an impersonation token arrives via query param, redirect to the
+  // Route Handler that verifies the token and sets the cookie.
+  // Cookie mutation is not supported in Server Components.
   const { impersonate } = await searchParams;
-  if (impersonate && isAdmin) {
-    const impersonatedDealerId = await verifyImpersonationToken(impersonate);
-    if (impersonatedDealerId) {
-      const cookieStore = await cookies();
-      // Store the signed JWT token in the cookie, not the raw dealerId
-      cookieStore.set(IMPERSONATION_COOKIE, impersonate, {
-        httpOnly: true,
-        sameSite: "strict",
-        secure: process.env.NODE_ENV === "production",
-        maxAge: 3600,
-        path: "/",
-      });
-      redirect("/dashboard");
-    }
-    // Invalid token — just continue with normal dashboard
+  if (impersonate) {
+    redirect(`/api/admin/impersonate/activate?token=${encodeURIComponent(impersonate)}`);
   }
 
-  // Check for active impersonation cookie — only admins may use impersonation
-  const cookieStore = await cookies();
-  const impersonationCookie = cookieStore.get(IMPERSONATION_COOKIE);
-  let impersonatedDealerId: string | null = null;
+  // Read impersonation state (read-only — no cookie mutation in Server Components)
+  const { effectiveDealerId: resolvedDealerId, isImpersonating, hasStaleImpersonationCookie } =
+    await getEffectiveDealerContext();
 
-  if (impersonationCookie?.value) {
-    if (!isAdmin) {
-      // Non-admin has an impersonation cookie — clear it
-      cookieStore.delete(IMPERSONATION_COOKIE);
-    } else {
-      // Verify the signed token
-      impersonatedDealerId = await verifyImpersonationToken(
-        impersonationCookie.value
-      );
-      if (!impersonatedDealerId) {
-        // Invalid or expired token — clear the cookie
-        cookieStore.delete(IMPERSONATION_COOKIE);
-      }
-    }
+  // If a stale impersonation cookie is present (non-admin user or expired token),
+  // redirect to the clear endpoint to remove it before proceeding.
+  if (hasStaleImpersonationCookie) {
+    redirect("/api/admin/impersonate/clear");
   }
+
+  const impersonatedDealerId = isImpersonating ? resolvedDealerId : null;
 
   // Post-checkout reconciliation: if Stripe redirected here with a session_id,
   // persist the subscription before the layout's checkSubscription runs on the
@@ -108,21 +81,17 @@ export default async function DashboardPage({
   }
 
   // The effective dealerId — impersonated dealer takes precedence
-  const effectiveDealerId = impersonatedDealerId ?? session.user.id;
-  const isImpersonating = !!impersonatedDealerId;
+  const effectiveDealerId = resolvedDealerId ?? session.user.id;
 
-  // Skip subscription check when impersonating
-  if (!isImpersonating) {
-    let isSubscribed = false;
-    try {
-      isSubscribed = await checkSubscription(session.user.id);
-    } catch {
-      // Default to false on any DB/network error; redirect will handle it.
-    }
+  let isSubscribed = false;
+  try {
+    isSubscribed = await checkSubscription(effectiveDealerId);
+  } catch {
+    // Default to false on any DB/network error; redirect will handle it.
+  }
 
-    if (!isSubscribed) {
-      redirect("/subscribe");
-    }
+  if (!isSubscribed) {
+    redirect("/subscribe");
   }
 
   const dealer = await prisma.dealer.findUnique({

@@ -3,6 +3,7 @@ import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { checkSubscription } from "@/lib/checkSubscription";
+import { getEffectiveDealerContext } from "@/lib/impersonation";
 import FeedUrlCard from "./FeedUrlCard";
 
 export default async function FeedPage() {
@@ -12,13 +13,20 @@ export default async function FeedPage() {
     redirect("/login");
   }
 
-  const isSubscribed = await checkSubscription(session.user.id);
+  const { effectiveDealerId } =
+    await getEffectiveDealerContext();
+
+  if (!effectiveDealerId) {
+    redirect("/login");
+  }
+
+  const isSubscribed = await checkSubscription(effectiveDealerId);
   if (!isSubscribed) {
     redirect("/subscribe");
   }
 
   const dealer = await prisma.dealer.findUnique({
-    where: { id: session.user.id },
+    where: { id: effectiveDealerId },
     select: { slug: true, vertical: true },
   });
 

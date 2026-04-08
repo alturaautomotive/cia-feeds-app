@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { checkSubscription } from "@/lib/checkSubscription";
 import { supabaseAdmin } from "@/lib/supabase";
+import { getEffectiveDealerId } from "@/lib/impersonation";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 const MAX_IMAGES = 10;
@@ -13,7 +14,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const isSubscribed = await checkSubscription(session.user.id);
+  const dealerId = await getEffectiveDealerId();
+  if (!dealerId) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const isSubscribed = await checkSubscription(dealerId);
   if (!isSubscribed) {
     return NextResponse.json({ error: "subscription_required" }, { status: 403 });
   }
@@ -60,7 +66,7 @@ export async function POST(request: NextRequest) {
     }
 
     const sanitizedName = fileRaw.name.replace(/[^a-zA-Z0-9.\-]/g, "_");
-    const path = `listings/${session.user.id}/${Date.now()}-${sanitizedName}`;
+    const path = `listings/${dealerId}/${Date.now()}-${sanitizedName}`;
 
     const arrayBuffer = await fileRaw.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);

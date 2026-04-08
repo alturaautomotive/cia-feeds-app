@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { supabaseAdmin } from "@/lib/supabase";
 import { checkSubscription } from "@/lib/checkSubscription";
+import { getEffectiveDealerId } from "@/lib/impersonation";
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -11,7 +12,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const isSubscribed = await checkSubscription(session.user.id);
+  const effectiveDealerId = await getEffectiveDealerId();
+  if (!effectiveDealerId) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const isSubscribed = await checkSubscription(effectiveDealerId);
   if (!isSubscribed) {
     return NextResponse.json({ error: "subscription_required" }, { status: 403 });
   }
@@ -31,7 +37,7 @@ export async function POST(request: NextRequest) {
   const vehicleId = vehicleIdRaw;
 
   const vehicle = await prisma.vehicle.findFirst({
-    where: { id: vehicleId, dealerId: session.user.id },
+    where: { id: vehicleId, dealerId: effectiveDealerId },
   });
   if (!vehicle) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });

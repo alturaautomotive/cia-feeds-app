@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { checkSubscription } from "@/lib/checkSubscription";
+import { getEffectiveDealerContext } from "@/lib/impersonation";
 import VehicleEditForm from "./VehicleEditForm";
 
 export default async function VehicleDetailPage({
@@ -15,7 +16,14 @@ export default async function VehicleDetailPage({
     redirect("/login");
   }
 
-  const isSubscribed = await checkSubscription(session.user.id);
+  const { effectiveDealerId } =
+    await getEffectiveDealerContext();
+
+  if (!effectiveDealerId) {
+    redirect("/login");
+  }
+
+  const isSubscribed = await checkSubscription(effectiveDealerId);
   if (!isSubscribed) {
     redirect("/subscribe");
   }
@@ -23,7 +31,7 @@ export default async function VehicleDetailPage({
   const { id } = await params;
 
   const vehicle = await prisma.vehicle.findFirst({
-    where: { id, dealerId: session.user.id },
+    where: { id, dealerId: effectiveDealerId },
   });
 
   if (!vehicle) {
@@ -31,7 +39,7 @@ export default async function VehicleDetailPage({
   }
 
   const dealer = await prisma.dealer.findUnique({
-    where: { id: session.user.id },
+    where: { id: effectiveDealerId },
     select: { profileImageUrl: true },
   });
 

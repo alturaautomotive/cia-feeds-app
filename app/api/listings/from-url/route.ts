@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { checkSubscription } from "@/lib/checkSubscription";
 import { rateLimit } from "@/lib/rateLimit";
+import { getEffectiveDealerId } from "@/lib/impersonation";
 
 function isValidUrl(url: string): boolean {
   try {
@@ -20,13 +21,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const isSubscribed = await checkSubscription(session.user.id);
+  const dealerId = await getEffectiveDealerId();
+  if (!dealerId) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const isSubscribed = await checkSubscription(dealerId);
   if (!isSubscribed) {
     return NextResponse.json({ error: "subscription_required" }, { status: 403 });
   }
 
   const dealer = await prisma.dealer.findUnique({
-    where: { id: session.user.id },
+    where: { id: dealerId },
     select: { vertical: true },
   });
 
@@ -37,7 +43,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const rl = rateLimit(`scrape-listing:${session.user.id}`, 10, 60_000);
+  const rl = rateLimit(`scrape-listing:${dealerId}`, 10, 60_000);
   if (!rl.allowed) {
     return NextResponse.json({ error: "rate_limited", retryAfterMs: rl.retryAfterMs }, { status: 429 });
   }
@@ -58,7 +64,7 @@ export async function POST(request: NextRequest) {
   // Create a stub listing row with pending status in data
   const listing = await prisma.listing.create({
     data: {
-      dealerId: session.user.id,
+      dealerId,
       vertical: "ecommerce",
       title: url,
       url,
@@ -76,7 +82,7 @@ export async function POST(request: NextRequest) {
       "Content-Type": "application/json",
       "x-sync-secret": process.env.SYNC_SECRET ?? "",
     },
-    body: JSON.stringify({ listingId: listing.id, url, dealerId: session.user.id }),
+    body: JSON.stringify({ listingId: listing.id, url, dealerId }),
   }).catch((err) => {
     console.error({
       event: "listing_scrape_dispatch_error",

@@ -22,7 +22,7 @@ export function ImpersonateButton({ dealerId, className }: { dealerId: string; c
       }
 
       const { token } = await res.json();
-      window.location.href = `/dashboard?impersonate=${token}`;
+      window.location.href = `/api/admin/impersonate/activate?token=${encodeURIComponent(token)}`;
     } catch {
       alert("Network error");
       setLoading(false);
