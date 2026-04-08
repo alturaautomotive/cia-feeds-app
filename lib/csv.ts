@@ -27,7 +27,7 @@ export const SERVICES_CSV_HEADERS = [
 
 export const ECOMMERCE_CSV_HEADERS = [
   "id", "title", "description", "price", "brand", "condition", "availability",
-  "retailer_id", "url", "image_url", "google_product_category",
+  "retailer_id", "link", "image_link", "google_product_category",
 ];
 
 export const REALESTATE_CSV_HEADERS = [
@@ -55,6 +55,8 @@ export function mapListingToRow(listing: {
     price: listing.price != null ? String(listing.price) : (d.price ? String(d.price) : ""),
     url: listing.url || d.url || "",
     image_url: listing.imageUrls[0] ?? "",
+    link: listing.url || d.link || "",
+    image_link: listing.imageUrls[0] ?? "",
   };
 }
 

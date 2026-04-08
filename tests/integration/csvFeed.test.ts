@@ -5,6 +5,7 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     dealer: { findUnique: vi.fn() },
     vehicle: { findMany: vi.fn() },
+    listing: { findMany: vi.fn() },
   },
 }));
 
@@ -16,6 +17,7 @@ const dealer = {
   id: "dealer-int-uuid",
   name: "Integration Dealer",
   slug: "int-dealer",
+  vertical: "automotive",
 };
 
 function makeVehicle(overrides: Partial<{
@@ -257,6 +259,98 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     const lines2 = text2.split("\r\n").filter(Boolean);
 
     expect(lines2[1]).toContain("https://old.com/fallback.jpg");
+  });
+
+  // ── Ecommerce vertical CSV contract ──────────────────────────────────────
+
+  it("ecommerce feed has correct CSV header row with link and image_link columns", async () => {
+    const ecomDealer = { id: "dealer-ecom-uuid", name: "Ecom Dealer", slug: "ecom-dealer", vertical: "ecommerce" };
+    vi.mocked(prisma.dealer.findUnique).mockResolvedValue(ecomDealer as never);
+    vi.mocked(prisma.listing.findMany).mockResolvedValue([] as never);
+
+    const req = new Request("http://localhost:3000/feeds/ecom-dealer.csv");
+    const res = await GET(req, { params: Promise.resolve({ slug: "ecom-dealer.csv" }) });
+
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    const lines = text.split("\r\n").filter(Boolean);
+
+    expect(lines[0]).toBe(
+      "id,title,description,price,brand,condition,availability,retailer_id,link,image_link,google_product_category"
+    );
+  });
+
+  it("ecommerce feed maps link from listing.url and image_link from listing.imageUrls[0]", async () => {
+    const ecomDealer = { id: "dealer-ecom-uuid", name: "Ecom Dealer", slug: "ecom-dealer", vertical: "ecommerce" };
+    vi.mocked(prisma.dealer.findUnique).mockResolvedValue(ecomDealer as never);
+    vi.mocked(prisma.listing.findMany).mockResolvedValue([
+      {
+        id: "listing-1",
+        dealerId: ecomDealer.id,
+        vertical: "ecommerce",
+        title: "Widget Pro",
+        price: 4999,
+        url: "https://shop.example.com/widget-pro",
+        imageUrls: ["https://cdn.example.com/widget.jpg", "https://cdn.example.com/widget2.jpg"],
+        data: { brand: "Acme", condition: "new", availability: "in stock", google_product_category: "Electronics" },
+        archivedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ] as never);
+
+    const req = new Request("http://localhost:3000/feeds/ecom-dealer.csv");
+    const res = await GET(req, { params: Promise.resolve({ slug: "ecom-dealer.csv" }) });
+
+    const text = await res.text();
+    const lines = text.split("\r\n").filter(Boolean);
+
+    // Header is correct
+    expect(lines[0]).toBe(
+      "id,title,description,price,brand,condition,availability,retailer_id,link,image_link,google_product_category"
+    );
+
+    // Data row: parse CSV columns by splitting (no commas in test data values)
+    const cols = lines[1].split(",");
+    expect(cols[0]).toBe("listing-1");                            // id
+    expect(cols[1]).toBe("Widget Pro");                            // title
+    expect(cols[3]).toBe("4999");                                  // price
+    expect(cols[4]).toBe("Acme");                                  // brand
+    expect(cols[5]).toBe("new");                                   // condition
+    expect(cols[6]).toBe("in stock");                              // availability
+    expect(cols[8]).toBe("https://shop.example.com/widget-pro");   // link (from listing.url)
+    expect(cols[9]).toBe("https://cdn.example.com/widget.jpg");    // image_link (from listing.imageUrls[0])
+    expect(cols[10]).toBe("Electronics");                          // google_product_category
+  });
+
+  it("ecommerce feed falls back link to data.link when listing.url is null", async () => {
+    const ecomDealer = { id: "dealer-ecom-uuid", name: "Ecom Dealer", slug: "ecom-dealer", vertical: "ecommerce" };
+    vi.mocked(prisma.dealer.findUnique).mockResolvedValue(ecomDealer as never);
+    vi.mocked(prisma.listing.findMany).mockResolvedValue([
+      {
+        id: "listing-fallback",
+        dealerId: ecomDealer.id,
+        vertical: "ecommerce",
+        title: "Fallback Item",
+        price: 1000,
+        url: null,
+        imageUrls: [],
+        data: { link: "https://fallback.example.com/item", brand: "Generic" },
+        archivedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ] as never);
+
+    const req = new Request("http://localhost:3000/feeds/ecom-dealer.csv");
+    const res = await GET(req, { params: Promise.resolve({ slug: "ecom-dealer.csv" }) });
+
+    const text = await res.text();
+    const lines = text.split("\r\n").filter(Boolean);
+    const cols = lines[1].split(",");
+
+    expect(cols[8]).toBe("https://fallback.example.com/item"); // link falls back to data.link
+    expect(cols[9]).toBe("");                                   // image_link empty when imageUrls is empty
   });
 
   it("pagination: >100 vehicles yields all rows", async () => {
