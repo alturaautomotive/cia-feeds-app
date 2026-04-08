@@ -92,6 +92,21 @@ export async function POST(request: NextRequest) {
     });
   });
 
+  // Mark CrawlSnapshot as added to feed (if it exists) — best-effort but awaited
+  try {
+    await prisma.crawlSnapshot.updateMany({
+      where: { dealerId, url },
+      data: { addedToFeed: true },
+    });
+  } catch (err: unknown) {
+    console.error({
+      event: "snapshot_mark_feed_error",
+      dealerId,
+      url,
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+
   return NextResponse.json(
     { listing: { id: listing.id, scrapeStatus: "pending", url } },
     { status: 202 }

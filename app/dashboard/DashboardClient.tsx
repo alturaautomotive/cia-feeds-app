@@ -315,12 +315,22 @@ export function DashboardClient({
           <h1 className="text-2xl font-bold text-gray-900">
             {VERTICAL_PAGE_TITLES[vertical] ?? "Your Listings"}
           </h1>
-          <Link
-            href="/dashboard/feed"
-            className="text-sm text-indigo-600 hover:text-indigo-500"
-          >
-            View Feed URL
-          </Link>
+          <div className="flex items-center gap-4">
+            {(vertical === "automotive" || vertical === "ecommerce") && (
+              <Link
+                href="/dashboard/crawl"
+                className="text-sm text-indigo-600 hover:text-indigo-500"
+              >
+                Crawl Website
+              </Link>
+            )}
+            <Link
+              href="/dashboard/feed"
+              className="text-sm text-indigo-600 hover:text-indigo-500"
+            >
+              View Feed URL
+            </Link>
+          </div>
         </div>
 
         {/* Add form — vertical-aware */}

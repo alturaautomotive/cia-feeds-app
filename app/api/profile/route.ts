@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { checkSubscription } from "@/lib/checkSubscription";
 import { getEffectiveDealerContext } from "@/lib/impersonation";
@@ -14,6 +12,7 @@ const SAFE_SELECT = {
   slug: true,
   profileImageUrl: true,
   vertical: true,
+  websiteUrl: true,
 } as const;
 
 export async function GET() {
@@ -35,12 +34,12 @@ export async function GET() {
 }
 
 export async function PATCH(request: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const { effectiveDealerId } = await getEffectiveDealerContext();
+  if (!effectiveDealerId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const isSubscribed = await checkSubscription(session.user.id);
+  const isSubscribed = await checkSubscription(effectiveDealerId);
   if (!isSubscribed) {
     return NextResponse.json({ error: "subscription_required" }, { status: 403 });
   }
@@ -57,8 +56,31 @@ export async function PATCH(request: NextRequest) {
   // Handle profile image removal
   if ("profileImageUrl" in b && b.profileImageUrl === null) {
     await prisma.dealer.update({
-      where: { id: session.user.id },
+      where: { id: effectiveDealerId },
       data: { profileImageUrl: null },
+    });
+  }
+
+  // Handle websiteUrl update
+  if ("websiteUrl" in b) {
+    const websiteUrl = b.websiteUrl;
+    if (websiteUrl !== null && typeof websiteUrl !== "string") {
+      return NextResponse.json({ error: "invalid_websiteUrl" }, { status: 400 });
+    }
+    const urlToSave = typeof websiteUrl === "string" && websiteUrl.trim() ? websiteUrl.trim() : null;
+    if (urlToSave) {
+      try {
+        const parsed = new URL(urlToSave);
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+          return NextResponse.json({ error: "invalid_websiteUrl" }, { status: 400 });
+        }
+      } catch {
+        return NextResponse.json({ error: "invalid_websiteUrl" }, { status: 400 });
+      }
+    }
+    await prisma.dealer.update({
+      where: { id: effectiveDealerId },
+      data: { websiteUrl: urlToSave },
     });
   }
 
@@ -71,7 +93,7 @@ export async function PATCH(request: NextRequest) {
     const newVertical = b.vertical;
 
     const dealer = await prisma.dealer.findUnique({
-      where: { id: session.user.id },
+      where: { id: effectiveDealerId },
       select: { vertical: true },
     });
 
@@ -90,13 +112,13 @@ export async function PATCH(request: NextRequest) {
         // Archive current inventory for the old vertical
         if (oldVertical === "automotive") {
           await tx.vehicle.updateMany({
-            where: { dealerId: session.user!.id!, archivedAt: null },
+            where: { dealerId: effectiveDealerId, archivedAt: null },
             data: { archivedAt: now },
           });
         } else {
           await tx.listing.updateMany({
             where: {
-              dealerId: session.user!.id!,
+              dealerId: effectiveDealerId,
               vertical: oldVertical,
               archivedAt: null,
             },
@@ -107,13 +129,13 @@ export async function PATCH(request: NextRequest) {
         // Restore any previously archived inventory for the new vertical
         if (newVertical === "automotive") {
           await tx.vehicle.updateMany({
-            where: { dealerId: session.user!.id!, archivedAt: { not: null } },
+            where: { dealerId: effectiveDealerId, archivedAt: { not: null } },
             data: { archivedAt: null },
           });
         } else {
           await tx.listing.updateMany({
             where: {
-              dealerId: session.user!.id!,
+              dealerId: effectiveDealerId,
               vertical: newVertical,
               archivedAt: { not: null },
             },
@@ -123,7 +145,7 @@ export async function PATCH(request: NextRequest) {
 
         // Update dealer vertical
         updatedDealer = await tx.dealer.update({
-          where: { id: session.user!.id! },
+          where: { id: effectiveDealerId },
           data: { vertical: newVertical },
           select: { id: true, name: true, email: true, slug: true, profileImageUrl: true, vertical: true },
         });
@@ -134,8 +156,8 @@ export async function PATCH(request: NextRequest) {
   }
 
   const currentDealer = await prisma.dealer.findUnique({
-    where: { id: session.user.id },
-    select: { id: true, name: true, email: true, slug: true, profileImageUrl: true, vertical: true },
+    where: { id: effectiveDealerId },
+    select: { id: true, name: true, email: true, slug: true, profileImageUrl: true, vertical: true, websiteUrl: true },
   });
   return NextResponse.json({ ok: true, dealer: currentDealer });
 }

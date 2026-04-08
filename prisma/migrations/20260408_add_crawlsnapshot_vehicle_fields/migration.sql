@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE "CrawlSnapshot" ADD COLUMN "make" TEXT,
+ADD COLUMN "model" TEXT,
+ADD COLUMN "year" INTEGER,
+ADD COLUMN "price" DOUBLE PRECISION;

@@ -13,9 +13,10 @@ const VERTICALS = [
 interface Props {
   profileImageUrl: string | null;
   currentVertical: string;
+  websiteUrl: string | null;
 }
 
-export default function ProfileClient({ profileImageUrl: initialPhotoUrl, currentVertical: initialVertical }: Props) {
+export default function ProfileClient({ profileImageUrl: initialPhotoUrl, currentVertical: initialVertical, websiteUrl: initialWebsiteUrl }: Props) {
   const [photoUrl, setPhotoUrl] = useState<string | null>(initialPhotoUrl);
   const [vertical, setVertical] = useState(initialVertical);
   const [uploading, setUploading] = useState(false);
@@ -25,6 +26,12 @@ export default function ProfileClient({ profileImageUrl: initialPhotoUrl, curren
 
   const [switchTarget, setSwitchTarget] = useState<string | null>(null);
   const [switching, setSwitching] = useState(false);
+
+  const [siteUrl, setSiteUrl] = useState(initialWebsiteUrl ?? "");
+  const [savingSiteUrl, setSavingSiteUrl] = useState(false);
+  const [siteUrlSaved, setSiteUrlSaved] = useState(false);
+
+  const showWebsiteUrl = vertical === "automotive" || vertical === "ecommerce";
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -180,6 +187,63 @@ export default function ProfileClient({ profileImageUrl: initialPhotoUrl, curren
             Best results: standing pose, plain background, good lighting. Max 5 MB.
           </p>
         </div>
+
+        {/* Website URL — only for automotive/ecommerce */}
+        {showWebsiteUrl && (
+          <div className="bg-white rounded-lg shadow-sm p-6 mb-4">
+            <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
+              Website URL
+            </h2>
+            <p className="text-xs text-gray-400 mb-4">
+              Your website URL is used to crawl and discover inventory listings.
+            </p>
+            <div className="flex gap-2.5">
+              <input
+                data-element-id="website-url-input"
+                type="url"
+                className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                placeholder="https://yourwebsite.com"
+                value={siteUrl}
+                onChange={(e) => {
+                  setSiteUrl(e.target.value);
+                  setSiteUrlSaved(false);
+                }}
+              />
+              <button
+                type="button"
+                disabled={savingSiteUrl}
+                onClick={async () => {
+                  setSavingSiteUrl(true);
+                  setError(null);
+                  setSiteUrlSaved(false);
+                  try {
+                    const res = await fetch("/api/profile", {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ websiteUrl: siteUrl.trim() || null }),
+                    });
+                    if (!res.ok) {
+                      const data = await res.json().catch(() => ({}));
+                      setError(data.error || "Failed to save website URL.");
+                      return;
+                    }
+                    setSiteUrlSaved(true);
+                  } catch {
+                    setError("Network error. Please try again.");
+                  } finally {
+                    setSavingSiteUrl(false);
+                  }
+                }}
+                className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {savingSiteUrl ? "Saving\u2026" : "Save"}
+              </button>
+            </div>
+            {siteUrlSaved && (
+              <p className="text-xs text-green-600 mt-2">Website URL saved.</p>
+            )}
+          </div>
+        )}
 
         {/* Business Vertical */}
         <div className="bg-white rounded-lg shadow-sm p-6">

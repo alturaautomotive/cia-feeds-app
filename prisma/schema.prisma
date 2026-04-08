@@ -24,8 +24,11 @@ model Dealer {
   subscriptionStatus   String?
   createdAt            DateTime  @default(now())
   profileImageUrl      String?
+  websiteUrl           String?
   vehicles             Vehicle[]
   listings             Listing[]
+  crawlJobs            CrawlJob[]
+  crawlSnapshots       CrawlSnapshot[]
 }
 
 model Vehicle {
@@ -76,6 +79,40 @@ model Listing {
 
   @@index([dealerId, vertical])
   @@index([dealerId, archivedAt])
+}
+
+model CrawlJob {
+  id          String         @id @default(uuid())
+  dealerId    String
+  dealer      Dealer         @relation(fields: [dealerId], references: [id])
+  status      String         @default("pending") // pending | running | complete | failed
+  startedAt   DateTime       @default(now())
+  completedAt DateTime?
+  urlsFound   Int            @default(0)
+  snapshots   CrawlSnapshot[]
+
+  @@index([dealerId])
+}
+
+model CrawlSnapshot {
+  id          String   @id @default(uuid())
+  crawlJobId  String
+  crawlJob    CrawlJob @relation(fields: [crawlJobId], references: [id])
+  dealerId    String
+  dealer      Dealer   @relation(fields: [dealerId], references: [id])
+  url         String
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+  weeksActive Int      @default(1)
+  addedToFeed Boolean  @default(false)
+  make        String?
+  model       String?
+  year        Int?
+  price       Float?
+
+  @@unique([dealerId, url])
+  @@index([dealerId])
+  @@index([crawlJobId])
 }
 
 model PasswordResetToken {
