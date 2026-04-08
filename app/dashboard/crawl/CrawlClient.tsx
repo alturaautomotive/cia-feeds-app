@@ -14,6 +14,8 @@ interface Snapshot {
   model: string | null;
   year: number | null;
   price: number | null;
+  title: string | null;
+  thumbnailUrl: string | null;
 }
 
 interface Props {
@@ -66,13 +68,14 @@ function formatPrice(price: number | null): string {
   return `$${price.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 }
 
-function formatMakeModelYear(make: string | null, model: string | null, year: number | null): string {
-  if (!make && !model && !year) return "\u2014";
-  const parts: string[] = [];
-  if (year) parts.push(String(year));
-  if (make) parts.push(make);
-  if (model) parts.push(model);
-  return parts.join(" ") || "\u2014";
+function urlSlug(url: string): string {
+  try {
+    const path = new URL(url).pathname;
+    const last = path.split("/").filter(Boolean).pop() ?? "";
+    return decodeURIComponent(last).replace(/[-_]+/g, " ");
+  } catch {
+    return url;
+  }
 }
 
 function delay(ms: number) {
@@ -127,7 +130,7 @@ export function CrawlClient({
     return snapshots.filter((s) => {
       if (search) {
         const q = search.toLowerCase();
-        const searchable = [s.url, s.make, s.model, s.year?.toString()].filter(Boolean).join(" ").toLowerCase();
+        const searchable = [s.url, s.title, s.make, s.model, s.year?.toString()].filter(Boolean).join(" ").toLowerCase();
         if (!searchable.includes(q)) return false;
       }
       if (ageFilter === "new") {
@@ -412,7 +415,7 @@ export function CrawlClient({
                 data-element-id="search-filter"
                 type="text"
                 className="border border-gray-300 rounded-md px-2.5 py-1.5 text-[13px] w-[220px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                placeholder="Search URL, make, model..."
+                placeholder="Search title, URL, make, model..."
                 value={search}
                 onChange={(e) => {
                   setSearch(e.target.value);
@@ -558,10 +561,7 @@ export function CrawlClient({
                       />
                     </th>
                     <th className="text-left px-3 py-2.5 text-[11px] uppercase tracking-wider text-gray-500 font-semibold">
-                      URL
-                    </th>
-                    <th className="text-left px-3 py-2.5 text-[11px] uppercase tracking-wider text-gray-500 font-semibold">
-                      Make / Model / Year
+                      Listing
                     </th>
                     <th className="text-left px-3 py-2.5 text-[11px] uppercase tracking-wider text-gray-500 font-semibold">
                       Price
@@ -591,19 +591,36 @@ export function CrawlClient({
                           onChange={() => toggleSelection(snap.id)}
                         />
                       </td>
-                      <td className="px-3 py-2.5 max-w-[320px]">
-                        <a
-                          href={snap.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-indigo-500 text-[12px] hover:underline truncate block"
-                          title={snap.url}
-                        >
-                          {snap.url}
-                        </a>
-                      </td>
-                      <td className="px-3 py-2.5 text-[13px] text-gray-600 whitespace-nowrap">
-                        {formatMakeModelYear(snap.make, snap.model, snap.year)}
+                      <td className="px-3 py-2.5 max-w-[360px]">
+                        <div className="flex items-center gap-2.5">
+                          {snap.thumbnailUrl ? (
+                            <img
+                              src={snap.thumbnailUrl}
+                              alt=""
+                              className="w-14 h-[42px] rounded-md object-cover flex-shrink-0 bg-gray-200"
+                            />
+                          ) : (
+                            <div className="w-14 h-[42px] rounded-md bg-gray-200 flex items-center justify-center text-gray-400 text-lg flex-shrink-0">
+                              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 18.75a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 0 1-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 0 0-3.213-9.193 2.056 2.056 0 0 0-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 0 0-10.026 0 1.106 1.106 0 0 0-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12" />
+                              </svg>
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <div className="text-[13px] font-semibold text-gray-900 truncate max-w-[280px]" title={snap.title ?? snap.url}>
+                              {snap.title || urlSlug(snap.url)}
+                            </div>
+                            <a
+                              href={snap.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-indigo-500 text-[11px] hover:underline truncate block max-w-[280px]"
+                              title={snap.url}
+                            >
+                              {snap.url.replace(/^https?:\/\//, "")}
+                            </a>
+                          </div>
+                        </div>
                       </td>
                       <td className="px-3 py-2.5 text-[13px] text-gray-600 whitespace-nowrap">
                         {formatPrice(snap.price)}
@@ -630,7 +647,7 @@ export function CrawlClient({
                   {paged.length === 0 && (
                     <tr>
                       <td
-                        colSpan={7}
+                        colSpan={6}
                         className="px-3 py-8 text-center text-sm text-gray-400"
                       >
                         No results match your filters.

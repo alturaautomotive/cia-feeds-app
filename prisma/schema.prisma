@@ -105,10 +105,12 @@ model CrawlSnapshot {
   lastSeenAt  DateTime @default(now())
   weeksActive Int      @default(1)
   addedToFeed Boolean  @default(false)
-  make        String?
-  model       String?
-  year        Int?
-  price       Float?
+  make          String?
+  model         String?
+  year          Int?
+  price         Float?
+  title         String?
+  thumbnailUrl  String?
 
   @@unique([dealerId, url])
   @@index([dealerId])

@@ -51,6 +51,8 @@ export default async function CrawlPage() {
       model: true,
       year: true,
       price: true,
+      title: true,
+      thumbnailUrl: true,
     },
   });
 

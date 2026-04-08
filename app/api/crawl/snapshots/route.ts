@@ -22,6 +22,12 @@ export async function GET() {
       lastSeenAt: true,
       weeksActive: true,
       addedToFeed: true,
+      make: true,
+      model: true,
+      year: true,
+      price: true,
+      title: true,
+      thumbnailUrl: true,
     },
   });
 
