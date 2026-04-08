@@ -140,16 +140,19 @@ export function ListingsTable({ listings, vertical, onDelete }: Props) {
                     )}
                   </td>
                   <td className="px-4 py-3 flex items-center gap-2">
-                    {listing.url && (
-                      <a
-                        href={normalizeUrl(listing.url) ?? ""}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-indigo-600 hover:text-indigo-800"
-                      >
-                        Book
-                      </a>
-                    )}
+                    {(() => {
+                      const normalizedUrl = normalizeUrl(listing.url);
+                      return normalizedUrl ? (
+                        <a
+                          href={normalizedUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-indigo-600 hover:text-indigo-800"
+                        >
+                          Book
+                        </a>
+                      ) : null;
+                    })()}
                     <button
                       type="button"
                       onClick={() => handleDelete(listing.id)}
@@ -202,16 +205,19 @@ export function ListingsTable({ listings, vertical, onDelete }: Props) {
                     )}
                   </td>
                   <td className="px-4 py-3 flex items-center gap-2">
-                    {listing.url && (
-                      <a
-                        href={normalizeUrl(listing.url) ?? ""}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-indigo-600 hover:text-indigo-800"
-                      >
-                        View
-                      </a>
-                    )}
+                    {(() => {
+                      const normalizedUrl = normalizeUrl(listing.url);
+                      return normalizedUrl ? (
+                        <a
+                          href={normalizedUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-indigo-600 hover:text-indigo-800"
+                        >
+                          View
+                        </a>
+                      ) : null;
+                    })()}
                     <button
                       type="button"
                       onClick={() => handleDelete(listing.id)}
@@ -264,16 +270,19 @@ export function ListingsTable({ listings, vertical, onDelete }: Props) {
                     )}
                   </td>
                   <td className="px-4 py-3 flex items-center gap-2">
-                    {listing.url && (
-                      <a
-                        href={normalizeUrl(listing.url) ?? ""}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-indigo-600 hover:text-indigo-800"
-                      >
-                        View
-                      </a>
-                    )}
+                    {(() => {
+                      const normalizedUrl = normalizeUrl(listing.url);
+                      return normalizedUrl ? (
+                        <a
+                          href={normalizedUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-indigo-600 hover:text-indigo-800"
+                        >
+                          View
+                        </a>
+                      ) : null;
+                    })()}
                     <button
                       type="button"
                       onClick={() => handleDelete(listing.id)}
