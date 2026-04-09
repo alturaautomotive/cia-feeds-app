@@ -553,7 +553,7 @@ export default function VehicleEditForm({ vehicle: initialVehicle, dealerProfile
                 className={`border rounded-md px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
                   isMissing("url")
                     ? "border-red-400 bg-red-50"
-                    : "border-gray-300"
+                    : "border-gray-400 bg-white"
                 }`}
               />
             </div>
@@ -571,7 +571,7 @@ export default function VehicleEditForm({ vehicle: initialVehicle, dealerProfile
                   className={`border rounded-md px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
                     isMissing("year")
                       ? "border-red-400 bg-red-50"
-                      : "border-gray-300"
+                      : "border-gray-400 bg-white"
                   }`}
                 />
               </div>
@@ -588,7 +588,7 @@ export default function VehicleEditForm({ vehicle: initialVehicle, dealerProfile
                   className={`border rounded-md px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
                     isMissing("make")
                       ? "border-red-400 bg-red-50"
-                      : "border-gray-300"
+                      : "border-gray-400 bg-white"
                   }`}
                 />
               </div>
@@ -605,7 +605,7 @@ export default function VehicleEditForm({ vehicle: initialVehicle, dealerProfile
                   className={`border rounded-md px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
                     isMissing("model")
                       ? "border-red-400 bg-red-50"
-                      : "border-gray-300"
+                      : "border-gray-400 bg-white"
                   }`}
                 />
               </div>
@@ -619,7 +619,7 @@ export default function VehicleEditForm({ vehicle: initialVehicle, dealerProfile
                   value={formData.bodyStyle}
                   onChange={(e) => handleChange("bodyStyle", e.target.value)}
                   placeholder="e.g. SUV"
-                  className="border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="border border-gray-400 bg-white rounded-md px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
 
@@ -632,7 +632,7 @@ export default function VehicleEditForm({ vehicle: initialVehicle, dealerProfile
                   value={formData.vin}
                   onChange={(e) => handleChange("vin", e.target.value)}
                   placeholder="17-character VIN"
-                  className="border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="border border-gray-400 bg-white rounded-md px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
 
@@ -648,7 +648,7 @@ export default function VehicleEditForm({ vehicle: initialVehicle, dealerProfile
                   className={`border rounded-md px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
                     isMissing("state_of_vehicle")
                       ? "border-red-400 bg-red-50"
-                      : "border-gray-300"
+                      : "border-gray-400 bg-white"
                   }`}
                 >
                   <option value="New">New</option>
@@ -670,7 +670,7 @@ export default function VehicleEditForm({ vehicle: initialVehicle, dealerProfile
                   className={`border rounded-md px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
                     isMissing("price")
                       ? "border-red-400 bg-red-50"
-                      : "border-gray-300"
+                      : "border-gray-400 bg-white"
                   }`}
                 />
               </div>
@@ -688,7 +688,7 @@ export default function VehicleEditForm({ vehicle: initialVehicle, dealerProfile
                   className={`border rounded-md px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
                     isMissing("mileageValue")
                       ? "border-red-400 bg-red-50"
-                      : "border-gray-300"
+                      : "border-gray-400 bg-white"
                   }`}
                 />
               </div>
@@ -708,7 +708,7 @@ export default function VehicleEditForm({ vehicle: initialVehicle, dealerProfile
                   className={`border rounded-md px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
                     isMissing("exteriorColor")
                       ? "border-red-400 bg-red-50"
-                      : "border-gray-300"
+                      : "border-gray-400 bg-white"
                   }`}
                 />
               </div>
@@ -721,7 +721,7 @@ export default function VehicleEditForm({ vehicle: initialVehicle, dealerProfile
                   value={formData.description}
                   onChange={(e) => handleChange("description", e.target.value)}
                   rows={3}
-                  className="border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 resize-vertical focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="border border-gray-400 bg-white rounded-md px-3 py-2 text-sm text-gray-900 resize-vertical focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
             </div>
@@ -778,7 +778,7 @@ export default function VehicleEditForm({ vehicle: initialVehicle, dealerProfile
                   setImageUrlError(null);
                 }}
                 placeholder="Paste image URL…"
-                className={`flex-1 border rounded-md px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${imageUrlError ? "border-red-400" : "border-gray-300"}`}
+                className={`flex-1 border rounded-md px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${imageUrlError ? "border-red-400" : "border-gray-400 bg-white"}`}
               />
               <button
                 type="button"
@@ -895,7 +895,7 @@ export default function VehicleEditForm({ vehicle: initialVehicle, dealerProfile
                         onChange={(e) => setSignMessage(e.target.value)}
                         maxLength={100}
                         placeholder="e.g. I&apos;m willing to lose money on this one!"
-                        className="border border-gray-300 rounded-md px-3 py-2 text-sm w-full text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="border border-gray-400 bg-white rounded-md px-3 py-2 text-sm w-full text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       />
                       <p className="text-xs text-gray-400 mt-1">
                         Leave blank and the manager will give a thumbs up with no sign text.

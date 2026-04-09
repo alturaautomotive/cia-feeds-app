@@ -15,7 +15,7 @@ export function AddVehicleForm({ url, onChange, onSubmit, isLoading }: Props) {
         onChange={(e) => onChange(e.target.value)}
         placeholder="Paste VDP URL to add a vehicle…"
         disabled={isLoading}
-        className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:opacity-50"
+        className="flex-1 border border-gray-400 bg-white rounded-md px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:opacity-50"
       />
       <button
         data-element-id="add-vehicle-btn"

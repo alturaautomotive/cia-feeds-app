@@ -201,7 +201,7 @@ export default function ProfileClient({ profileImageUrl: initialPhotoUrl, curren
               <input
                 data-element-id="website-url-input"
                 type="url"
-                className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                className="flex-1 border border-gray-400 bg-white rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 placeholder="https://yourwebsite.com"
                 value={siteUrl}
                 onChange={(e) => {
