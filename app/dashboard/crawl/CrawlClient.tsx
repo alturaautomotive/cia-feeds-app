@@ -135,6 +135,8 @@ export function CrawlClient({
   const [crawlPhase, setCrawlPhase] = useState<"mapping" | "enriching" | "complete" | null>(null);
   const [crawlProgress, setCrawlProgress] = useState<{ found: number; enriched: number } | null>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastEnrichedRef = useRef<number>(-1);
+  const stalledPollCount = useRef<number>(0);
 
   const isAutomotive = vertical === "automotive";
   const quotaReached = crawlsUsed >= crawlLimitPerMonth;
@@ -248,6 +250,7 @@ export function CrawlClient({
           setCrawlProgress({ found: data.urlsFound, enriched: data.urlsEnriched });
           setCrawlPhase(data.phase);
 
+          // Handle terminal statuses first, before stall detection
           if (data.status === "complete") {
             stopPolling();
             setSnapshots(data.snapshots ?? []);
@@ -259,10 +262,45 @@ export function CrawlClient({
             setPage(0);
             setCrawling(false);
             setCrawlPhase("complete");
+            return;
           } else if (data.status === "failed") {
             stopPolling();
             setCrawlError("Crawl failed. Please try again.");
             setCrawling(false);
+            return;
+          }
+
+          // Client-side stall detection: only track during active enriching phase
+          const isEnriching = data.status !== "failed" && data.status !== "complete" && data.phase === "enriching";
+          if (isEnriching) {
+            if (data.urlsEnriched === lastEnrichedRef.current) {
+              stalledPollCount.current += 1;
+            } else {
+              stalledPollCount.current = 0;
+              lastEnrichedRef.current = data.urlsEnriched;
+            }
+
+            if (stalledPollCount.current >= 5 && data.urlsEnriched > 0) {
+              stopPolling();
+              try {
+                const snapRes = await fetch("/api/crawl/snapshots");
+                if (snapRes.ok) {
+                  const snapData = await snapRes.json();
+                  setSnapshots(snapData.snapshots ?? []);
+                }
+              } catch { /* ignore snapshot fetch error */ }
+              setLastCrawlInfo({
+                completedAt: new Date().toISOString(),
+                urlsFound: data.urlsFound ?? 0,
+              });
+              setSelectedIds(new Set());
+              setPage(0);
+              setCrawling(false);
+              setCrawlPhase("complete");
+              return;
+            }
+          } else {
+            stalledPollCount.current = 0;
           }
         } catch {
           // Network error — retry up to 5 times
@@ -327,6 +365,10 @@ export function CrawlClient({
       if (data.quota?.used != null) {
         setCrawlsUsed(data.quota.used);
       }
+
+      // Reset stall-detection refs before polling
+      lastEnrichedRef.current = -1;
+      stalledPollCount.current = 0;
 
       // Start polling for enrichment progress
       startPolling(data.crawlJobId);

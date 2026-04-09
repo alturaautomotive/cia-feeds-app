@@ -41,6 +41,24 @@ export async function GET(
     }),
   ]);
 
+  // Stall detection: if enriching has stalled for over 5 minutes, force-complete
+  const STALL_TIMEOUT_MS = 5 * 60 * 1000;
+  const jobAge = Date.now() - new Date(job.startedAt).getTime();
+  const isStalled =
+    (job.status === "mapping_complete" || job.status === "running") &&
+    job.phase === "enriching" &&
+    jobAge > STALL_TIMEOUT_MS &&
+    urlsEnriched > 0;
+
+  if (isStalled) {
+    await prisma.crawlJob.update({
+      where: { id: jobId },
+      data: { status: "complete", phase: "complete", completedAt: new Date() },
+    });
+    job.status = "complete";
+    job.phase = "complete";
+  }
+
   // Auto-complete logic: if enrichment count has caught up but status wasn't set yet
   if (
     urlsEnriched >= urlsFound &&
