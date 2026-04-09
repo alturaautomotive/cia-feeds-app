@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
 
 interface Snapshot {
@@ -130,6 +130,12 @@ export function CrawlClient({
   const [addProgress, setAddProgress] = useState<{ done: number; total: number } | null>(null);
   const [addResult, setAddResult] = useState<{ count: number; errors: number; queued: boolean } | null>(null);
 
+  // Crawl progress polling state
+  const [crawlJobId, setCrawlJobId] = useState<string | null>(null);
+  const [crawlPhase, setCrawlPhase] = useState<"mapping" | "enriching" | "complete" | null>(null);
+  const [crawlProgress, setCrawlProgress] = useState<{ found: number; enriched: number } | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const isAutomotive = vertical === "automotive";
   const quotaReached = crawlsUsed >= crawlLimitPerMonth;
 
@@ -198,11 +204,93 @@ export function CrawlClient({
     }
   }
 
+  const stopPolling = useCallback(() => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+  }, []);
+
+  const pollFailCount = useRef(0);
+
+  const startPolling = useCallback(
+    (jobId: string) => {
+      stopPolling();
+      pollFailCount.current = 0;
+      pollingRef.current = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/crawl/status/${jobId}`);
+          if (!res.ok) {
+            if (res.status >= 400 && res.status < 500) {
+              // Terminal client error — stop polling and surface error
+              stopPolling();
+              const errMsg = res.status === 401
+                ? "Session expired. Please refresh the page and try again."
+                : res.status === 404
+                  ? "Crawl job not found."
+                  : "Crawl status check failed. Please try again.";
+              setCrawlError(errMsg);
+              setCrawling(false);
+              return;
+            }
+            // Transient 5xx — retry up to 5 times
+            pollFailCount.current += 1;
+            if (pollFailCount.current >= 5) {
+              stopPolling();
+              setCrawlError("Lost connection to crawl status. Please try again.");
+              setCrawling(false);
+            }
+            return;
+          }
+          pollFailCount.current = 0;
+          const data = await res.json();
+
+          setCrawlProgress({ found: data.urlsFound, enriched: data.urlsEnriched });
+          setCrawlPhase(data.phase);
+
+          if (data.status === "complete") {
+            stopPolling();
+            setSnapshots(data.snapshots ?? []);
+            setLastCrawlInfo({
+              completedAt: new Date().toISOString(),
+              urlsFound: data.urlsFound ?? 0,
+            });
+            setSelectedIds(new Set());
+            setPage(0);
+            setCrawling(false);
+            setCrawlPhase("complete");
+          } else if (data.status === "failed") {
+            stopPolling();
+            setCrawlError("Crawl failed. Please try again.");
+            setCrawling(false);
+          }
+        } catch {
+          // Network error — retry up to 5 times
+          pollFailCount.current += 1;
+          if (pollFailCount.current >= 5) {
+            stopPolling();
+            setCrawlError("Lost connection to crawl status. Please try again.");
+            setCrawling(false);
+          }
+        }
+      }, 3000);
+    },
+    [stopPolling]
+  );
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => stopPolling();
+  }, [stopPolling]);
+
   async function handleCrawl() {
     if (quotaReached) return;
     setCrawling(true);
     setCrawlError(null);
     setAddResult(null);
+    setCrawlPhase("mapping");
+    setCrawlProgress(null);
+    setCrawlJobId(null);
 
     try {
       const res = await fetch("/api/crawl", {
@@ -215,34 +303,37 @@ export function CrawlClient({
       if (!res.ok) {
         if (data.error === "no_website_url") {
           setCrawlError("Please set your website URL in Profile settings before crawling.");
+          setCrawling(false);
+          setCrawlPhase(null);
           return;
         }
         if (data.error === "monthly_limit_reached") {
           setCrawlsUsed(data.used ?? crawlLimitPerMonth);
           setCrawlError(`Monthly crawl limit reached. Resets ${getResetDate()}.`);
+          setCrawling(false);
+          setCrawlPhase(null);
           return;
         }
         setCrawlError(data.error || "Crawl failed. Please try again.");
+        setCrawling(false);
+        setCrawlPhase(null);
         return;
       }
 
-      // Use snapshots from response (now includes full dealer set)
-      setSnapshots(data.snapshots ?? []);
+      // Mapping done — enrichment is running in the background
+      setCrawlJobId(data.crawlJobId);
+      setCrawlPhase("enriching");
+      setCrawlProgress({ found: data.urlsFound, enriched: 0 });
       if (data.quota?.used != null) {
         setCrawlsUsed(data.quota.used);
-      } else if (data.crawlsUsedThisMonth != null) {
-        setCrawlsUsed(data.crawlsUsedThisMonth);
       }
-      setLastCrawlInfo({
-        completedAt: new Date().toISOString(),
-        urlsFound: data.urlsFound ?? 0,
-      });
-      setSelectedIds(new Set());
-      setPage(0);
+
+      // Start polling for enrichment progress
+      startPolling(data.crawlJobId);
     } catch {
       setCrawlError("Network error. Please try again.");
-    } finally {
       setCrawling(false);
+      setCrawlPhase(null);
     }
   }
 
@@ -365,6 +456,7 @@ export function CrawlClient({
 
   // suppress unused vars from props that are kept for future use
   void isImpersonating;
+  void crawlJobId;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -485,6 +577,72 @@ export function CrawlClient({
             </button>
           </div>
         </div>
+
+        {/* Crawl progress card */}
+        {crawling && crawlPhase && (
+          <div className="bg-white border border-gray-200 rounded-xl p-7 mb-6">
+            {/* Bar 1 — URL discovery */}
+            <div className="mb-4">
+              <p className="text-sm font-semibold text-gray-900 mb-2">
+                {crawlPhase === "mapping"
+                  ? "Scanning your website for inventory pages..."
+                  : crawlPhase === "enriching"
+                  ? "Website scan complete"
+                  : "Done! Results are ready."}
+              </p>
+              <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden mb-1">
+                <div
+                  className="h-full bg-indigo-500 rounded-full transition-all"
+                  style={{
+                    width:
+                      crawlPhase === "mapping"
+                        ? "60%"
+                        : "100%",
+                  }}
+                />
+              </div>
+              {crawlProgress && crawlProgress.found > 0 && (
+                <p className="text-[13px] text-gray-500">
+                  {crawlProgress.found} pages found
+                </p>
+              )}
+            </div>
+
+            {/* Bar 2 — Enrichment (only during/after enriching) */}
+            {(crawlPhase === "enriching" || crawlPhase === "complete") && crawlProgress && (
+              <div className="mb-4">
+                <p className="text-sm font-semibold text-gray-900 mb-2">
+                  {crawlPhase === "enriching"
+                    ? "Fetching details for each listing..."
+                    : "All listings enriched"}
+                </p>
+                <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden mb-1">
+                  <div
+                    className="h-full bg-indigo-500 rounded-full transition-all"
+                    style={{
+                      width:
+                        crawlProgress.found > 0
+                          ? `${Math.min(100, (crawlProgress.enriched / crawlProgress.found) * 100)}%`
+                          : "0%",
+                    }}
+                  />
+                </div>
+                <p className="text-[13px] text-gray-500">
+                  {crawlProgress.enriched} / {crawlProgress.found} listings
+                  {crawlProgress.found > 0 && (
+                    <span className="ml-1.5">
+                      — {Math.round((crawlProgress.enriched / crawlProgress.found) * 100)}% complete
+                    </span>
+                  )}
+                </p>
+              </div>
+            )}
+
+            <p className="text-[13px] text-gray-400">
+              This usually takes 2-4 minutes. You can leave this page and come back — results will be saved.
+            </p>
+          </div>
+        )}
 
         {/* Results section */}
         {snapshots.length > 0 && (

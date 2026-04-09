@@ -83,14 +83,16 @@ model Listing {
 }
 
 model CrawlJob {
-  id          String         @id @default(uuid())
-  dealerId    String
-  dealer      Dealer         @relation(fields: [dealerId], references: [id])
-  status      String         @default("pending") // pending | running | complete | failed
-  startedAt   DateTime       @default(now())
-  completedAt DateTime?
-  urlsFound   Int            @default(0)
-  snapshots   CrawlSnapshot[]
+  id           String         @id @default(uuid())
+  dealerId     String
+  dealer       Dealer         @relation(fields: [dealerId], references: [id])
+  status       String         @default("pending") // pending | running | mapping_complete | complete | failed
+  phase        String         @default("mapping") // mapping | enriching | complete
+  startedAt    DateTime       @default(now())
+  completedAt  DateTime?
+  urlsFound    Int            @default(0)
+  urlsEnriched Int            @default(0)
+  snapshots    CrawlSnapshot[]
 
   @@index([dealerId])
 }

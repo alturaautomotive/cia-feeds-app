@@ -196,7 +196,8 @@ function sleep(ms: number): Promise<void> {
 /** Enrich snapshot metadata by scraping each URL in batches. */
 async function enrichMetadataInBackground(
   urls: string[],
-  dealerId: string
+  dealerId: string,
+  crawlJobId: string
 ): Promise<void> {
   for (let i = 0; i < urls.length; i += METADATA_BATCH_SIZE) {
     const batch = urls.slice(i, i + METADATA_BATCH_SIZE);
@@ -230,10 +231,20 @@ async function enrichMetadataInBackground(
         }
       }
     }
+    // Increment urlsEnriched after each batch
+    await prisma.crawlJob.update({
+      where: { id: crawlJobId },
+      data: { urlsEnriched: { increment: batch.length } },
+    });
     if (i + METADATA_BATCH_SIZE < urls.length) {
       await sleep(METADATA_BATCH_DELAY_MS);
     }
   }
+  // Mark job as complete when all batches are done
+  await prisma.crawlJob.update({
+    where: { id: crawlJobId },
+    data: { status: "complete", phase: "complete", completedAt: new Date() },
+  });
 }
 
 /**
@@ -310,7 +321,7 @@ export async function runCrawlForDealer(
   }
 
   try {
-    await enrichMetadataInBackground(inventoryUrls, dealerId);
+    await enrichMetadataInBackground(inventoryUrls, dealerId, crawlJobId);
   } catch (err) {
     console.error({
       event: "metadata_enrichment_error",
@@ -318,15 +329,6 @@ export async function runCrawlForDealer(
       message: err instanceof Error ? err.message : String(err),
     });
   }
-
-  await prisma.crawlJob.update({
-    where: { id: crawlJobId },
-    data: {
-      status: "complete",
-      completedAt: new Date(),
-      urlsFound: inventoryUrls.length,
-    },
-  });
 
   return { urlsFound: inventoryUrls.length };
 }

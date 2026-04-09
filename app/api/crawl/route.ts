@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -212,7 +212,8 @@ function isValidUrl(url: string): boolean {
 /** Enrich snapshot metadata by scraping each URL in batches. */
 async function enrichMetadataInBackground(
   urls: string[],
-  dealerId: string
+  dealerId: string,
+  crawlJobId: string
 ): Promise<void> {
   for (let i = 0; i < urls.length; i += METADATA_BATCH_SIZE) {
     const batch = urls.slice(i, i + METADATA_BATCH_SIZE);
@@ -246,10 +247,20 @@ async function enrichMetadataInBackground(
         }
       }
     }
+    // Increment urlsEnriched after each batch
+    await prisma.crawlJob.update({
+      where: { id: crawlJobId },
+      data: { urlsEnriched: { increment: batch.length } },
+    });
     if (i + METADATA_BATCH_SIZE < urls.length) {
       await sleep(METADATA_BATCH_DELAY_MS);
     }
   }
+  // Mark job as complete when all batches are done
+  await prisma.crawlJob.update({
+    where: { id: crawlJobId },
+    data: { status: "complete", phase: "complete", completedAt: new Date() },
+  });
 }
 
 /** Get the start of the current calendar month (UTC) */
@@ -349,7 +360,7 @@ export async function POST(request: NextRequest) {
           throw new QuotaError(txCount);
         }
         return tx.crawlJob.create({
-          data: { dealerId, status: "running" },
+          data: { dealerId, status: "running", phase: "mapping" },
         });
       },
       { isolationLevel: "Serializable" }
@@ -370,6 +381,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    // Phase 1: Map — fast URL discovery (~5s)
     const parsedUrl = new URL(websiteUrl);
     const origin = parsedUrl.origin;
     const crawlTargets = [
@@ -435,58 +447,40 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    try {
-      await enrichMetadataInBackground(inventoryUrls, dealerId);
-    } catch (err) {
-      console.error({
-        event: "metadata_enrichment_error",
-        crawlJobId: crawlJob.id,
-        message: err instanceof Error ? err.message : String(err),
-      });
-    }
-
+    // Transition to enriching phase
     await prisma.crawlJob.update({
       where: { id: crawlJob.id },
       data: {
-        status: "complete",
-        completedAt: new Date(),
+        status: "mapping_complete",
+        phase: "enriching",
         urlsFound: inventoryUrls.length,
       },
     });
 
-    const allSnapshotsRaw = await prisma.crawlSnapshot.findMany({
-      where: { dealerId },
-      orderBy: { lastSeenAt: "desc" },
-      select: {
-        id: true,
-        url: true,
-        firstSeenAt: true,
-        lastSeenAt: true,
-        weeksActive: true,
-        addedToFeed: true,
-        make: true,
-        model: true,
-        year: true,
-        price: true,
-        title: true,
-        thumbnailUrl: true,
-      },
-    });
-
-    // Deduplicate by normalized URL, keeping the newest row (by lastSeenAt)
-    const seenUrls = new Map<string, (typeof allSnapshotsRaw)[number]>();
-    for (const snap of allSnapshotsRaw) {
-      const key = normalizeUrl(snap.url);
-      if (!seenUrls.has(key)) {
-        seenUrls.set(key, snap);
-      }
-    }
-    const allSnapshots = [...seenUrls.values()];
+    // Fire enrichment as a background task — returns immediately
+    after(() =>
+      enrichMetadataInBackground(inventoryUrls, dealerId, crawlJob.id).catch(
+        (err) => {
+          console.error({
+            event: "metadata_enrichment_error",
+            crawlJobId: crawlJob.id,
+            message: err instanceof Error ? err.message : String(err),
+          });
+          // Mark failed so the client knows enrichment broke
+          prisma.crawlJob
+            .update({
+              where: { id: crawlJob.id },
+              data: { status: "failed", phase: "enriching" },
+            })
+            .catch(() => {});
+        }
+      )
+    );
 
     return NextResponse.json({
       crawlJobId: crawlJob.id,
       urlsFound: inventoryUrls.length,
-      snapshots: allSnapshots,
+      phase: "enriching",
       quota: {
         used: crawlsThisMonth + 1,
         limit: MONTHLY_CRAWL_LIMIT,
@@ -496,7 +490,7 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     await prisma.crawlJob.update({
       where: { id: crawlJob.id },
-      data: { status: "failed", completedAt: new Date() },
+      data: { status: "failed", phase: "mapping", completedAt: new Date() },
     });
     console.error({
       event: "crawl_error",
