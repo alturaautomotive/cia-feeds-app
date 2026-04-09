@@ -54,6 +54,7 @@ export async function GET() {
     addedToFeedRate,
     quota: {
       used: crawlsUsedThisMonth,
+      remaining: Math.max(0, MONTHLY_CRAWL_LIMIT - crawlsUsedThisMonth),
       limit: MONTHLY_CRAWL_LIMIT,
       resetsAt: resetsAt.toISOString(),
     },
