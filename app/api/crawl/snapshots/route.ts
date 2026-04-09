@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getEffectiveDealerId } from "@/lib/impersonation";
+import { normalizeUrl } from "../route";
 
 const MONTHLY_CRAWL_LIMIT = 4;
 
@@ -26,9 +27,9 @@ export async function GET() {
     },
   });
 
-  const snapshots = await prisma.crawlSnapshot.findMany({
+  const snapshotsRaw = await prisma.crawlSnapshot.findMany({
     where: { dealerId },
-    orderBy: { firstSeenAt: "desc" },
+    orderBy: { lastSeenAt: "desc" },
     select: {
       id: true,
       url: true,
@@ -44,6 +45,16 @@ export async function GET() {
       thumbnailUrl: true,
     },
   });
+
+  // Deduplicate by normalized URL, keeping the newest row (by lastSeenAt)
+  const seenUrls = new Map<string, (typeof snapshotsRaw)[number]>();
+  for (const snap of snapshotsRaw) {
+    const key = normalizeUrl(snap.url);
+    if (!seenUrls.has(key)) {
+      seenUrls.set(key, snap);
+    }
+  }
+  const snapshots = [...seenUrls.values()];
 
   const total = snapshots.length;
   const addedCount = snapshots.filter((s) => s.addedToFeed).length;

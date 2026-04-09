@@ -546,7 +546,7 @@ export function CrawlClient({
               <input
                 data-element-id="search-filter"
                 type="text"
-                className="border border-gray-300 rounded-md px-2.5 py-1.5 text-[13px] w-[220px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="border border-gray-400 bg-white rounded-md px-2.5 py-1.5 text-[13px] w-[220px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 placeholder="Search title, URL, make, model..."
                 value={search}
                 onChange={(e) => {
@@ -556,7 +556,7 @@ export function CrawlClient({
               />
               <select
                 data-element-id="age-filter"
-                className="border border-gray-300 rounded-md px-2.5 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="border border-gray-400 bg-white rounded-md px-2.5 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 value={ageFilter}
                 onChange={(e) => {
                   setAgeFilter(e.target.value);
@@ -571,7 +571,7 @@ export function CrawlClient({
               </select>
               <select
                 data-element-id="status-filter"
-                className="border border-gray-300 rounded-md px-2.5 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="border border-gray-400 bg-white rounded-md px-2.5 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 value={statusFilter}
                 onChange={(e) => {
                   setStatusFilter(e.target.value);
@@ -584,7 +584,7 @@ export function CrawlClient({
               </select>
               <select
                 data-element-id="make-filter"
-                className="border border-gray-300 rounded-md px-2.5 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="border border-gray-400 bg-white rounded-md px-2.5 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 value={makeFilter}
                 onChange={(e) => {
                   setMakeFilter(e.target.value);
@@ -600,7 +600,7 @@ export function CrawlClient({
               </select>
               <select
                 data-element-id="price-filter"
-                className="border border-gray-300 rounded-md px-2.5 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="border border-gray-400 bg-white rounded-md px-2.5 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 value={priceFilter}
                 onChange={(e) => {
                   setPriceFilter(e.target.value);
@@ -800,14 +800,14 @@ export function CrawlClient({
                   <button
                     onClick={() => setPage((p) => Math.max(0, p - 1))}
                     disabled={page === 0}
-                    className="px-3 py-1.5 text-[13px] border border-gray-300 rounded-md disabled:opacity-40 hover:bg-gray-50"
+                    className="px-3 py-1.5 text-[13px] border border-gray-400 bg-white rounded-md disabled:opacity-40 hover:bg-gray-50"
                   >
                     Previous
                   </button>
                   <button
                     onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                     disabled={page >= totalPages - 1}
-                    className="px-3 py-1.5 text-[13px] border border-gray-300 rounded-md disabled:opacity-40 hover:bg-gray-50"
+                    className="px-3 py-1.5 text-[13px] border border-gray-400 bg-white rounded-md disabled:opacity-40 hover:bg-gray-50"
                   >
                     Next
                   </button>

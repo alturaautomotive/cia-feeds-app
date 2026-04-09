@@ -73,7 +73,7 @@ export function normalizeUrl(raw: string): string {
     if (pathname.length > 1 && pathname.endsWith("/")) {
       pathname = pathname.slice(0, -1);
     }
-    parsed.pathname = pathname;
+    parsed.pathname = pathname.toLowerCase();
     return parsed.toString();
   } catch {
     return raw;
@@ -454,9 +454,9 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    const allSnapshots = await prisma.crawlSnapshot.findMany({
+    const allSnapshotsRaw = await prisma.crawlSnapshot.findMany({
       where: { dealerId },
-      orderBy: { firstSeenAt: "desc" },
+      orderBy: { lastSeenAt: "desc" },
       select: {
         id: true,
         url: true,
@@ -472,6 +472,16 @@ export async function POST(request: NextRequest) {
         thumbnailUrl: true,
       },
     });
+
+    // Deduplicate by normalized URL, keeping the newest row (by lastSeenAt)
+    const seenUrls = new Map<string, (typeof allSnapshotsRaw)[number]>();
+    for (const snap of allSnapshotsRaw) {
+      const key = normalizeUrl(snap.url);
+      if (!seenUrls.has(key)) {
+        seenUrls.set(key, snap);
+      }
+    }
+    const allSnapshots = [...seenUrls.values()];
 
     return NextResponse.json({
       crawlJobId: crawlJob.id,

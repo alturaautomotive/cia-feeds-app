@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { checkSubscription } from "@/lib/checkSubscription";
 import { rateLimit } from "@/lib/rateLimit";
 import { getEffectiveDealerId } from "@/lib/impersonation";
+import { scrapeVehicleUrl } from "@/lib/scrape";
 
 function isValidUrl(url: string): boolean {
   try {
@@ -60,26 +61,76 @@ export async function POST(request: NextRequest) {
 
   const vehicleId = vehicle.id;
 
-  // Fire-and-forget: dispatch scraping to dedicated long-running route
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
-  if (!process.env.NEXT_PUBLIC_APP_URL) {
-    console.warn({ event: "scrape_dispatch_url_fallback", resolvedOrigin: appUrl, hint: "NEXT_PUBLIC_APP_URL is not set; falling back to request origin" });
-  }
-  fetch(`${appUrl}/api/vehicles/scrape`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-sync-secret": process.env.SYNC_SECRET ?? "",
-    },
-    body: JSON.stringify({ vehicleId, url, dealerId }),
-  }).catch((err) => {
-    console.error({
-      event: "scrape_dispatch_error",
-      vehicleId,
-      url,
-      message: err instanceof Error ? err.message : String(err),
+  // Dispatch scraping: use fire-and-forget if SYNC_SECRET is set, otherwise inline fallback
+  if (process.env.SYNC_SECRET) {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
+    if (!process.env.NEXT_PUBLIC_APP_URL) {
+      console.warn({ event: "scrape_dispatch_url_fallback", resolvedOrigin: appUrl, hint: "NEXT_PUBLIC_APP_URL is not set; falling back to request origin" });
+    }
+    fetch(`${appUrl}/api/vehicles/scrape`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-sync-secret": process.env.SYNC_SECRET,
+      },
+      body: JSON.stringify({ vehicleId, url, dealerId }),
+    }).catch((err) => {
+      console.error({
+        event: "scrape_dispatch_error",
+        vehicleId,
+        url,
+        message: err instanceof Error ? err.message : String(err),
+      });
     });
-  });
+  } else {
+    console.warn({ event: "sync_secret_missing", hint: "Falling back to inline scrape" });
+    try {
+      const result = await scrapeVehicleUrl(url, dealerId);
+      const v = result.vehicle;
+
+      // VIN dedup: remove duplicate vehicle for same dealer+VIN (matches /api/vehicles/scrape behaviour)
+      if (v.vin) {
+        const byVin = await prisma.vehicle.findFirst({
+          where: { dealerId, vin: v.vin, NOT: { id: vehicleId } },
+          select: { id: true },
+        });
+        if (byVin) {
+          try {
+            await prisma.vehicle.delete({ where: { id: byVin.id } });
+          } catch (dedupErr) {
+            console.error({ event: "vin_dedup_delete_error", byVinId: byVin.id, message: dedupErr instanceof Error ? dedupErr.message : String(dedupErr) });
+          }
+        }
+      }
+
+      await prisma.vehicle.update({
+        where: { id: vehicleId },
+        data: {
+          vin: v.vin,
+          make: v.make,
+          model: v.model,
+          year: v.year,
+          bodyStyle: v.bodyStyle,
+          price: v.price,
+          mileageValue: v.mileageValue,
+          stateOfVehicle: v.stateOfVehicle,
+          exteriorColor: v.exteriorColor,
+          imageUrl: v.imageUrl,
+          description: v.description,
+          isComplete: v.isComplete,
+          missingFields: v.missingFields,
+          scrapeStatus: "complete",
+        },
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error({ event: "inline_scrape_error", vehicleId, url, message });
+      await prisma.vehicle.update({
+        where: { id: vehicleId },
+        data: { scrapeStatus: "failed" },
+      });
+    }
+  }
 
   // Mark CrawlSnapshot as added to feed (if it exists) — best-effort but awaited
   try {
