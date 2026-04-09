@@ -13,6 +13,7 @@ const SAFE_SELECT = {
   profileImageUrl: true,
   vertical: true,
   websiteUrl: true,
+  autoCrawlEnabled: true,
 } as const;
 
 export async function GET() {
@@ -81,6 +82,17 @@ export async function PATCH(request: NextRequest) {
     await prisma.dealer.update({
       where: { id: effectiveDealerId },
       data: { websiteUrl: urlToSave },
+    });
+  }
+
+  // Handle autoCrawlEnabled toggle
+  if ("autoCrawlEnabled" in b) {
+    if (typeof b.autoCrawlEnabled !== "boolean") {
+      return NextResponse.json({ error: "invalid_autoCrawlEnabled" }, { status: 400 });
+    }
+    await prisma.dealer.update({
+      where: { id: effectiveDealerId },
+      data: { autoCrawlEnabled: b.autoCrawlEnabled },
     });
   }
 

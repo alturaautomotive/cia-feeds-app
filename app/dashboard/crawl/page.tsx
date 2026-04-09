@@ -24,7 +24,7 @@ export default async function CrawlPage() {
 
   const dealer = await prisma.dealer.findUnique({
     where: { id: effectiveDealerId },
-    select: { name: true, vertical: true, websiteUrl: true },
+    select: { name: true, vertical: true, websiteUrl: true, autoCrawlEnabled: true },
   });
 
   if (!dealer || (dealer.vertical !== "automotive" && dealer.vertical !== "ecommerce")) {
@@ -35,6 +35,18 @@ export default async function CrawlPage() {
     where: { dealerId: effectiveDealerId, status: "complete" },
     orderBy: { startedAt: "desc" },
     select: { completedAt: true, urlsFound: true },
+  });
+
+  // Monthly crawl quota
+  const now = new Date();
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  const crawlsUsed = await prisma.crawlJob.count({
+    where: {
+      dealerId: effectiveDealerId,
+      startedAt: { gte: monthStart },
+      status: { not: "failed" },
+    },
   });
 
   const snapshots = await prisma.crawlSnapshot.findMany({
@@ -75,6 +87,8 @@ export default async function CrawlPage() {
         lastSeenAt: s.lastSeenAt.toISOString(),
       }))}
       isImpersonating={isImpersonating}
+      autoCrawlEnabled={dealer.autoCrawlEnabled}
+      quota={{ used: crawlsUsed, limit: 4, resetsAt: nextMonth.toISOString() }}
     />
   );
 }

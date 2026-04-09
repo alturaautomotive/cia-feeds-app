@@ -7,6 +7,15 @@
     },
     "app/api/listings/scrape/route.ts": {
       "maxDuration": 300
+    },
+    "app/api/cron/crawl/route.ts": {
+      "maxDuration": 300
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/crawl",
+      "schedule": "0 9 * * 1"
+    }
+  ]
 }

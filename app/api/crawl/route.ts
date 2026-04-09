@@ -5,18 +5,9 @@ import { prisma } from "@/lib/prisma";
 import { checkSubscription } from "@/lib/checkSubscription";
 import { getEffectiveDealerId } from "@/lib/impersonation";
 import { firecrawlClient } from "@/lib/firecrawl";
-import { rateLimit } from "@/lib/rateLimit";
-
-class CooldownError extends Error {
-  retryAfterMs: number;
-  constructor(retryAfterMs: number) {
-    super("rate_limited");
-    this.retryAfterMs = retryAfterMs;
-  }
-}
 
 const ALLOWED_CRAWL_VERTICALS = ["automotive", "ecommerce"];
-const CRAWL_COOLDOWN_MS = 3_600_000; // 1 hour
+const MONTHLY_CRAWL_LIMIT = 4;
 
 /** URL patterns that indicate inventory/listing pages */
 const INVENTORY_PATTERNS = [
@@ -69,6 +60,24 @@ const EXCLUDE_PATTERNS = [
 function isInventoryUrl(url: string): boolean {
   if (EXCLUDE_PATTERNS.some((p) => p.test(url))) return false;
   return INVENTORY_PATTERNS.some((p) => p.test(url));
+}
+
+/** Normalize a URL for deduplication: force https, strip trailing slashes, query params, fragments */
+export function normalizeUrl(raw: string): string {
+  try {
+    const parsed = new URL(raw);
+    parsed.protocol = "https:";
+    parsed.search = "";
+    parsed.hash = "";
+    let pathname = parsed.pathname;
+    if (pathname.length > 1 && pathname.endsWith("/")) {
+      pathname = pathname.slice(0, -1);
+    }
+    parsed.pathname = pathname;
+    return parsed.toString();
+  } catch {
+    return raw;
+  }
 }
 
 const METADATA_BATCH_SIZE = 5;
@@ -152,7 +161,6 @@ async function fetchUrlMetadata(url: string): Promise<{
 
     const meta = result.metadata;
 
-    // Schema-extracted values (primary source)
     const extractedTitle = extracted?.title || null;
     const extractedImage = extracted?.imageUrl || null;
     const extractedPrice = extracted?.price != null ? parsePrice(String(extracted.price)) : null;
@@ -160,13 +168,11 @@ async function fetchUrlMetadata(url: string): Promise<{
     const extractedModel = extracted?.model || null;
     const extractedYear = extracted?.year != null && !isNaN(extracted.year) ? extracted.year : null;
 
-    // OG/meta fallback values
     const ogTitle = meta?.ogTitle || meta?.title || null;
     const ogImage = meta?.ogImage || null;
     const metaRecord = meta as Record<string, string> | undefined;
     const ogPrice = metaRecord?.["og:price:amount"] ?? null;
 
-    // Merge: prefer extracted, fall back to OG tags
     const title = extractedTitle || ogTitle;
     const thumbnailUrl = extractedImage || ogImage;
     const price = extractedPrice ?? parsePrice(ogPrice);
@@ -174,7 +180,6 @@ async function fetchUrlMetadata(url: string): Promise<{
     const model = extractedModel;
     const year = extractedYear;
 
-    // Last-resort fallback: parse make/model/year from title or URL slug
     if (!make && !model && !year) {
       const parsed = parseVehicleInfo(title || url);
       return { title, thumbnailUrl, price, make: parsed.make, model: parsed.model, year: parsed.year };
@@ -247,10 +252,33 @@ async function enrichMetadataInBackground(
   }
 }
 
+/** Get the start of the current calendar month (UTC) */
+function getStartOfMonth(): Date {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+}
+
+/** Get the start of next month for display (UTC) */
+function getStartOfNextMonth(): Date {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+}
+
+class QuotaError extends Error {
+  used: number;
+  constructor(used: number) {
+    super("monthly_limit_reached");
+    this.used = used;
+  }
+}
+
 /**
  * POST /api/crawl — Trigger a website crawl for the dealer
  */
 export async function POST(request: NextRequest) {
+  // Suppress unused-var — request is required by Next.js route signature
+  void request;
+
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -266,7 +294,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "subscription_required" }, { status: 403 });
   }
 
-  // Vertical gating: only automotive and ecommerce dealers can crawl
   const dealer = await prisma.dealer.findUnique({
     where: { id: dealerId },
     select: { vertical: true, websiteUrl: true },
@@ -278,62 +305,49 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let body: Record<string, unknown> = {};
-  try {
-    body = (await request.json()) as Record<string, unknown>;
-  } catch {
-    // Body may be empty when websiteUrl is omitted — that's valid
-  }
-
-  const providedUrl =
-    typeof body.websiteUrl === "string" ? body.websiteUrl.trim() : null;
-  const websiteUrl = providedUrl || dealer.websiteUrl;
-
+  // Always use the dealer's profile websiteUrl — no custom URL input
+  const websiteUrl = dealer.websiteUrl;
   if (!websiteUrl || !isValidUrl(websiteUrl)) {
-    return NextResponse.json({ error: "invalid_url" }, { status: 400 });
+    return NextResponse.json({ error: "no_website_url" }, { status: 400 });
   }
 
-  // Rate-limit via shared utility (1 crawl per hour per dealer)
-  const { allowed, retryAfterMs } = rateLimit(
-    `crawl:${dealerId}`,
-    1,
-    CRAWL_COOLDOWN_MS
-  );
-  if (!allowed) {
+  // Monthly quota check: 4 crawls per calendar month
+  const monthStart = getStartOfMonth();
+  const crawlsThisMonth = await prisma.crawlJob.count({
+    where: {
+      dealerId,
+      startedAt: { gte: monthStart },
+      status: { not: "failed" },
+    },
+  });
+
+  if (crawlsThisMonth >= MONTHLY_CRAWL_LIMIT) {
     return NextResponse.json(
-      { error: "rate_limited", retryAfterMs },
+      {
+        error: "monthly_limit_reached",
+        used: crawlsThisMonth,
+        limit: MONTHLY_CRAWL_LIMIT,
+        resetsAt: getStartOfNextMonth().toISOString(),
+      },
       { status: 429 }
     );
   }
 
-  // Secondary DB safeguard against race conditions
-  const cutoff = new Date(Date.now() - CRAWL_COOLDOWN_MS);
+  // Create crawl job inside a transaction to prevent races
   let crawlJob: { id: string };
   try {
     crawlJob = await prisma.$transaction(
       async (tx) => {
-        const recentCrawl = await tx.crawlJob.findFirst({
+        const txCount = await tx.crawlJob.count({
           where: {
             dealerId,
-            startedAt: { gte: cutoff },
+            startedAt: { gte: monthStart },
+            status: { not: "failed" },
           },
-          orderBy: { startedAt: "desc" },
-          select: { startedAt: true },
         });
-        if (recentCrawl) {
-          const dbRetryAfterMs =
-            CRAWL_COOLDOWN_MS - (Date.now() - recentCrawl.startedAt.getTime());
-          throw new CooldownError(Math.max(0, dbRetryAfterMs));
+        if (txCount >= MONTHLY_CRAWL_LIMIT) {
+          throw new QuotaError(txCount);
         }
-
-        // Only persist websiteUrl when explicitly provided
-        if (providedUrl) {
-          await tx.dealer.update({
-            where: { id: dealerId },
-            data: { websiteUrl: providedUrl },
-          });
-        }
-
         return tx.crawlJob.create({
           data: { dealerId, status: "running" },
         });
@@ -341,9 +355,14 @@ export async function POST(request: NextRequest) {
       { isolationLevel: "Serializable" }
     );
   } catch (err) {
-    if (err instanceof CooldownError) {
+    if (err instanceof QuotaError) {
       return NextResponse.json(
-        { error: "rate_limited", retryAfterMs: err.retryAfterMs },
+        {
+          error: "monthly_limit_reached",
+          used: err.used,
+          limit: MONTHLY_CRAWL_LIMIT,
+          resetsAt: getStartOfNextMonth().toISOString(),
+        },
         { status: 429 }
       );
     }
@@ -351,24 +370,20 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // Build crawl targets from origin to avoid malformed URLs from non-root inputs
     const parsedUrl = new URL(websiteUrl);
     const origin = parsedUrl.origin;
     const crawlTargets = [
       origin,
       ...INVENTORY_SUBPATHS.map((path) => `${origin}${path}`),
     ];
-    // Deduplicate in case origin already ends with a subpath target
     const uniqueTargets = [...new Set(crawlTargets)];
 
-    // Run all map calls in parallel for maximum coverage
     const mapResults = await Promise.allSettled(
       uniqueTargets.map((target) =>
         firecrawlClient.map(target, { limit: 5000 })
       )
     );
 
-    // Log rejected map calls for debuggability
     for (let i = 0; i < mapResults.length; i++) {
       const result = mapResults[i];
       if (result.status === "rejected") {
@@ -381,13 +396,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Fail the crawl if every map target rejected
     const fulfilledCount = mapResults.filter((r) => r.status === "fulfilled").length;
     if (fulfilledCount === 0) {
       throw new Error("All Firecrawl map targets failed — no URLs discovered");
     }
 
-    // Merge URLs from all successful map calls, deduplicate, and filter
     const allUrls: string[] = [];
     for (const result of mapResults) {
       if (result.status === "fulfilled") {
@@ -397,9 +410,11 @@ export async function POST(request: NextRequest) {
         }
       }
     }
-    const inventoryUrls = [...new Set(allUrls.filter(isInventoryUrl))];
 
-    // Upsert snapshots — update existing, create new
+    // Normalize URLs for deduplication, then filter for inventory pages
+    const normalizedUrls = allUrls.map(normalizeUrl);
+    const inventoryUrls = [...new Set(normalizedUrls.filter(isInventoryUrl))];
+
     const now = new Date();
     for (const url of inventoryUrls) {
       await prisma.crawlSnapshot.upsert({
@@ -420,8 +435,6 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Enrich metadata within the request lifecycle so snapshots are populated
-    // before we query and return them to the client
     try {
       await enrichMetadataInBackground(inventoryUrls, dealerId);
     } catch (err) {
@@ -430,10 +443,8 @@ export async function POST(request: NextRequest) {
         crawlJobId: crawlJob.id,
         message: err instanceof Error ? err.message : String(err),
       });
-      // Enrichment failure is non-fatal — crawl results are still usable
     }
 
-    // Mark crawl job complete after enrichment finishes
     await prisma.crawlJob.update({
       where: { id: crawlJob.id },
       data: {
@@ -443,7 +454,6 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Return the full dealer snapshot set (including historical URLs not in this crawl)
     const allSnapshots = await prisma.crawlSnapshot.findMany({
       where: { dealerId },
       orderBy: { firstSeenAt: "desc" },
@@ -467,6 +477,11 @@ export async function POST(request: NextRequest) {
       crawlJobId: crawlJob.id,
       urlsFound: inventoryUrls.length,
       snapshots: allSnapshots,
+      quota: {
+        used: crawlsThisMonth + 1,
+        limit: MONTHLY_CRAWL_LIMIT,
+        resetsAt: getStartOfNextMonth().toISOString(),
+      },
     });
   } catch (err) {
     await prisma.crawlJob.update({
@@ -483,7 +498,7 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * GET /api/crawl — Returns the dealer's last 10 crawl jobs
+ * GET /api/crawl — Returns the dealer's last 10 crawl jobs + monthly quota info
  */
 export async function GET() {
   const dealerId = await getEffectiveDealerId();
@@ -504,5 +519,21 @@ export async function GET() {
     },
   });
 
-  return NextResponse.json({ jobs });
+  const monthStart = getStartOfMonth();
+  const crawlsThisMonth = await prisma.crawlJob.count({
+    where: {
+      dealerId,
+      startedAt: { gte: monthStart },
+      status: { not: "failed" },
+    },
+  });
+
+  return NextResponse.json({
+    jobs,
+    quota: {
+      used: crawlsThisMonth,
+      limit: MONTHLY_CRAWL_LIMIT,
+      resetsAt: getStartOfNextMonth().toISOString(),
+    },
+  });
 }

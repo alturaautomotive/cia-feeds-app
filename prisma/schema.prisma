@@ -25,6 +25,7 @@ model Dealer {
   createdAt            DateTime  @default(now())
   profileImageUrl      String?
   websiteUrl           String?
+  autoCrawlEnabled     Boolean   @default(false)
   vehicles             Vehicle[]
   listings             Listing[]
   crawlJobs            CrawlJob[]

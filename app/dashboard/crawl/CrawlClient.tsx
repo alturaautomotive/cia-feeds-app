@@ -22,6 +22,8 @@ interface Props {
   dealerName: string;
   vertical: string;
   websiteUrl: string;
+  autoCrawlEnabled: boolean;
+  quota: { used: number; limit: number; resetsAt: string };
   lastCrawl: { completedAt: string; urlsFound: number } | null;
   initialSnapshots: Snapshot[];
   isImpersonating: boolean;
@@ -82,19 +84,30 @@ function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function getResetDate(): string {
+  const now = new Date();
+  const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  return nextMonth.toLocaleDateString("en-US", { month: "long", day: "numeric" });
+}
+
 export function CrawlClient({
   dealerName,
   vertical,
-  websiteUrl: initialWebsiteUrl,
+  websiteUrl,
+  autoCrawlEnabled: initialAutoCrawl,
+  quota,
   lastCrawl,
   initialSnapshots,
   isImpersonating,
 }: Props) {
-  const [websiteUrl, setWebsiteUrl] = useState(initialWebsiteUrl);
+  const crawlLimitPerMonth = quota.limit;
   const [snapshots, setSnapshots] = useState<Snapshot[]>(initialSnapshots);
   const [crawling, setCrawling] = useState(false);
   const [crawlError, setCrawlError] = useState<string | null>(null);
   const [lastCrawlInfo, setLastCrawlInfo] = useState(lastCrawl);
+  const [crawlsUsed, setCrawlsUsed] = useState(quota.used);
+  const [autoCrawl, setAutoCrawl] = useState(initialAutoCrawl);
+  const [autoCrawlSaving, setAutoCrawlSaving] = useState(false);
 
   // Filters
   const [search, setSearch] = useState("");
@@ -115,6 +128,7 @@ export function CrawlClient({
   const [addResult, setAddResult] = useState<{ count: number; errors: number; queued: boolean } | null>(null);
 
   const isAutomotive = vertical === "automotive";
+  const quotaReached = crawlsUsed >= crawlLimitPerMonth;
 
   // Derive unique makes for filter dropdown
   const uniqueMakes = useMemo(() => {
@@ -182,7 +196,7 @@ export function CrawlClient({
   }
 
   async function handleCrawl() {
-    if (!websiteUrl.trim()) return;
+    if (quotaReached) return;
     setCrawling(true);
     setCrawlError(null);
     setAddResult(null);
@@ -191,17 +205,31 @@ export function CrawlClient({
       const res = await fetch("/api/crawl", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ websiteUrl: websiteUrl.trim() }),
+        body: JSON.stringify({}),
       });
       const data = await res.json();
 
       if (!res.ok) {
+        if (data.error === "no_website_url") {
+          setCrawlError("Please set your website URL in Profile settings before crawling.");
+          return;
+        }
+        if (data.error === "monthly_limit_reached") {
+          setCrawlsUsed(data.used ?? crawlLimitPerMonth);
+          setCrawlError(`Monthly crawl limit reached. Resets ${getResetDate()}.`);
+          return;
+        }
         setCrawlError(data.error || "Crawl failed. Please try again.");
         return;
       }
 
       // Use snapshots from response (now includes full dealer set)
       setSnapshots(data.snapshots ?? []);
+      if (data.quota?.used != null) {
+        setCrawlsUsed(data.quota.used);
+      } else if (data.crawlsUsedThisMonth != null) {
+        setCrawlsUsed(data.crawlsUsedThisMonth);
+      }
       setLastCrawlInfo({
         completedAt: new Date().toISOString(),
         urlsFound: data.urlsFound ?? 0,
@@ -212,6 +240,25 @@ export function CrawlClient({
       setCrawlError("Network error. Please try again.");
     } finally {
       setCrawling(false);
+    }
+  }
+
+  async function handleAutoCrawlToggle() {
+    const newValue = !autoCrawl;
+    setAutoCrawlSaving(true);
+    try {
+      const res = await fetch("/api/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ autoCrawlEnabled: newValue }),
+      });
+      if (res.ok) {
+        setAutoCrawl(newValue);
+      }
+    } catch {
+      // Silently fail — toggle stays at old state
+    } finally {
+      setAutoCrawlSaving(false);
     }
   }
 
@@ -295,6 +342,9 @@ export function CrawlClient({
     ? daysSince(lastCrawlInfo.completedAt)
     : null;
 
+  // suppress unused vars from props that are kept for future use
+  void isImpersonating;
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Top bar */}
@@ -316,28 +366,55 @@ export function CrawlClient({
           <h2 className="text-lg font-bold text-gray-900 mb-1">Crawl My Website</h2>
           <p className="text-sm text-gray-500 mb-5">
             {isAutomotive
-              ? "Discover all vehicle listings on your website at once. We'll scan your site and show you everything we find — then you pick what goes into your feed."
-              : "Discover all product listings on your website at once. We'll scan your site and show you everything we find — then you pick what goes into your feed."}
+              ? "Discover all vehicle listings on your website at once. We\u2019ll scan your site and show you everything we find \u2014 then you pick what goes into your feed."
+              : "Discover all product listings on your website at once. We\u2019ll scan your site and show you everything we find \u2014 then you pick what goes into your feed."}
           </p>
 
-          <div className="flex gap-2.5">
-            <input
-              data-element-id="website-url-input"
-              type="text"
-              className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-              placeholder="https://yourwebsite.com"
-              value={websiteUrl}
-              onChange={(e) => setWebsiteUrl(e.target.value)}
-            />
+          {/* Website URL (read-only) */}
+          <div className="flex items-center gap-2.5 mb-4">
+            <span className="text-sm text-gray-700">
+              <span className="mr-1.5">🌐</span>
+              {websiteUrl || <span className="text-gray-400 italic">No website URL set</span>}
+            </span>
+            <Link
+              href="/dashboard/profile"
+              className="text-sm text-indigo-500 hover:text-indigo-600 font-medium"
+            >
+              Change in Profile →
+            </Link>
+          </div>
+
+          {/* Monthly quota display */}
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[13px] text-gray-600">
+                {crawlsUsed} of {crawlLimitPerMonth} crawls used this month
+                <span className="text-gray-400 ml-1.5">· Resets {getResetDate()}</span>
+              </span>
+            </div>
+            <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-indigo-500 rounded-full transition-all"
+                style={{ width: `${Math.min(100, (crawlsUsed / crawlLimitPerMonth) * 100)}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Crawl button */}
+          {quotaReached ? (
+            <p className="text-sm text-amber-700 bg-amber-50 rounded-md px-3 py-2">
+              Monthly crawl limit reached. Resets {getResetDate()}.
+            </p>
+          ) : (
             <button
               data-element-id="crawl-btn"
               onClick={handleCrawl}
-              disabled={crawling || !websiteUrl.trim()}
+              disabled={crawling || !websiteUrl}
               className="bg-indigo-600 text-white px-5 py-2 rounded-md text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
             >
               {crawling ? "Crawling\u2026" : "Crawl My Website"}
             </button>
-          </div>
+          )}
 
           {crawlError && (
             <p className="text-sm text-red-600 mt-3">{crawlError}</p>
@@ -361,6 +438,31 @@ export function CrawlClient({
               )}
             </p>
           )}
+
+          {/* Auto-crawl toggle */}
+          <div className="mt-5 pt-5 border-t border-gray-100 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold text-gray-900">Auto-crawl weekly</p>
+              <p className="text-[13px] text-gray-500">
+                We&apos;ll automatically crawl your site once a week and update your inventory list.
+              </p>
+            </div>
+            <button
+              role="switch"
+              aria-checked={autoCrawl}
+              disabled={autoCrawlSaving}
+              onClick={handleAutoCrawlToggle}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                autoCrawl ? "bg-indigo-600" : "bg-gray-200"
+              } ${autoCrawlSaving ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  autoCrawl ? "translate-x-6" : "translate-x-1"
+                }`}
+              />
+            </button>
+          </div>
         </div>
 
         {/* Results section */}
