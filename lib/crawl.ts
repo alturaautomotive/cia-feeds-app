@@ -83,32 +83,32 @@ const VEHICLE_EXTRACT_SCHEMA = {
     title: {
       type: "string",
       description:
-        "The vehicle listing title. Look in <h1>, og:title meta tag, or JSON-LD 'name' field.",
+        "The full vehicle listing title exactly as displayed on the page. Search in order: 1) The first <h1> element on the page, 2) og:title meta tag, 3) JSON-LD 'name' field, 4) <title> tag. Example: '2023 Toyota Camry SE'. Return null if no title is found.",
     },
     price: {
       type: "string",
       description:
-        "The listed sale price of the vehicle (e.g. '$29,995' or '29995'). Search in order: JSON-LD offers.price, elements with class names containing 'price'/'sale-price'/'final-price'/'vehicle-price'/'msrp'/'internet-price'/'our-price', data-price or data-msrp attributes, og:price:amount meta tag. Exclude 'Call for price' or empty values.",
+        "The listed sale price of the vehicle as a raw string (e.g. '$29,995' or '29995'). Search in order: 1) JSON-LD offers.price, offers.lowPrice, offers.highPrice, or offers.priceCurrency amount, 2) HTML elements whose class or id contains: 'price', 'sale-price', 'final-price', 'vehicle-price', 'internet-price', 'our-price', 'msrp', 'asking-price', 3) data-price, data-vehicle-price, data-sale-price, or data-msrp attributes on any element, 4) og:price:amount or product:price:amount meta tags. Exclude placeholder values such as 'Call for price', 'Contact us', 'Request a quote', '$0', or empty strings. Return null if no valid price is found.",
     },
     make: {
       type: "string",
       description:
-        "Vehicle manufacturer/make (e.g. Toyota, Ford, Honda). Look in JSON-LD 'brand.name' or 'manufacturer', or breadcrumb navigation.",
+        "Vehicle manufacturer/make (e.g. 'Toyota', 'Ford', 'Honda', 'Chevrolet'). Search in order: 1) JSON-LD 'brand.name' or 'manufacturer', 2) data-make or data-vehicle-make attributes, 3) breadcrumb navigation links, 4) parse from the listing title or <h1>. Return null if not determinable.",
     },
     model: {
       type: "string",
       description:
-        "Vehicle model name (e.g. Camry, F-150, Civic). Look in JSON-LD 'model' field.",
+        "Vehicle model name (e.g. 'Camry', 'F-150', 'Civic', 'Silverado'). Search in order: 1) JSON-LD 'model' field, 2) data-model or data-vehicle-model attributes, 3) breadcrumb navigation links, 4) parse from the listing title or <h1>. Return null if not determinable.",
     },
     year: {
       type: "number",
       description:
-        "Vehicle model year as a 4-digit number between 1980 and 2030. Look in JSON-LD 'vehicleModelDate' or 'modelDate'.",
+        "Vehicle model year as a 4-digit integer between 1980 and 2030. Search in order: 1) JSON-LD 'vehicleModelDate' or 'modelDate', 2) data-year or data-vehicle-year attributes, 3) parse the first 4-digit year from the listing title or <h1>. Return null if not determinable.",
     },
     imageUrl: {
       type: "string",
       description:
-        "Absolute http(s) URL of the primary vehicle image. Priority: JSON-LD 'image' → og:image or og:image:secure_url meta tag → twitter:image meta tag → first gallery <img> src. Must start with http:// or https://.",
+        "Absolute http(s) URL of the primary vehicle photo. Search in order: 1) JSON-LD 'image' field, 2) og:image or og:image:secure_url meta tag, 3) twitter:image meta tag, 4) the first <img> inside a gallery, carousel, or hero container. Must start with 'http://' or 'https://'. Exclude placeholder images, 'no-image' defaults, spinner/loading GIFs, and dealer logo images. Return null if no valid vehicle photo is found.",
     },
   },
 };
@@ -159,9 +159,53 @@ async function fetchUrlMetadata(url: string): Promise<{
   try {
     const result = await firecrawlClient.scrape(url, {
       formats: [
+        "markdown",
         {
           type: "json",
-          prompt: "Extract vehicle listing details including title, image URL, price, make, model, and year from this page. Look in structured data (JSON-LD, microdata), page content, and meta tags.",
+          prompt: `You are extracting structured vehicle listing data from a dealer Vehicle Detail Page (VDP). Extract all six fields below.
+
+TITLE – return the full listing title exactly as displayed:
+1. The first <h1> element on the page
+2. og:title meta tag
+3. JSON-LD "name" field
+4. <title> tag
+Return null if no title is found.
+
+PRICE – search these sources in order and return the first non-empty numeric value:
+1. JSON-LD: "offers.price", "offers.lowPrice", "offers.highPrice", or "offers.priceCurrency" amount
+2. HTML elements whose class or id contains: price, sale-price, final-price, vehicle-price, internet-price, our-price, msrp, asking-price
+3. data-price, data-vehicle-price, data-sale-price, or data-msrp attributes on any element
+4. og:price:amount or product:price:amount meta tags
+Ignore "Call for price", "Contact us", "Request a quote", "$0", or empty values. Return null if no valid price is found.
+
+IMAGE URL – return the first absolute http(s) URL found in this order:
+1. JSON-LD "image" field
+2. og:image or og:image:secure_url meta tag
+3. twitter:image meta tag
+4. The first <img> inside a gallery, carousel, or hero container
+Exclude placeholder images, "no-image" defaults, spinner/loading GIFs, and dealer logo images. Return null if no valid vehicle photo is found.
+
+MAKE – return the vehicle manufacturer:
+1. JSON-LD "brand.name" or "manufacturer"
+2. data-make or data-vehicle-make attributes
+3. Breadcrumb navigation links
+4. Parse from the listing title or <h1>
+Return null if not determinable.
+
+MODEL – return the vehicle model name:
+1. JSON-LD "model" field
+2. data-model or data-vehicle-model attributes
+3. Breadcrumb navigation links
+4. Parse from the listing title or <h1>
+Return null if not determinable.
+
+YEAR – return the model year as a 4-digit integer (1980–2030):
+1. JSON-LD "vehicleModelDate" or "modelDate"
+2. data-year or data-vehicle-year attributes
+3. Parse the first 4-digit year from the listing title or <h1>
+Return null if not determinable.
+
+Return all values according to the provided schema.`,
           schema: VEHICLE_EXTRACT_SCHEMA,
         },
       ],
@@ -186,9 +230,9 @@ async function fetchUrlMetadata(url: string): Promise<{
     const extractedYear = extracted?.year != null && !isNaN(extracted.year) ? extracted.year : null;
 
     const ogTitle = meta?.ogTitle || meta?.title || null;
-    const ogImage = meta?.ogImage || null;
     const metaRecord = meta as Record<string, string> | undefined;
-    const ogPrice = metaRecord?.["og:price:amount"] ?? null;
+    const ogImage = meta?.ogImage || metaRecord?.["og:image:secure_url"] || metaRecord?.["twitter:image"] || null;
+    const ogPrice = metaRecord?.["og:price:amount"] ?? metaRecord?.["product:price:amount"] ?? null;
 
     const title = extractedTitle || ogTitle;
     const thumbnailUrl = extractedImage || ogImage;
