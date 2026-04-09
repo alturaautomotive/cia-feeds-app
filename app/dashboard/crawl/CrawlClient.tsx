@@ -122,6 +122,9 @@ export function CrawlClient({
   // Pagination
   const [page, setPage] = useState(0);
 
+  // Clear results state
+  const [clearing, setClearing] = useState(false);
+
   // Add to feed state
   const [addingToFeed, setAddingToFeed] = useState(false);
   const [addProgress, setAddProgress] = useState<{ done: number; total: number } | null>(null);
@@ -259,6 +262,24 @@ export function CrawlClient({
       // Silently fail — toggle stays at old state
     } finally {
       setAutoCrawlSaving(false);
+    }
+  }
+
+  async function handleClearResults() {
+    if (!window.confirm(`This will remove all ${snapshots.length} crawl results. Items already added to your feed will not be affected. Continue?`)) {
+      return;
+    }
+    setClearing(true);
+    try {
+      const res = await fetch("/api/crawl/snapshots", { method: "DELETE" });
+      if (res.ok) {
+        setSnapshots([]);
+        setLastCrawlInfo(null);
+      }
+    } catch {
+      // Silently fail
+    } finally {
+      setClearing(false);
     }
   }
 
@@ -478,21 +499,30 @@ export function CrawlClient({
                   </span>
                 )}
               </h1>
-              {lastCrawlInfo && (
-                <span className="text-[13px] text-gray-400">
-                  Crawled{" "}
-                  {new Date(lastCrawlInfo.completedAt).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  })}{" "}
-                  at{" "}
-                  {new Date(lastCrawlInfo.completedAt).toLocaleTimeString("en-US", {
-                    hour: "numeric",
-                    minute: "2-digit",
-                  })}
-                </span>
-              )}
+              <div className="flex items-center gap-3">
+                {lastCrawlInfo && (
+                  <span className="text-[13px] text-gray-400">
+                    Crawled{" "}
+                    {new Date(lastCrawlInfo.completedAt).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    })}{" "}
+                    at{" "}
+                    {new Date(lastCrawlInfo.completedAt).toLocaleTimeString("en-US", {
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                )}
+                <button
+                  onClick={handleClearResults}
+                  disabled={clearing}
+                  className="text-[13px] border border-red-300 text-red-600 px-3 py-1 rounded-md hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {clearing ? "Clearing\u2026" : "Clear Results"}
+                </button>
+              </div>
             </div>
 
             {/* Add result banner */}

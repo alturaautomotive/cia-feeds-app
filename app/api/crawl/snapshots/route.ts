@@ -98,3 +98,19 @@ export async function PATCH(request: NextRequest) {
 
   return NextResponse.json({ ok: true });
 }
+
+/**
+ * DELETE /api/crawl/snapshots — Remove all crawl snapshots for the dealer
+ */
+export async function DELETE() {
+  const dealerId = await getEffectiveDealerId();
+  if (!dealerId) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const result = await prisma.crawlSnapshot.deleteMany({
+    where: { dealerId },
+  });
+
+  return NextResponse.json({ ok: true, deleted: result.count });
+}
