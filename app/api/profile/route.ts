@@ -159,7 +159,7 @@ export async function PATCH(request: NextRequest) {
         updatedDealer = await tx.dealer.update({
           where: { id: effectiveDealerId },
           data: { vertical: newVertical },
-          select: { id: true, name: true, email: true, slug: true, profileImageUrl: true, vertical: true },
+          select: SAFE_SELECT,
         });
       });
 
@@ -169,7 +169,7 @@ export async function PATCH(request: NextRequest) {
 
   const currentDealer = await prisma.dealer.findUnique({
     where: { id: effectiveDealerId },
-    select: { id: true, name: true, email: true, slug: true, profileImageUrl: true, vertical: true, websiteUrl: true },
+    select: SAFE_SELECT,
   });
   return NextResponse.json({ ok: true, dealer: currentDealer });
 }

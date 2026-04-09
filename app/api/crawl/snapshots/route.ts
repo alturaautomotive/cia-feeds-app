@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getEffectiveDealerId } from "@/lib/impersonation";
 
+const MONTHLY_CRAWL_LIMIT = 4;
+
 /**
  * GET /api/crawl/snapshots — Returns all CrawlSnapshot records for the dealer
  * Ordered by firstSeenAt desc, includes weeksActive and addedToFeed rate
@@ -11,6 +13,18 @@ export async function GET() {
   if (!dealerId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+
+  const now = new Date();
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const resetsAt = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+
+  const crawlsUsedThisMonth = await prisma.crawlJob.count({
+    where: {
+      dealerId,
+      startedAt: { gte: monthStart },
+      status: { not: "failed" },
+    },
+  });
 
   const snapshots = await prisma.crawlSnapshot.findMany({
     where: { dealerId },
@@ -35,7 +49,15 @@ export async function GET() {
   const addedCount = snapshots.filter((s) => s.addedToFeed).length;
   const addedToFeedRate = total > 0 ? addedCount / total : 0;
 
-  return NextResponse.json({ snapshots, addedToFeedRate });
+  return NextResponse.json({
+    snapshots,
+    addedToFeedRate,
+    quota: {
+      used: crawlsUsedThisMonth,
+      limit: MONTHLY_CRAWL_LIMIT,
+      resetsAt: resetsAt.toISOString(),
+    },
+  });
 }
 
 /**
