@@ -80,12 +80,36 @@ const METADATA_BATCH_DELAY_MS = 500;
 const VEHICLE_EXTRACT_SCHEMA = {
   type: "object" as const,
   properties: {
-    title: { type: "string", description: "The vehicle listing title or page title" },
-    price: { type: "string", description: "The listed price of the vehicle (e.g. '$29,995' or '29995')" },
-    make: { type: "string", description: "Vehicle manufacturer/make (e.g. Toyota, Ford, Honda)" },
-    model: { type: "string", description: "Vehicle model name (e.g. Camry, F-150, Civic)" },
-    year: { type: "number", description: "Vehicle model year (e.g. 2023)" },
-    imageUrl: { type: "string", description: "URL of the primary vehicle image or thumbnail" },
+    title: {
+      type: "string",
+      description:
+        "The vehicle listing title. Look in <h1>, og:title meta tag, or JSON-LD 'name' field.",
+    },
+    price: {
+      type: "string",
+      description:
+        "The listed sale price of the vehicle (e.g. '$29,995' or '29995'). Search in order: JSON-LD offers.price, elements with class names containing 'price'/'sale-price'/'final-price'/'vehicle-price'/'msrp'/'internet-price'/'our-price', data-price or data-msrp attributes, og:price:amount meta tag. Exclude 'Call for price' or empty values.",
+    },
+    make: {
+      type: "string",
+      description:
+        "Vehicle manufacturer/make (e.g. Toyota, Ford, Honda). Look in JSON-LD 'brand.name' or 'manufacturer', or breadcrumb navigation.",
+    },
+    model: {
+      type: "string",
+      description:
+        "Vehicle model name (e.g. Camry, F-150, Civic). Look in JSON-LD 'model' field.",
+    },
+    year: {
+      type: "number",
+      description:
+        "Vehicle model year as a 4-digit number between 1980 and 2030. Look in JSON-LD 'vehicleModelDate' or 'modelDate'.",
+    },
+    imageUrl: {
+      type: "string",
+      description:
+        "Absolute http(s) URL of the primary vehicle image. Priority: JSON-LD 'image' → og:image or og:image:secure_url meta tag → twitter:image meta tag → first gallery <img> src. Must start with http:// or https://.",
+    },
   },
 };
 
