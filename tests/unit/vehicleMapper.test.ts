@@ -182,6 +182,161 @@ describe("mapFirecrawlToVehicle()", () => {
     const r2 = mapFirecrawlToVehicle({}, TEST_DEALER_ID, TEST_URL);
     expect(r1.id).not.toBe(r2.id);
   });
+
+  it("parses plain numeric latitude/longitude strings", () => {
+    const result = mapFirecrawlToVehicle(
+      { latitude: "37.7749", longitude: "-122.4194" },
+      TEST_DEALER_ID,
+      TEST_URL
+    );
+    expect(result.latitude).toBeCloseTo(37.7749);
+    expect(result.longitude).toBeCloseTo(-122.4194);
+  });
+
+  it("parses numeric latitude/longitude values directly", () => {
+    const result = mapFirecrawlToVehicle(
+      { latitude: 40.7128, longitude: -74.006 },
+      TEST_DEALER_ID,
+      TEST_URL
+    );
+    expect(result.latitude).toBe(40.7128);
+    expect(result.longitude).toBe(-74.006);
+  });
+
+  it("parses map-prefixed coordinate strings (e.g. '@lat,lng')", () => {
+    const result = mapFirecrawlToVehicle(
+      { latitude: "@37.7749", longitude: "lng: -122.4194" },
+      TEST_DEALER_ID,
+      TEST_URL
+    );
+    expect(result.latitude).toBeCloseTo(37.7749);
+    expect(result.longitude).toBeCloseTo(-122.4194);
+  });
+
+  it("parses longitude correctly from combined '@lat,lng' pair string", () => {
+    // Regression: when extraction returns a combined pair in the longitude
+    // field, longitude must be the *second* token, not the first.
+    const result = mapFirecrawlToVehicle(
+      { latitude: "@37.7749,-122.4194", longitude: "@37.7749,-122.4194" },
+      TEST_DEALER_ID,
+      TEST_URL
+    );
+    expect(result.latitude).toBeCloseTo(37.7749);
+    expect(result.longitude).toBeCloseTo(-122.4194);
+  });
+
+  it("parses longitude second token from bare 'lat,lng' pair string", () => {
+    const result = mapFirecrawlToVehicle(
+      { latitude: "40.7128, -74.0060", longitude: "40.7128, -74.0060" },
+      TEST_DEALER_ID,
+      TEST_URL
+    );
+    expect(result.latitude).toBeCloseTo(40.7128);
+    expect(result.longitude).toBeCloseTo(-74.006);
+  });
+
+  it("returns null for out-of-range latitude/longitude values", () => {
+    const r1 = mapFirecrawlToVehicle(
+      { latitude: 95.5, longitude: -200.1 },
+      TEST_DEALER_ID,
+      TEST_URL
+    );
+    expect(r1.latitude).toBeNull();
+    expect(r1.longitude).toBeNull();
+
+    const r2 = mapFirecrawlToVehicle(
+      { latitude: "-91.2", longitude: "181.0" },
+      TEST_DEALER_ID,
+      TEST_URL
+    );
+    expect(r2.latitude).toBeNull();
+    expect(r2.longitude).toBeNull();
+  });
+
+  it("parses embed URL fragment tokens like '!3d37.77'", () => {
+    const result = mapFirecrawlToVehicle(
+      { latitude: "!3d37.7749", longitude: "!4d-122.4194" },
+      TEST_DEALER_ID,
+      TEST_URL
+    );
+    expect(result.latitude).toBeCloseTo(37.7749);
+    expect(result.longitude).toBeCloseTo(-122.4194);
+  });
+
+  it("parses coordinate strings with degree symbol / directional suffix", () => {
+    const result = mapFirecrawlToVehicle(
+      { latitude: "37.7749° N", longitude: "-122.4194° W" },
+      TEST_DEALER_ID,
+      TEST_URL
+    );
+    expect(result.latitude).toBeCloseTo(37.7749);
+    expect(result.longitude).toBeCloseTo(-122.4194);
+  });
+
+  it("returns null for coordinate strings with no numeric content", () => {
+    const result = mapFirecrawlToVehicle(
+      { latitude: "not available", longitude: "see map" },
+      TEST_DEALER_ID,
+      TEST_URL
+    );
+    expect(result.latitude).toBeNull();
+    expect(result.longitude).toBeNull();
+  });
+
+  it("returns null for null/undefined/empty coordinates", () => {
+    const r1 = mapFirecrawlToVehicle(
+      { latitude: null, longitude: undefined },
+      TEST_DEALER_ID,
+      TEST_URL
+    );
+    expect(r1.latitude).toBeNull();
+    expect(r1.longitude).toBeNull();
+
+    const r2 = mapFirecrawlToVehicle(
+      { latitude: "", longitude: "   " },
+      TEST_DEALER_ID,
+      TEST_URL
+    );
+    expect(r2.latitude).toBeNull();
+    expect(r2.longitude).toBeNull();
+  });
+
+  it("returns null for non-finite numeric coordinate values (NaN, Infinity)", () => {
+    const r1 = mapFirecrawlToVehicle(
+      { latitude: NaN, longitude: Infinity },
+      TEST_DEALER_ID,
+      TEST_URL
+    );
+    expect(r1.latitude).toBeNull();
+    expect(r1.longitude).toBeNull();
+
+    const r2 = mapFirecrawlToVehicle(
+      { latitude: -Infinity, longitude: NaN },
+      TEST_DEALER_ID,
+      TEST_URL
+    );
+    expect(r2.latitude).toBeNull();
+    expect(r2.longitude).toBeNull();
+  });
+
+  it("maps address string trimmed, and null for blank/missing", () => {
+    const r1 = mapFirecrawlToVehicle(
+      { address: "  123 Main St, Springfield  " },
+      TEST_DEALER_ID,
+      TEST_URL
+    );
+    expect(r1.address).toBe("123 Main St, Springfield");
+
+    const r2 = mapFirecrawlToVehicle(
+      { address: "   " },
+      TEST_DEALER_ID,
+      TEST_URL
+    );
+    expect(r2.address).toBeNull();
+
+    const r3 = mapFirecrawlToVehicle({}, TEST_DEALER_ID, TEST_URL);
+    expect(r3.address).toBeNull();
+  });
 });
 
 describe("parsePrice()", () => {

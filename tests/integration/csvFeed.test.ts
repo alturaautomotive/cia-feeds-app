@@ -35,6 +35,9 @@ function makeVehicle(overrides: Partial<{
   url: string;
   imageUrl: string | null;
   images: string[];
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
   dealer: { name: string } | null;
 }> = {}) {
   return {
@@ -53,6 +56,9 @@ function makeVehicle(overrides: Partial<{
     url: "https://dealer.com/corolla",
     imageUrl: null,
     images: [],
+    address: null,
+    latitude: null,
+    longitude: null,
     dealer: { name: dealer.name },
     isComplete: true,
     missingFields: [],
@@ -324,6 +330,50 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     const cols4 = lines[4].split(",");
     expect(cols4[condIdx]).toBe("");
     expect(cols4[brandIdx]).toBe("Tesla");
+  });
+
+  it("automotive feed populates address, latitude, and longitude columns when present", async () => {
+    vi.mocked(prisma.dealer.findUnique).mockResolvedValue(dealer as never);
+    vi.mocked(prisma.vehicle.findMany).mockResolvedValue([
+      makeVehicle({
+        id: "v-geo-1",
+        make: "Honda",
+        model: "Civic",
+        address: "123 Main St Springfield IL 62701",
+        latitude: 39.7817,
+        longitude: -89.6501,
+      }),
+      makeVehicle({
+        id: "v-geo-2",
+        make: "Ford",
+        model: "F-150",
+        address: null,
+        latitude: null,
+        longitude: null,
+      }),
+    ] as never);
+
+    const req = new Request("http://localhost:3000/feeds/int-dealer.csv");
+    const res = await GET(req, { params: Promise.resolve({ slug: "int-dealer.csv" }) });
+    const text = await res.text();
+    const lines = text.split("\r\n").filter(Boolean);
+    const headers = lines[0].split(",");
+    const addressIdx = headers.indexOf("address");
+    const latIdx = headers.indexOf("latitude");
+    const lngIdx = headers.indexOf("longitude");
+
+    // Row 1: populated coordinates/address
+    const cols1 = lines[1].split(",");
+    expect(cols1[addressIdx]).toBe("123 Main St Springfield IL 62701");
+    expect(cols1[latIdx]).toBe("39.7817");
+    expect(cols1[lngIdx]).toBe("-89.6501");
+
+    // Row 2: null values must become empty strings, never the literal word "null"
+    const cols2 = lines[2].split(",");
+    expect(cols2[addressIdx]).toBe("");
+    expect(cols2[latIdx]).toBe("");
+    expect(cols2[lngIdx]).toBe("");
+    expect(lines[2]).not.toContain("null");
   });
 
   // ── Ecommerce vertical CSV contract ──────────────────────────────────────

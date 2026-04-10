@@ -43,6 +43,9 @@ const mockVehicles = [
     url: "https://dealer.com/camry",
     imageUrl: "https://img.com/camry.jpg",
     images: ["https://img.com/camry.jpg"],
+    address: "123 Main St, Springfield, IL 62701",
+    latitude: 39.7817,
+    longitude: -89.6501,
     dealer: { name: "Test Dealer" },
     isComplete: true,
     missingFields: [],
@@ -66,6 +69,9 @@ const mockVehicles = [
     url: "https://dealer.com/silverado",
     imageUrl: null,
     images: [],
+    address: null,
+    latitude: null,
+    longitude: null,
     dealer: { name: "Test Dealer" },
     isComplete: false,
     missingFields: ["vin", "exteriorColor", "imageUrl"],
@@ -138,6 +144,87 @@ describe("GET /feeds/[slug].csv", () => {
 
     const text = await res.text();
     expect(text).not.toContain("null");
+  });
+
+  it("renders populated address, latitude, and longitude in the correct CSV columns", async () => {
+    vi.mocked(prisma.dealer.findUnique).mockResolvedValue(mockDealer as never);
+    vi.mocked(prisma.vehicle.findMany).mockResolvedValue(mockVehicles as never);
+
+    const req = new NextRequest("http://localhost:3000/feeds/test-dealer.csv");
+    const res = await GET(req, { params: { slug: "test-dealer.csv" } });
+
+    const text = await res.text();
+    const lines = text.split("\r\n").filter(Boolean);
+    const header = lines[0].split(",");
+    const addressIdx = header.indexOf("address");
+    const latIdx = header.indexOf("latitude");
+    const lngIdx = header.indexOf("longitude");
+
+    expect(addressIdx).toBeGreaterThanOrEqual(0);
+    expect(latIdx).toBeGreaterThanOrEqual(0);
+    expect(lngIdx).toBeGreaterThanOrEqual(0);
+
+    // Use a CSV-aware splitter for row 1 since address contains commas and
+    // will be wrapped in quotes.
+    const parseRow = (line: string): string[] => {
+      const fields: string[] = [];
+      let current = "";
+      let inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (inQuotes) {
+          if (ch === '"' && line[i + 1] === '"') {
+            current += '"';
+            i++;
+          } else if (ch === '"') {
+            inQuotes = false;
+          } else {
+            current += ch;
+          }
+        } else if (ch === '"') {
+          inQuotes = true;
+        } else if (ch === ",") {
+          fields.push(current);
+          current = "";
+        } else {
+          current += ch;
+        }
+      }
+      fields.push(current);
+      return fields;
+    };
+
+    const row1 = parseRow(lines[1]);
+    expect(row1[addressIdx]).toBe("123 Main St, Springfield, IL 62701");
+    expect(row1[latIdx]).toBe("39.7817");
+    expect(row1[lngIdx]).toBe("-89.6501");
+  });
+
+  it("renders null address, latitude, and longitude as empty strings (not 'null')", async () => {
+    vi.mocked(prisma.dealer.findUnique).mockResolvedValue(mockDealer as never);
+    vi.mocked(prisma.vehicle.findMany).mockResolvedValue(mockVehicles as never);
+
+    const req = new NextRequest("http://localhost:3000/feeds/test-dealer.csv");
+    const res = await GET(req, { params: { slug: "test-dealer.csv" } });
+
+    const text = await res.text();
+    const lines = text.split("\r\n").filter(Boolean);
+    const header = lines[0].split(",");
+    const addressIdx = header.indexOf("address");
+    const latIdx = header.indexOf("latitude");
+    const lngIdx = header.indexOf("longitude");
+
+    // Row 2 (Silverado) has null address/lat/lng. Since none of those fields
+    // contain commas/quotes, a plain split is sufficient here.
+    const row2 = lines[2].split(",");
+
+    expect(row2[addressIdx]).toBe("");
+    expect(row2[latIdx]).toBe("");
+    expect(row2[lngIdx]).toBe("");
+
+    // Guard: no literal 'null' token anywhere in the CSV.
+    expect(text).not.toMatch(/(^|,)null(,|\r|$)/);
+    expect(text.toLowerCase()).not.toContain("null");
   });
 
   it("returns 404 for an unknown slug", async () => {

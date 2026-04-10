@@ -66,6 +66,9 @@ describe("POST /api/vehicles/scrape — images[] sync", () => {
         exteriorColor: "White",
         imageUrl: "https://example.com/img.jpg",
         description: "2022 Honda Civic",
+        address: null,
+        latitude: null,
+        longitude: null,
         isComplete: true,
         missingFields: [],
       },
@@ -102,6 +105,9 @@ describe("POST /api/vehicles/scrape — images[] sync", () => {
         exteriorColor: null,
         imageUrl: null,
         description: "2022 Honda Civic",
+        address: null,
+        latitude: null,
+        longitude: null,
         isComplete: true,
         missingFields: [],
       },
@@ -141,6 +147,9 @@ describe("POST /api/vehicles/scrape — images[] sync", () => {
         exteriorColor: "Black",
         imageUrl: null,
         description: "Updated description",
+        address: null,
+        latitude: null,
+        longitude: null,
         isComplete: true,
         missingFields: [],
       },
@@ -164,6 +173,86 @@ describe("POST /api/vehicles/scrape — images[] sync", () => {
     expect(data.description).toBe("Updated description");
   });
 
+  it("persists address, latitude, and longitude when present on scrape result", async () => {
+    vi.mocked(scrapeVehicleUrl).mockResolvedValue({
+      vehicle: {
+        id: VEHICLE_ID,
+        dealerId: DEALER_ID,
+        url: URL,
+        vin: "1HGBH41JXMN109186",
+        make: "Honda",
+        model: "Civic",
+        year: "2022",
+        bodyStyle: null,
+        price: 24500,
+        mileageValue: 18200,
+        stateOfVehicle: "Used",
+        exteriorColor: "White",
+        imageUrl: "https://example.com/img.jpg",
+        description: "2022 Honda Civic",
+        address: "123 Main St, Springfield, IL 62701",
+        latitude: 39.7817,
+        longitude: -89.6501,
+        isComplete: true,
+        missingFields: [],
+      },
+      url: URL,
+      fieldsExtracted: ["make", "model", "address", "latitude", "longitude"],
+    });
+
+    const res = await POST(makeRequest({ vehicleId: VEHICLE_ID, url: URL, dealerId: DEALER_ID }));
+    expect(res.status).toBe(200);
+
+    const updateCall = vi.mocked(prisma.vehicle.update).mock.calls.find(
+      (call) => (call[0] as { data: Record<string, unknown> }).data.scrapeStatus === "complete"
+    );
+    expect(updateCall).toBeDefined();
+    const data = (updateCall![0] as { data: Record<string, unknown> }).data;
+    expect(data.address).toBe("123 Main St, Springfield, IL 62701");
+    expect(data.latitude).toBe(39.7817);
+    expect(data.longitude).toBe(-89.6501);
+  });
+
+  it("persists null address, latitude, and longitude when missing/invalid on scrape result", async () => {
+    vi.mocked(scrapeVehicleUrl).mockResolvedValue({
+      vehicle: {
+        id: VEHICLE_ID,
+        dealerId: DEALER_ID,
+        url: URL,
+        vin: "1HGBH41JXMN109186",
+        make: "Honda",
+        model: "Civic",
+        year: "2022",
+        bodyStyle: null,
+        price: 24500,
+        mileageValue: 18200,
+        stateOfVehicle: "Used",
+        exteriorColor: "White",
+        imageUrl: "https://example.com/img.jpg",
+        description: "2022 Honda Civic",
+        address: null,
+        latitude: null,
+        longitude: null,
+        isComplete: true,
+        missingFields: [],
+      },
+      url: URL,
+      fieldsExtracted: ["make", "model"],
+    });
+
+    const res = await POST(makeRequest({ vehicleId: VEHICLE_ID, url: URL, dealerId: DEALER_ID }));
+    expect(res.status).toBe(200);
+
+    const updateCall = vi.mocked(prisma.vehicle.update).mock.calls.find(
+      (call) => (call[0] as { data: Record<string, unknown> }).data.scrapeStatus === "complete"
+    );
+    expect(updateCall).toBeDefined();
+    const data = (updateCall![0] as { data: Record<string, unknown> }).data;
+    expect(data.address).toBeNull();
+    expect(data.latitude).toBeNull();
+    expect(data.longitude).toBeNull();
+  });
+
   it("rescrape overwrites images when scrape returns a new imageUrl", async () => {
     vi.mocked(scrapeVehicleUrl).mockResolvedValue({
       vehicle: {
@@ -181,6 +270,9 @@ describe("POST /api/vehicles/scrape — images[] sync", () => {
         exteriorColor: "Black",
         imageUrl: "https://example.com/new-img.jpg",
         description: "Updated description",
+        address: null,
+        latitude: null,
+        longitude: null,
         isComplete: true,
         missingFields: [],
       },

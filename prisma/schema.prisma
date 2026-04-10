@@ -47,6 +47,9 @@ model Vehicle {
   stateOfVehicle String?
   exteriorColor  String?
   url            String
+  address        String?
+  latitude       Float?
+  longitude      Float?
   imageUrl       String?
   images         String[] @default([])
   spotlightImageUrl String?

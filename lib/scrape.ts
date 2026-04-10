@@ -21,6 +21,9 @@ Extract the following vehicle information from this Vehicle Detail Page (VDP):
 - image_url: URL of the **first** vehicle image in the photo gallery
 - image_url_2: URL of the **second** vehicle image in the photo gallery (the photo right after the first one)
 - description: a brief description of the vehicle
+- address: the full dealership street address — look in JSON-LD "address" fields, the page footer, or the contact/location section
+- latitude: GPS latitude — look in JSON-LD "geo.latitude", "data-lat" attributes, or Google Maps embed URL parameters (e.g., @lat,lng or !3dLAT!)
+- longitude: GPS longitude — look in JSON-LD "geo.longitude", "data-lng" attributes, or Google Maps embed URL parameters (e.g., @lat,lng or !4dLNG!)
 
 Return null for any field you cannot find.
 `;

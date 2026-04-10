@@ -158,6 +158,9 @@ export function mapVehicleToRow(v: {
   url: string;
   imageUrl: string | null;
   images: string[];
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
   dealer?: { name: string } | null;
 }): Record<string, unknown> {
   return {
@@ -177,12 +180,12 @@ export function mapVehicleToRow(v: {
     description: v.description ?? "",
     image: v.imageUrl ?? v.images[0] ?? "",
     fuel_type: "",
-    address: "",
+    address: v.address ?? "",
     state_of_vehicle: v.stateOfVehicle ?? "",
     title: `${v.make ?? ""} ${v.model ?? ""}`.trim(),
     url: v.url,
-    latitude: "",
-    longitude: "",
+    latitude: v.latitude != null ? String(v.latitude) : "",
+    longitude: v.longitude != null ? String(v.longitude) : "",
     vehicle_id: v.id,
     "mileage.unit": "mi",
     days_on_lot: "",

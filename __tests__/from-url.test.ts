@@ -79,6 +79,9 @@ const MAPPED_VEHICLE = {
   exteriorColor: "White",
   imageUrl: "https://example.com/accord.jpg",
   description: "2023 Honda Accord in excellent condition",
+  address: null,
+  latitude: null,
+  longitude: null,
   isComplete: true,
   missingFields: [],
 };

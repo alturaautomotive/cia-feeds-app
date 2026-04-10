@@ -88,6 +88,9 @@ describe("POST /api/vehicles/from-url — inline scrape images[] sync", () => {
         exteriorColor: "White",
         imageUrl: "https://example.com/img.jpg",
         description: "2022 Honda Civic",
+        address: null,
+        latitude: null,
+        longitude: null,
         isComplete: true,
         missingFields: [],
       },
@@ -105,6 +108,86 @@ describe("POST /api/vehicles/from-url — inline scrape images[] sync", () => {
     const data = (updateCall![0] as { data: Record<string, unknown> }).data;
     expect(data.imageUrl).toBe("https://example.com/img.jpg");
     expect(data.images).toEqual(["https://example.com/img.jpg"]);
+  });
+
+  it("persists address, latitude, and longitude when present on scrape result", async () => {
+    vi.mocked(scrapeVehicleUrl).mockResolvedValue({
+      vehicle: {
+        id: VEHICLE_ID,
+        dealerId: DEALER_ID,
+        url: URL,
+        vin: "1HGBH41JXMN109186",
+        make: "Honda",
+        model: "Civic",
+        year: "2022",
+        bodyStyle: null,
+        price: 24500,
+        mileageValue: 18200,
+        stateOfVehicle: "Used",
+        exteriorColor: "White",
+        imageUrl: "https://example.com/img.jpg",
+        description: "2022 Honda Civic",
+        address: "500 Market St, San Francisco, CA 94105",
+        latitude: 37.7897,
+        longitude: -122.3972,
+        isComplete: true,
+        missingFields: [],
+      },
+      url: URL,
+      fieldsExtracted: ["make", "model", "address", "latitude", "longitude"],
+    });
+
+    const res = await POST(makeRequest({ url: URL }));
+    expect(res.status).toBe(202);
+
+    const updateCall = vi.mocked(prisma.vehicle.update).mock.calls.find(
+      (call) => (call[0] as { data: Record<string, unknown> }).data.scrapeStatus === "complete"
+    );
+    expect(updateCall).toBeDefined();
+    const data = (updateCall![0] as { data: Record<string, unknown> }).data;
+    expect(data.address).toBe("500 Market St, San Francisco, CA 94105");
+    expect(data.latitude).toBe(37.7897);
+    expect(data.longitude).toBe(-122.3972);
+  });
+
+  it("persists null address, latitude, and longitude when missing/invalid on scrape result", async () => {
+    vi.mocked(scrapeVehicleUrl).mockResolvedValue({
+      vehicle: {
+        id: VEHICLE_ID,
+        dealerId: DEALER_ID,
+        url: URL,
+        vin: "1HGBH41JXMN109186",
+        make: "Honda",
+        model: "Civic",
+        year: "2022",
+        bodyStyle: null,
+        price: 24500,
+        mileageValue: 18200,
+        stateOfVehicle: "Used",
+        exteriorColor: "White",
+        imageUrl: "https://example.com/img.jpg",
+        description: "2022 Honda Civic",
+        address: null,
+        latitude: null,
+        longitude: null,
+        isComplete: true,
+        missingFields: [],
+      },
+      url: URL,
+      fieldsExtracted: ["make", "model"],
+    });
+
+    const res = await POST(makeRequest({ url: URL }));
+    expect(res.status).toBe(202);
+
+    const updateCall = vi.mocked(prisma.vehicle.update).mock.calls.find(
+      (call) => (call[0] as { data: Record<string, unknown> }).data.scrapeStatus === "complete"
+    );
+    expect(updateCall).toBeDefined();
+    const data = (updateCall![0] as { data: Record<string, unknown> }).data;
+    expect(data.address).toBeNull();
+    expect(data.latitude).toBeNull();
+    expect(data.longitude).toBeNull();
   });
 
   it("persists images: [] when imageUrl is null", async () => {
@@ -125,6 +208,9 @@ describe("POST /api/vehicles/from-url — inline scrape images[] sync", () => {
         exteriorColor: null,
         imageUrl: null,
         description: "2022 Honda Civic",
+        address: null,
+        latitude: null,
+        longitude: null,
         isComplete: true,
         missingFields: [],
       },

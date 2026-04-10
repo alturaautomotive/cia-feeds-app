@@ -13,6 +13,9 @@ export const EXTRACTION_SCHEMA = z.object({
   image_url: z.string().nullable().optional(),
   image_url_2: z.string().nullable().optional(),
   description: z.string().nullable().optional(),
+  address: z.string().nullable().optional(),
+  latitude: z.union([z.string(), z.number()]).nullable().optional(),
+  longitude: z.union([z.string(), z.number()]).nullable().optional(),
 });
 
 export const ECOMMERCE_EXTRACTION_SCHEMA = z.object({
