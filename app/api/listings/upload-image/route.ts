@@ -68,27 +68,39 @@ export async function POST(request: NextRequest) {
     const sanitizedName = fileRaw.name.replace(/[^a-zA-Z0-9.\-]/g, "_");
     const path = `listings/${dealerId}/${Date.now()}-${sanitizedName}`;
 
-    const arrayBuffer = await fileRaw.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    try {
+      const arrayBuffer = await fileRaw.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
 
-    const { error: uploadError } = await supabaseAdmin.storage
-      .from("vehicle-images")
-      .upload(path, buffer, { contentType: fileRaw.type, upsert: false });
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from("vehicle-images")
+        .upload(path, buffer, { contentType: fileRaw.type, upsert: false });
 
-    if (uploadError) {
+      if (uploadError) {
+        console.error({
+          event: "upload_storage_error",
+          path,
+          message: uploadError.message,
+        });
+        return NextResponse.json(
+          { error: "Upload failed", details: uploadError.message },
+          { status: 502 }
+        );
+      }
+
+      const { data } = supabaseAdmin.storage.from("vehicle-images").getPublicUrl(path);
+      urls.push(data.publicUrl);
+    } catch (err) {
       console.error({
-        event: "upload_storage_error",
+        event: "upload_storage_exception",
         path,
-        message: uploadError.message,
+        message: err instanceof Error ? err.message : String(err),
       });
       return NextResponse.json(
-        { error: "Upload failed", details: uploadError.message },
+        { error: "Upload failed", details: err instanceof Error ? err.message : String(err) },
         { status: 502 }
       );
     }
-
-    const { data } = supabaseAdmin.storage.from("vehicle-images").getPublicUrl(path);
-    urls.push(data.publicUrl);
   }
 
   return NextResponse.json({ urls });
