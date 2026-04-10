@@ -79,6 +79,7 @@ export async function POST(request: NextRequest) {
         stateOfVehicle: scraped.stateOfVehicle,
         exteriorColor: scraped.exteriorColor,
         imageUrl: scraped.imageUrl,
+        ...(scraped.imageUrl ? { images: [scraped.imageUrl] } : {}),
         description: scraped.description,
         isComplete: scraped.isComplete,
         missingFields: scraped.missingFields,

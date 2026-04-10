@@ -27,7 +27,7 @@ export const SERVICES_CSV_HEADERS = [
 
 export const ECOMMERCE_CSV_HEADERS = [
   "id", "title", "description", "price", "brand", "condition", "availability",
-  "retailer_id", "link", "image_link", "google_product_category",
+  "retailer_id", "link", "image", "google_product_category",
 ];
 
 export const REALESTATE_CSV_HEADERS = [
@@ -56,7 +56,7 @@ export function mapListingToRow(listing: {
     url: listing.url || d.url || "",
     image_url: listing.imageUrls[0] ?? "",
     link: listing.url || d.link || "",
-    image_link: listing.imageUrls[0] ?? "",
+    image: listing.imageUrls[0] ?? "",
   };
 }
 
@@ -117,13 +117,7 @@ export const VEHICLE_CSV_HEADERS = [
   "msrp",
   "price",
   "description",
-  "image[0].url",
-  "image[1].url",
-  "image[2].url",
-  "image[3].url",
-  "image[4].url",
-  "image[5].url",
-  "image[6].url",
+  "image",
   "fuel_type",
   "address",
   "state_of_vehicle",
@@ -135,7 +129,19 @@ export const VEHICLE_CSV_HEADERS = [
   "mileage.unit",
   "days_on_lot",
   "fb_page_id",
+  "link",
+  "availability",
+  "condition",
+  "brand",
 ];
+
+function mapCondition(stateOfVehicle: string | null): string {
+  if (!stateOfVehicle) return "";
+  const lower = stateOfVehicle.toLowerCase();
+  if (lower === "new") return "new";
+  if (lower === "used" || lower === "certified used") return "used";
+  return "";
+}
 
 export function mapVehicleToRow(v: {
   id: string;
@@ -169,13 +175,7 @@ export function mapVehicleToRow(v: {
     msrp: "",
     price: String(v.price ?? ""),
     description: v.description ?? "",
-    "image[0].url": v.images[0] ?? "",
-    "image[1].url": v.images[1] ?? "",
-    "image[2].url": v.images[2] ?? "",
-    "image[3].url": v.images[3] ?? "",
-    "image[4].url": v.images[4] ?? "",
-    "image[5].url": v.images[5] ?? "",
-    "image[6].url": v.images[6] ?? "",
+    image: v.imageUrl ?? v.images[0] ?? "",
     fuel_type: "",
     address: "",
     state_of_vehicle: v.stateOfVehicle ?? "",
@@ -187,6 +187,10 @@ export function mapVehicleToRow(v: {
     "mileage.unit": "mi",
     days_on_lot: "",
     fb_page_id: "",
+    link: v.url,
+    availability: "in stock",
+    condition: mapCondition(v.stateOfVehicle),
+    brand: v.make ?? "",
   };
 }
 

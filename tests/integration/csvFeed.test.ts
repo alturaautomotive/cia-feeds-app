@@ -87,7 +87,7 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     const lines = text.split("\r\n").filter(Boolean);
 
     expect(lines[0]).toBe(
-      "dealer_name,vin,year,make,model,body_style,transmission,trim,mileage.value,drivetrain,exterior_color,msrp,price,description,image[0].url,image[1].url,image[2].url,image[3].url,image[4].url,image[5].url,image[6].url,fuel_type,address,state_of_vehicle,title,url,latitude,longitude,vehicle_id,mileage.unit,days_on_lot,fb_page_id"
+      "dealer_name,vin,year,make,model,body_style,transmission,trim,mileage.value,drivetrain,exterior_color,msrp,price,description,image,fuel_type,address,state_of_vehicle,title,url,latitude,longitude,vehicle_id,mileage.unit,days_on_lot,fb_page_id,link,availability,condition,brand"
     );
     expect(lines[1]).toContain("Honda");
     expect(lines[1]).toContain("24500");
@@ -228,14 +228,14 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     expect(lines2[1]).not.toContain("20000");
   });
 
-  it("images[] populates multiple image[N].url columns", async () => {
-    // Sub-case A — images array populates image[0].url through image[6].url
+  it("image column uses imageUrl with fallback to images[0]", async () => {
+    // Sub-case A — imageUrl is used when present
     vi.mocked(prisma.dealer.findUnique).mockResolvedValue(dealer as never);
     vi.mocked(prisma.vehicle.findMany).mockResolvedValue([
       makeVehicle({
         id: "v-img-a",
-        images: ["https://cdn.com/photo1.jpg", "https://cdn.com/photo2.jpg"],
-        imageUrl: "https://old.com/fallback.jpg",
+        images: ["https://cdn.com/photo1.jpg"],
+        imageUrl: "https://primary.com/main.jpg",
       }),
     ] as never);
 
@@ -244,19 +244,16 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     const text1 = await res1.text();
     const lines1 = text1.split("\r\n").filter(Boolean);
 
-    // image[0].url gets photo1, image[1].url gets photo2
-    expect(lines1[1]).toContain("https://cdn.com/photo1.jpg");
-    expect(lines1[1]).toContain("https://cdn.com/photo2.jpg");
-    // imageUrl is not directly used — only images[] feeds image[N].url columns
-    expect(lines1[1]).not.toContain("https://old.com/fallback.jpg");
+    // imageUrl takes priority over images[0]
+    expect(lines1[1]).toContain("https://primary.com/main.jpg");
 
-    // Sub-case B — empty images produces empty image[N].url columns
+    // Sub-case B — falls back to images[0] when imageUrl is null
     vi.mocked(prisma.dealer.findUnique).mockResolvedValue(dealer as never);
     vi.mocked(prisma.vehicle.findMany).mockResolvedValue([
       makeVehicle({
         id: "v-img-b",
-        images: [],
-        imageUrl: "https://old.com/fallback.jpg",
+        images: ["https://cdn.com/fallback.jpg"],
+        imageUrl: null,
       }),
     ] as never);
 
@@ -265,13 +262,73 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     const text2 = await res2.text();
     const lines2 = text2.split("\r\n").filter(Boolean);
 
-    // With empty images array, all image[N].url columns are empty
-    expect(lines2[1]).not.toContain("https://old.com/fallback.jpg");
+    expect(lines2[1]).toContain("https://cdn.com/fallback.jpg");
+
+    // Sub-case C — empty string when both are absent
+    vi.mocked(prisma.dealer.findUnique).mockResolvedValue(dealer as never);
+    vi.mocked(prisma.vehicle.findMany).mockResolvedValue([
+      makeVehicle({
+        id: "v-img-c",
+        images: [],
+        imageUrl: null,
+      }),
+    ] as never);
+
+    const req3 = new Request("http://localhost:3000/feeds/int-dealer.csv");
+    const res3 = await GET(req3, { params: Promise.resolve({ slug: "int-dealer.csv" }) });
+    const text3 = await res3.text();
+    const lines3 = text3.split("\r\n").filter(Boolean);
+
+    expect(lines3[1]).not.toContain("null");
+  });
+
+  it("automotive feed populates link, availability, condition, and brand columns", async () => {
+    vi.mocked(prisma.dealer.findUnique).mockResolvedValue(dealer as never);
+    vi.mocked(prisma.vehicle.findMany).mockResolvedValue([
+      makeVehicle({ id: "v-meta-1", make: "Honda", model: "Civic", stateOfVehicle: "New", url: "https://dealer.com/civic" }),
+      makeVehicle({ id: "v-meta-2", make: "Ford", model: "F-150", stateOfVehicle: "Used", url: "https://dealer.com/f150" }),
+      makeVehicle({ id: "v-meta-3", make: "BMW", model: "X5", stateOfVehicle: "Certified Used", url: "https://dealer.com/x5" }),
+      makeVehicle({ id: "v-meta-4", make: "Tesla", model: "Model 3", stateOfVehicle: null, url: "https://dealer.com/model3" }),
+    ] as never);
+
+    const req = new Request("http://localhost:3000/feeds/int-dealer.csv");
+    const res = await GET(req, { params: Promise.resolve({ slug: "int-dealer.csv" }) });
+    const text = await res.text();
+    const lines = text.split("\r\n").filter(Boolean);
+    const headers = lines[0].split(",");
+    const linkIdx = headers.indexOf("link");
+    const availIdx = headers.indexOf("availability");
+    const condIdx = headers.indexOf("condition");
+    const brandIdx = headers.indexOf("brand");
+
+    // Row 1: New Honda
+    const cols1 = lines[1].split(",");
+    expect(cols1[linkIdx]).toBe("https://dealer.com/civic");
+    expect(cols1[availIdx]).toBe("in stock");
+    expect(cols1[condIdx]).toBe("new");
+    expect(cols1[brandIdx]).toBe("Honda");
+
+    // Row 2: Used Ford
+    const cols2 = lines[2].split(",");
+    expect(cols2[linkIdx]).toBe("https://dealer.com/f150");
+    expect(cols2[availIdx]).toBe("in stock");
+    expect(cols2[condIdx]).toBe("used");
+    expect(cols2[brandIdx]).toBe("Ford");
+
+    // Row 3: Certified Used BMW → condition = "used"
+    const cols3 = lines[3].split(",");
+    expect(cols3[condIdx]).toBe("used");
+    expect(cols3[brandIdx]).toBe("BMW");
+
+    // Row 4: null stateOfVehicle → condition = ""
+    const cols4 = lines[4].split(",");
+    expect(cols4[condIdx]).toBe("");
+    expect(cols4[brandIdx]).toBe("Tesla");
   });
 
   // ── Ecommerce vertical CSV contract ──────────────────────────────────────
 
-  it("ecommerce feed has correct CSV header row with link and image_link columns", async () => {
+  it("ecommerce feed has correct CSV header row with link and image columns", async () => {
     const ecomDealer = { id: "dealer-ecom-uuid", name: "Ecom Dealer", slug: "ecom-dealer", vertical: "ecommerce" };
     vi.mocked(prisma.dealer.findUnique).mockResolvedValue(ecomDealer as never);
     vi.mocked(prisma.listing.findMany).mockResolvedValue([] as never);
@@ -284,11 +341,11 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     const lines = text.split("\r\n").filter(Boolean);
 
     expect(lines[0]).toBe(
-      "id,title,description,price,brand,condition,availability,retailer_id,link,image_link,google_product_category"
+      "id,title,description,price,brand,condition,availability,retailer_id,link,image,google_product_category"
     );
   });
 
-  it("ecommerce feed maps link from listing.url and image_link from listing.imageUrls[0]", async () => {
+  it("ecommerce feed maps link from listing.url and image from listing.imageUrls[0]", async () => {
     const ecomDealer = { id: "dealer-ecom-uuid", name: "Ecom Dealer", slug: "ecom-dealer", vertical: "ecommerce" };
     vi.mocked(prisma.dealer.findUnique).mockResolvedValue(ecomDealer as never);
     vi.mocked(prisma.listing.findMany).mockResolvedValue([
@@ -315,7 +372,7 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
 
     // Header is correct
     expect(lines[0]).toBe(
-      "id,title,description,price,brand,condition,availability,retailer_id,link,image_link,google_product_category"
+      "id,title,description,price,brand,condition,availability,retailer_id,link,image,google_product_category"
     );
 
     // Data row: parse CSV columns by splitting (no commas in test data values)
@@ -327,7 +384,7 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     expect(cols[5]).toBe("new");                                   // condition
     expect(cols[6]).toBe("in stock");                              // availability
     expect(cols[8]).toBe("https://shop.example.com/widget-pro");   // link (from listing.url)
-    expect(cols[9]).toBe("https://cdn.example.com/widget.jpg");    // image_link (from listing.imageUrls[0])
+    expect(cols[9]).toBe("https://cdn.example.com/widget.jpg");    // image (from listing.imageUrls[0])
     expect(cols[10]).toBe("Electronics");                          // google_product_category
   });
 
@@ -358,7 +415,7 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     const cols = lines[1].split(",");
 
     expect(cols[8]).toBe("https://fallback.example.com/item"); // link falls back to data.link
-    expect(cols[9]).toBe("");                                   // image_link empty when imageUrls is empty
+    expect(cols[9]).toBe("");                                   // image empty when imageUrls is empty
   });
 
   it("pagination: >100 vehicles yields all rows", async () => {

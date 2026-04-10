@@ -116,6 +116,7 @@ export async function POST(request: NextRequest) {
           stateOfVehicle: v.stateOfVehicle,
           exteriorColor: v.exteriorColor,
           imageUrl: v.imageUrl,
+          ...(v.imageUrl ? { images: [v.imageUrl] } : {}),
           description: v.description,
           isComplete: v.isComplete,
           missingFields: v.missingFields,

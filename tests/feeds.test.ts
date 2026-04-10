@@ -104,7 +104,7 @@ describe("GET /feeds/[slug].csv", () => {
     const lines = text.split("\r\n").filter(Boolean);
 
     expect(lines[0]).toBe(
-      "dealer_name,vin,year,make,model,body_style,transmission,trim,mileage.value,drivetrain,exterior_color,msrp,price,description,image[0].url,image[1].url,image[2].url,image[3].url,image[4].url,image[5].url,image[6].url,fuel_type,address,state_of_vehicle,title,url,latitude,longitude,vehicle_id,mileage.unit,days_on_lot,fb_page_id"
+      "dealer_name,vin,year,make,model,body_style,transmission,trim,mileage.value,drivetrain,exterior_color,msrp,price,description,image,fuel_type,address,state_of_vehicle,title,url,latitude,longitude,vehicle_id,mileage.unit,days_on_lot,fb_page_id,link,availability,condition,brand"
     );
   });
 
@@ -122,7 +122,7 @@ describe("GET /feeds/[slug].csv", () => {
     expect(lines[1]).toContain("27500");
     expect(lines[1]).toContain("Test Dealer"); // dealer_name
     expect(lines[1]).toContain("5000"); // mileage.value
-    expect(lines[1]).toContain("https://img.com/camry.jpg"); // image[0].url
+    expect(lines[1]).toContain("https://img.com/camry.jpg"); // image
     expect(lines[2]).toContain("Chevrolet");
     expect(lines[2]).toContain("34000");
     expect(lines[2]).toContain("Test Dealer"); // dealer_name
