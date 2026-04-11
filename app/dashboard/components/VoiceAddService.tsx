@@ -101,6 +101,7 @@ export function VoiceAddService({ onListingAdded }: Props) {
         }),
       });
 
+    let retried = false;
     try {
       let res: Response;
       try {
@@ -108,9 +109,10 @@ export function VoiceAddService({ onListingAdded }: Props) {
       } catch {
         // Network error on first attempt — retry once
         res = await attemptFetch();
+        retried = true;
       }
 
-      if (!res.ok && res.status !== 429) {
+      if (!res.ok && res.status !== 429 && !retried) {
         // Silent auto-retry for non-429 errors
         try {
           res = await attemptFetch();
@@ -300,6 +302,7 @@ export function VoiceAddService({ onListingAdded }: Props) {
     setImageUrls([]);
     setPhase("collecting");
     setError(null);
+    setLastFailedUserText(null);
     setTextInput("");
     resetTranscript();
   }
