@@ -2,13 +2,14 @@
 
 import { useState, useRef, FormEvent } from "react";
 import { getFieldsForVertical, VERTICAL_LABELS, VERTICAL_REQUIRED_IMAGE, type Vertical } from "@/lib/verticals";
+import { VoiceAddService } from "./VoiceAddService";
 
 interface Props {
   vertical: Vertical;
   onListingAdded: () => void;
 }
 
-type Tab = "manual" | "url" | "csv";
+type Tab = "manual" | "url" | "csv" | "voice";
 
 export function AddListingPanel({ vertical, onListingAdded }: Props) {
   const [tab, setTab] = useState<Tab>("manual");
@@ -227,6 +228,9 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
   if (vertical !== "services") {
     availableTabs.push({ id: "csv", label: "Upload CSV" });
   }
+  if (vertical === "services") {
+    availableTabs.push({ id: "voice", label: "\uD83C\uDF99 Voice" });
+  }
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5">
@@ -437,6 +441,11 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
             Upload a CSV with columns matching Meta&apos;s catalog format for your vertical.
           </p>
         </div>
+      )}
+
+      {/* Voice tab */}
+      {tab === "voice" && (
+        <VoiceAddService onListingAdded={onListingAdded} />
       )}
     </div>
   );
