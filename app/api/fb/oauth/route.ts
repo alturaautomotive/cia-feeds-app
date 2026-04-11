@@ -32,7 +32,7 @@ export async function GET() {
   const params = new URLSearchParams({
     client_id: appId,
     redirect_uri: redirectUri,
-    scope: "pages_show_list",
+    scope: "pages_show_list,business_management,catalog_management",
     state: dealerId,
     response_type: "code",
   });

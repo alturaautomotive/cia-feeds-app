@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 
 const VERTICALS = [
@@ -14,9 +14,30 @@ interface Props {
   currentVertical: string;
   websiteUrl: string | null;
   address: string | null;
+  fbPageId: string | null;
+  isMetaConnected: boolean;
+  metaCatalogId: string | null;
+  metaFeedId: string | null;
 }
 
-export default function ProfileClient({ profileImageUrl: initialPhotoUrl, currentVertical: initialVertical, websiteUrl: initialWebsiteUrl, address: initialAddress }: Props) {
+type MetaStep =
+  | "idle"
+  | "pages"
+  | "businesses"
+  | "catalogs"
+  | "feed"
+  | "done";
+
+export default function ProfileClient({
+  profileImageUrl: initialPhotoUrl,
+  currentVertical: initialVertical,
+  websiteUrl: initialWebsiteUrl,
+  address: initialAddress,
+  fbPageId: initialFbPageId,
+  isMetaConnected: initialIsMetaConnected,
+  metaCatalogId: initialMetaCatalogId,
+  metaFeedId: initialMetaFeedId,
+}: Props) {
   const [photoUrl, setPhotoUrl] = useState<string | null>(initialPhotoUrl);
   const [vertical, setVertical] = useState(initialVertical);
   const [uploading, setUploading] = useState(false);
@@ -37,6 +58,199 @@ export default function ProfileClient({ profileImageUrl: initialPhotoUrl, curren
   const [addressError, setAddressError] = useState<string | null>(null);
   const [addressLat, setAddressLat] = useState<number | null>(null);
   const [addressLng, setAddressLng] = useState<number | null>(null);
+
+  // Meta Business Integration wizard state
+  const [isMetaConnected, setIsMetaConnected] = useState(initialIsMetaConnected);
+  const [metaFeedId, setMetaFeedId] = useState<string | null>(initialMetaFeedId);
+  const [metaCatalogId, setMetaCatalogId] = useState<string | null>(initialMetaCatalogId);
+  const [fbPageId, setFbPageId] = useState<string | null>(initialFbPageId);
+  const [metaStep, setMetaStep] = useState<MetaStep>(
+    initialMetaFeedId
+      ? "done"
+      : initialIsMetaConnected
+        ? initialMetaCatalogId
+          ? "feed"
+          : initialFbPageId
+            ? "businesses"
+            : "pages"
+        : "idle"
+  );
+  const [pages, setPages] = useState<{ id: string; name: string }[]>([]);
+  const [selectedPageId, setSelectedPageId] = useState(initialFbPageId ?? "");
+  const [businesses, setBusinesses] = useState<{ id: string; name: string }[]>([]);
+  const [selectedBusinessId, setSelectedBusinessId] = useState("");
+  const [catalogs, setCatalogs] = useState<{ id: string; name: string }[]>([]);
+  const [selectedCatalogId, setSelectedCatalogId] = useState("");
+  const [newCatalogName, setNewCatalogName] = useState("");
+  const [metaError, setMetaError] = useState<string | null>(null);
+  const [metaTosRequired, setMetaTosRequired] = useState(false);
+  const [metaLoading, setMetaLoading] = useState(false);
+  const [metaMode, setMetaMode] = useState<"existing" | "new">("existing");
+
+  async function loadPages() {
+    setMetaLoading(true);
+    setMetaError(null);
+    try {
+      const res = await fetch("/api/fb/pages");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMetaError(data.error || "Failed to load Facebook Pages.");
+        return;
+      }
+      setPages(data.pages || []);
+      setMetaStep("pages");
+    } catch {
+      setMetaError("Network error. Please try again.");
+    } finally {
+      setMetaLoading(false);
+    }
+  }
+
+  async function submitPage() {
+    if (!selectedPageId) {
+      setMetaError("Please pick a Facebook Page.");
+      return;
+    }
+    setMetaLoading(true);
+    setMetaError(null);
+    try {
+      const res = await fetch("/api/fb/pages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pageId: selectedPageId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMetaError(data.error || "Failed to save Facebook Page.");
+        return;
+      }
+      setFbPageId(data.pageId);
+      await loadBusinesses();
+    } catch {
+      setMetaError("Network error. Please try again.");
+    } finally {
+      setMetaLoading(false);
+    }
+  }
+
+  async function loadBusinesses() {
+    setMetaLoading(true);
+    setMetaError(null);
+    try {
+      const res = await fetch("/api/fb/businesses");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMetaError(data.error || "Failed to load businesses.");
+        return;
+      }
+      setBusinesses(data.businesses || []);
+      setMetaStep("businesses");
+    } catch {
+      setMetaError("Network error. Please try again.");
+    } finally {
+      setMetaLoading(false);
+    }
+  }
+
+  async function loadCatalogs(businessId: string) {
+    setMetaLoading(true);
+    setMetaError(null);
+    try {
+      const res = await fetch(`/api/fb/catalogs?businessId=${encodeURIComponent(businessId)}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMetaError(data.error || "Failed to load catalogs.");
+        return;
+      }
+      setCatalogs(data.catalogs || []);
+      setMetaStep("catalogs");
+    } catch {
+      setMetaError("Network error. Please try again.");
+    } finally {
+      setMetaLoading(false);
+    }
+  }
+
+  async function submitCatalog() {
+    setMetaLoading(true);
+    setMetaError(null);
+    setMetaTosRequired(false);
+    try {
+      const body: Record<string, string> = { businessId: selectedBusinessId };
+      if (metaMode === "existing") {
+        if (!selectedCatalogId) {
+          setMetaError("Please pick a catalog.");
+          return;
+        }
+        body.catalogId = selectedCatalogId;
+      } else {
+        if (!newCatalogName.trim()) {
+          setMetaError("Please enter a catalog name.");
+          return;
+        }
+        body.catalogName = newCatalogName.trim();
+      }
+      const res = await fetch("/api/fb/catalogs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (data.error === "catalog_tos_required") {
+          setMetaTosRequired(true);
+          setMetaError(
+            "Meta requires you to accept the Commerce terms before a catalog can be created."
+          );
+          return;
+        }
+        setMetaError(data.error || "Failed to save catalog.");
+        return;
+      }
+      setMetaCatalogId(data.catalogId);
+      setMetaStep("feed");
+    } catch {
+      setMetaError("Network error. Please try again.");
+    } finally {
+      setMetaLoading(false);
+    }
+  }
+
+  async function publishFeed() {
+    setMetaLoading(true);
+    setMetaError(null);
+    try {
+      const res = await fetch("/api/fb/feed", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMetaError(data.error || "Failed to register feed.");
+        return;
+      }
+      setMetaFeedId(data.feedId);
+      setMetaStep("done");
+    } catch {
+      setMetaError("Network error. Please try again.");
+    } finally {
+      setMetaLoading(false);
+    }
+  }
+
+  // On mount — if the query param says we just connected, auto-load Pages so
+  // the user can explicitly select which Facebook Page to bind to fb_page_id.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("fb") === "connected") {
+      setIsMetaConnected(true);
+      if (!initialMetaFeedId) {
+        loadPages();
+      }
+      // Clean the URL so a refresh doesn't re-trigger the wizard.
+      const cleanUrl = window.location.pathname;
+      window.history.replaceState({}, "", cleanUrl);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const showWebsiteUrl = vertical === "automotive";
 
@@ -267,6 +481,238 @@ export default function ProfileClient({ profileImageUrl: initialPhotoUrl, curren
           )}
           {addressError && (
             <p className="text-xs text-red-600 mt-2">{addressError}</p>
+          )}
+        </div>
+
+        {/* Meta Business Integration */}
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-4">
+          <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
+            Meta Business Integration
+          </h2>
+          <p className="text-xs text-gray-400 mb-4">
+            Connect your Meta Business Manager so your CIA feed publishes directly to a product catalog.
+          </p>
+
+          {metaError && (
+            <div className="rounded-md bg-red-50 p-3 mb-3">
+              <p className="text-sm text-red-600">{metaError}</p>
+              {metaTosRequired && (
+                <a
+                  href="https://business.facebook.com/commerce_manager/catalogs/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-indigo-600 hover:text-indigo-700 underline mt-1 inline-block"
+                >
+                  Open Meta Commerce Manager to accept terms &rarr;
+                </a>
+              )}
+            </div>
+          )}
+
+          {metaStep === "done" && metaFeedId && (
+            <div className="rounded-md bg-green-50 border border-green-200 p-3">
+              <p className="text-sm text-green-700 font-medium">
+                {"\u2705"} Feed connected to Meta
+              </p>
+              {fbPageId && (
+                <p className="text-xs text-green-600 mt-1 break-all">
+                  Page ID: {fbPageId}
+                </p>
+              )}
+              <p className="text-xs text-green-600 mt-1 break-all">
+                Feed ID: {metaFeedId}
+              </p>
+            </div>
+          )}
+
+          {metaStep === "idle" && !isMetaConnected && (
+            <div>
+              <div className="text-xs text-gray-500 mb-2">Step 1 of 5</div>
+              <button
+                type="button"
+                data-element-id="meta-connect"
+                onClick={() => { window.location.href = "/api/fb/oauth"; }}
+                className="w-full bg-indigo-600 text-white rounded-md py-2 text-sm font-semibold hover:bg-indigo-700"
+              >
+                Connect Meta Business &rarr;
+              </button>
+            </div>
+          )}
+
+          {metaStep === "idle" && isMetaConnected && (
+            <div>
+              <p className="text-xs text-gray-500 mb-2">Meta account connected.</p>
+              <button
+                type="button"
+                onClick={loadPages}
+                disabled={metaLoading}
+                className="w-full bg-indigo-600 text-white rounded-md py-2 text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {metaLoading ? "Loading\u2026" : "Continue Setup"}
+              </button>
+            </div>
+          )}
+
+          {metaStep === "pages" && (
+            <div>
+              <div className="text-xs text-gray-500 mb-2">
+                Step 2 of 5 — Select Facebook Page
+              </div>
+              <p className="text-xs text-gray-500 mb-2">
+                This Page&apos;s id will be written to every row of your Meta
+                feed CSV as <code className="font-mono">fb_page_id</code>.
+              </p>
+              {pages.length === 0 ? (
+                <p className="text-sm text-gray-500 mb-2">
+                  No Facebook Pages found for your account.
+                </p>
+              ) : (
+                <select
+                  data-element-id="meta-page-select"
+                  className="w-full border border-gray-400 bg-white rounded-md px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  value={selectedPageId}
+                  onChange={(e) => setSelectedPageId(e.target.value)}
+                >
+                  <option value="">-- Choose a Facebook Page --</option>
+                  {pages.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button
+                type="button"
+                disabled={!selectedPageId || metaLoading}
+                onClick={submitPage}
+                className="w-full bg-indigo-600 text-white rounded-md py-2 text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {metaLoading ? "Saving\u2026" : "Next \u2192"}
+              </button>
+            </div>
+          )}
+
+          {metaStep === "businesses" && (
+            <div>
+              <div className="text-xs text-gray-500 mb-2">Step 3 of 5 — Select Business Manager</div>
+              {businesses.length === 0 ? (
+                <p className="text-sm text-gray-500 mb-2">
+                  No Business Managers found for your account.
+                </p>
+              ) : (
+                <select
+                  data-element-id="meta-business-select"
+                  className="w-full border border-gray-400 bg-white rounded-md px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  value={selectedBusinessId}
+                  onChange={(e) => setSelectedBusinessId(e.target.value)}
+                >
+                  <option value="">-- Choose a business --</option>
+                  {businesses.map((b) => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+              )}
+              <button
+                type="button"
+                disabled={!selectedBusinessId || metaLoading}
+                onClick={() => loadCatalogs(selectedBusinessId)}
+                className="w-full bg-indigo-600 text-white rounded-md py-2 text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {metaLoading ? "Loading\u2026" : "Next \u2192"}
+              </button>
+            </div>
+          )}
+
+          {metaStep === "catalogs" && (
+            <div>
+              <div className="text-xs text-gray-500 mb-2">Step 4 of 5 — Select or Create Catalog</div>
+
+              <div className="flex gap-2 mb-3">
+                <button
+                  type="button"
+                  onClick={() => setMetaMode("existing")}
+                  className={`flex-1 py-1.5 rounded-md text-xs font-medium border ${
+                    metaMode === "existing"
+                      ? "border-indigo-500 bg-indigo-50 text-indigo-700"
+                      : "border-gray-300 bg-white text-gray-600"
+                  }`}
+                >
+                  Use Existing
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMetaMode("new")}
+                  className={`flex-1 py-1.5 rounded-md text-xs font-medium border ${
+                    metaMode === "new"
+                      ? "border-indigo-500 bg-indigo-50 text-indigo-700"
+                      : "border-gray-300 bg-white text-gray-600"
+                  }`}
+                >
+                  + Create New
+                </button>
+              </div>
+
+              {metaMode === "existing" ? (
+                catalogs.length === 0 ? (
+                  <p className="text-xs text-gray-500 mb-3">
+                    No existing catalogs in this business. Switch to &quot;Create New&quot;.
+                  </p>
+                ) : (
+                  <select
+                    data-element-id="meta-catalog-select"
+                    className="w-full border border-gray-400 bg-white rounded-md px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    value={selectedCatalogId}
+                    onChange={(e) => setSelectedCatalogId(e.target.value)}
+                  >
+                    <option value="">-- Choose a catalog --</option>
+                    {catalogs.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                )
+              ) : (
+                <input
+                  data-element-id="meta-catalog-name"
+                  type="text"
+                  placeholder="e.g. CIA Automotive Catalog"
+                  value={newCatalogName}
+                  onChange={(e) => setNewCatalogName(e.target.value)}
+                  className="w-full border border-gray-400 bg-white rounded-md px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              )}
+
+              <button
+                type="button"
+                disabled={metaLoading}
+                onClick={submitCatalog}
+                className="w-full bg-indigo-600 text-white rounded-md py-2 text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {metaLoading ? "Saving\u2026" : metaTosRequired ? "Retry" : "Next \u2192"}
+              </button>
+            </div>
+          )}
+
+          {metaStep === "feed" && (
+            <div>
+              <div className="text-xs text-gray-500 mb-2">Step 5 of 5 — Register Feed</div>
+              <div className="rounded-md bg-gray-50 border border-gray-200 p-3 mb-3">
+                <p className="text-xs text-gray-500 mb-1">Feed URL</p>
+                <p className="text-xs text-gray-700 break-all font-mono">
+                  https://www.ciafeed.com/feeds/&#123;your-slug&#125;.csv
+                </p>
+                {metaCatalogId && (
+                  <p className="text-xs text-gray-400 mt-2">Catalog: {metaCatalogId}</p>
+                )}
+              </div>
+              <button
+                type="button"
+                disabled={metaLoading}
+                onClick={publishFeed}
+                className="w-full bg-indigo-600 text-white rounded-md py-2 text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {metaLoading ? "Publishing\u2026" : "Publish Feed to Meta \u2192"}
+              </button>
+            </div>
           )}
         </div>
 

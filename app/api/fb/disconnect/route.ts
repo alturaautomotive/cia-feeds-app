@@ -5,7 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { getEffectiveDealerId } from "@/lib/impersonation";
 
 /**
- * POST /api/fb/disconnect — Clears the stored Facebook Page id for the dealer.
+ * POST /api/fb/disconnect — Clears the stored Facebook Page id and Meta
+ * Business/Catalog/Feed credentials for the dealer.
  */
 export async function POST() {
   const session = await getServerSession(authOptions);
@@ -20,10 +21,13 @@ export async function POST() {
 
   await prisma.dealer.update({
     where: { id: dealerId },
-    // fbPageId is added by the schema migration phase — cast so this compiles
-    // before that migration lands.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    data: { fbPageId: null } as unknown as any,
+    data: {
+      fbPageId: null,
+      metaAccessToken: null,
+      metaBusinessId: null,
+      metaCatalogId: null,
+      metaFeedId: null,
+    },
   });
 
   return NextResponse.json({ ok: true });

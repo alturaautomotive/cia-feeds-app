@@ -27,6 +27,10 @@ model Dealer {
   websiteUrl           String?
   autoCrawlEnabled     Boolean   @default(false)
   fbPageId             String?
+  metaAccessToken      String?
+  metaBusinessId       String?
+  metaCatalogId        String?
+  metaFeedId           String?
   address              String?
   latitude             Float?
   longitude            Float?

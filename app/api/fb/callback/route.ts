@@ -6,8 +6,14 @@ import { getEffectiveDealerId } from "@/lib/impersonation";
 
 /**
  * GET /api/fb/callback — Handles the Facebook OAuth callback.
- * Exchanges the returned code for an access token, fetches the dealer's Pages,
- * and stores the first Page id on the Dealer record as fbPageId.
+ * Exchanges the returned code for a short-lived access token, upgrades it to a
+ * long-lived token, and persists it as metaAccessToken on the Dealer record.
+ *
+ * NOTE: This endpoint deliberately does NOT assign fbPageId. Page selection is
+ * performed explicitly by the user via the Meta connect wizard (see
+ * /api/fb/pages) so that multi-page dealers can choose the correct Page
+ * deterministically rather than defaulting to the first Page returned by
+ * /me/accounts.
  */
 export async function GET(request: NextRequest) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
@@ -67,39 +73,41 @@ export async function GET(request: NextRequest) {
     const tokenData = (await tokenRes.json()) as {
       access_token?: string;
     };
-    const accessToken = tokenData.access_token;
-    if (!accessToken) {
+    const shortLivedToken = tokenData.access_token;
+    if (!shortLivedToken) {
       return errorRedirect;
     }
 
-    // 2. Fetch the user's Pages
-    const pagesRes = await fetch(
-      `https://graph.facebook.com/v19.0/me/accounts?access_token=${encodeURIComponent(
-        accessToken
-      )}`
+    // 1b. Exchange short-lived token → long-lived token
+    const longLivedParams = new URLSearchParams({
+      grant_type: "fb_exchange_token",
+      client_id: appId,
+      client_secret: appSecret,
+      fb_exchange_token: shortLivedToken,
+    });
+    const longLivedRes = await fetch(
+      `https://graph.facebook.com/v19.0/oauth/access_token?${longLivedParams.toString()}`
     );
-    if (!pagesRes.ok) {
+    if (!longLivedRes.ok) {
       console.error({
-        event: "fb_pages_fetch_failed",
-        status: pagesRes.status,
+        event: "fb_long_lived_token_exchange_failed",
+        status: longLivedRes.status,
       });
       return errorRedirect;
     }
-    const pagesData = (await pagesRes.json()) as {
-      data?: Array<{ id?: string; name?: string }>;
+    const longLivedData = (await longLivedRes.json()) as {
+      access_token?: string;
     };
-    const firstPage = pagesData.data?.[0];
-    if (!firstPage?.id) {
-      return errorRedirect;
-    }
+    const accessToken = longLivedData.access_token ?? shortLivedToken;
 
-    // 3. Persist the page id on the Dealer record.
-    // fbPageId is added by the schema migration phase — cast to keep TS happy
-    // in the interim window before that migration lands.
+    // 2. Persist the long-lived access token on the Dealer record. The user
+    // will pick their Facebook Page explicitly in the wizard — we do NOT
+    // auto-assign the first returned Page here.
     await prisma.dealer.update({
       where: { id: dealerId },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      data: { fbPageId: firstPage.id } as unknown as any,
+      data: {
+        metaAccessToken: accessToken,
+      },
     });
 
     return NextResponse.redirect(`${appUrl}/dashboard/profile?fb=connected`);

@@ -33,6 +33,10 @@ export default async function ProfilePage() {
       address: true,
       latitude: true,
       longitude: true,
+      fbPageId: true,
+      metaAccessToken: true,
+      metaCatalogId: true,
+      metaFeedId: true,
     },
   });
 
@@ -42,6 +46,10 @@ export default async function ProfilePage() {
       currentVertical={dealer?.vertical ?? "automotive"}
       websiteUrl={dealer?.websiteUrl ?? null}
       address={dealer?.address ?? null}
+      fbPageId={dealer?.fbPageId ?? null}
+      isMetaConnected={!!dealer?.metaAccessToken}
+      metaCatalogId={dealer?.metaCatalogId ?? null}
+      metaFeedId={dealer?.metaFeedId ?? null}
     />
   );
 }
