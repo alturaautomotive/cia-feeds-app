@@ -9,6 +9,7 @@ export function validateEnv() {
     "STRIPE_PRICE_ID",
     "STRIPE_WEBHOOK_SECRET",
     "GEMINI_API_KEY",
+    "OPENAI_API_KEY",
     "RESEND_API_KEY",
     "NEXT_PUBLIC_SUPABASE_URL",
     "SUPABASE_SERVICE_ROLE_KEY",

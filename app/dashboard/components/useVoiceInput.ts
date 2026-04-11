@@ -29,6 +29,7 @@ export function useVoiceInput(options?: UseVoiceInputOptions): UseVoiceInputRetu
   const finalTranscriptRef = useRef<string>("");
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const networkErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const networkRetryCountRef = useRef<number>(0);
   const onUtteranceCompleteRef = useRef<UseVoiceInputOptions["onUtteranceComplete"]>(
     options?.onUtteranceComplete,
   );
@@ -123,15 +124,27 @@ export function useVoiceInput(options?: UseVoiceInputOptions): UseVoiceInputRetu
         // User-initiated stop; not a real error.
         intentionalStopRef.current = true;
       } else if (event.error === "network") {
-        // Transient — show temp message and let onend auto-restart.
-        setError("Network issue — reconnecting…");
-        if (networkErrorTimerRef.current) {
-          clearTimeout(networkErrorTimerRef.current);
+        networkRetryCountRef.current += 1;
+        if (networkRetryCountRef.current <= 3) {
+          // Transient — show temp message and let onend auto-restart.
+          setError("Network issue — reconnecting…");
+          if (networkErrorTimerRef.current) {
+            clearTimeout(networkErrorTimerRef.current);
+          }
+          networkErrorTimerRef.current = setTimeout(() => {
+            networkErrorTimerRef.current = null;
+            setError(null);
+          }, 3000);
+        } else {
+          if (networkErrorTimerRef.current) {
+            clearTimeout(networkErrorTimerRef.current);
+            networkErrorTimerRef.current = null;
+          }
+          intentionalStopRef.current = true;
+          setError(
+            "Speech recognition unavailable. Please check your connection and ensure the site is on HTTPS.",
+          );
         }
-        networkErrorTimerRef.current = setTimeout(() => {
-          networkErrorTimerRef.current = null;
-          setError(null);
-        }, 3000);
       } else {
         setError(`Voice input error: ${event.error}`);
         intentionalStopRef.current = true;
@@ -198,6 +211,7 @@ export function useVoiceInput(options?: UseVoiceInputOptions): UseVoiceInputRetu
     setTranscript("");
     setInterimTranscript("");
     intentionalStopRef.current = false;
+    networkRetryCountRef.current = 0;
     try {
       recognition.start();
     } catch {
@@ -212,6 +226,11 @@ export function useVoiceInput(options?: UseVoiceInputOptions): UseVoiceInputRetu
       clearTimeout(silenceTimerRef.current);
       silenceTimerRef.current = null;
     }
+    if (networkErrorTimerRef.current) {
+      clearTimeout(networkErrorTimerRef.current);
+      networkErrorTimerRef.current = null;
+    }
+    setError(null);
     intentionalStopRef.current = true;
     isListeningRef.current = false;
     try {
