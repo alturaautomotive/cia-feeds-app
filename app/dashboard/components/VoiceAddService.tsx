@@ -76,6 +76,12 @@ export function VoiceAddService({ onListingAdded }: Props) {
     messagesRef.current = messages;
   }, [messages]);
 
+  useEffect(() => {
+    if (voiceError && phase === "collecting") {
+      setMessages((prev) => [...prev, { role: "assistant", text: voiceError }]);
+    }
+  }, [voiceError, phase]);
+
   async function handleSendMessage(text: string) {
     const trimmed = text.trim();
     if (!trimmed || isProcessingRef.current) return;
@@ -307,10 +313,10 @@ export function VoiceAddService({ onListingAdded }: Props) {
     resetTranscript();
   }
 
-  // Voice-agent errors render as inline chat bubbles; image-upload and
-  // listing-creation errors still use setError and surface in the banner
-  // alongside browser speech errors.
-  const bannerError = voiceError || (phase !== "collecting" ? error : null);
+  // Voice-agent, transcription, and mic-access errors render as inline chat
+  // bubbles; image-upload and listing-creation errors still use setError and
+  // surface in the banner.
+  const bannerError = phase !== "collecting" ? error : null;
 
   return (
     <div className="flex flex-col gap-4">
