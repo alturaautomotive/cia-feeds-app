@@ -18,12 +18,6 @@ const VERTICALS = [
     desc: "Plumbing, cleaning, consulting, and other local services",
   },
   {
-    id: "ecommerce",
-    icon: "\u{1F4E6}",
-    title: "E-commerce",
-    desc: "Physical or digital products with SKU, brand, and availability",
-  },
-  {
     id: "realestate",
     icon: "\u{1F3E0}",
     title: "Real Estate",

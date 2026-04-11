@@ -6,7 +6,6 @@ import Link from "next/link";
 const VERTICALS = [
   { id: "automotive", icon: "\u{1F697}", title: "Automotive", desc: "Vehicle listings" },
   { id: "services", icon: "\u{1F527}", title: "Services", desc: "Local service businesses" },
-  { id: "ecommerce", icon: "\u{1F4E6}", title: "E-commerce", desc: "Physical or digital products" },
   { id: "realestate", icon: "\u{1F3E0}", title: "Real Estate", desc: "Property listings for sale or rent" },
 ] as const;
 
@@ -31,7 +30,7 @@ export default function ProfileClient({ profileImageUrl: initialPhotoUrl, curren
   const [savingSiteUrl, setSavingSiteUrl] = useState(false);
   const [siteUrlSaved, setSiteUrlSaved] = useState(false);
 
-  const showWebsiteUrl = vertical === "automotive" || vertical === "ecommerce";
+  const showWebsiteUrl = vertical === "automotive";
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];

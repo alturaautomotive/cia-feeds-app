@@ -30,7 +30,6 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
   const VERTICAL_ACTION_LABELS: Record<Vertical, { title: string; submit: string }> = {
     automotive: { title: "Add New Vehicle", submit: "Add Vehicle" },
     services: { title: "Add New Service", submit: "Add Service" },
-    ecommerce: { title: "Add New Product", submit: "Add Product" },
     realestate: { title: "Add New Listing", submit: "Add Listing" },
   };
   const actionLabels = VERTICAL_ACTION_LABELS[vertical];
@@ -222,9 +221,6 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
   const availableTabs: { id: Tab; label: string }[] = [
     { id: "manual", label: "Manual Entry" },
   ];
-  if (vertical === "ecommerce") {
-    availableTabs.push({ id: "url", label: "Paste URL" });
-  }
   if (vertical !== "services") {
     availableTabs.push({ id: "csv", label: "Upload CSV" });
   }

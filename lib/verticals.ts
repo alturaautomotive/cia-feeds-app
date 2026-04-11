@@ -1,17 +1,15 @@
-export const VALID_VERTICALS = ["automotive", "services", "ecommerce", "realestate"] as const;
+export const VALID_VERTICALS = ["automotive", "services", "realestate"] as const;
 export type Vertical = (typeof VALID_VERTICALS)[number];
 
 export const VERTICAL_LABELS: Record<Vertical, string> = {
   automotive: "Automotive",
   services: "Services",
-  ecommerce: "E-commerce",
   realestate: "Real Estate",
 };
 
 export const VERTICAL_META_TYPE: Record<Vertical, string> = {
   automotive: "vehicles",
   services: "local_service_businesses",
-  ecommerce: "products",
   realestate: "home_listings",
 };
 
@@ -75,7 +73,6 @@ export function getFieldsForVertical(vertical: string): VerticalFieldDef[] {
 export const VERTICAL_REQUIRED_IMAGE: Record<string, string | null> = {
   automotive: null,
   services: null,
-  ecommerce: "image_url",
   realestate: "image_url",
 };
 
