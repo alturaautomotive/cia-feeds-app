@@ -38,14 +38,15 @@ export async function POST(request: NextRequest) {
   }
 
   const audio = formData.get("audio");
-  if (!audio || !(audio instanceof Blob)) {
+  if (!audio || typeof audio === "string") {
     return NextResponse.json({ error: "missing_audio" }, { status: 400 });
   }
 
+  const audioBlob = audio as Blob;
   const audioFile =
     audio instanceof File
       ? audio
-      : new File([audio], "audio.webm", { type: audio.type || "audio/webm" });
+      : new File([audioBlob], "audio.webm", { type: audioBlob.type || "audio/webm" });
 
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
