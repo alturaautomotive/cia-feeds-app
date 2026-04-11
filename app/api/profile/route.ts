@@ -14,6 +14,9 @@ const SAFE_SELECT = {
   vertical: true,
   websiteUrl: true,
   autoCrawlEnabled: true,
+  address: true,
+  latitude: true,
+  longitude: true,
 } as const;
 
 export async function GET() {
@@ -83,6 +86,55 @@ export async function PATCH(request: NextRequest) {
       where: { id: effectiveDealerId },
       data: { websiteUrl: urlToSave },
     });
+  }
+
+  // Handle address update (+ geocoding)
+  if ("address" in b) {
+    const rawAddress = b.address;
+    if (rawAddress !== null && typeof rawAddress !== "string") {
+      return NextResponse.json({ error: "invalid_address" }, { status: 400 });
+    }
+    const addressToSave =
+      typeof rawAddress === "string" && rawAddress.trim() ? rawAddress.trim() : null;
+
+    if (addressToSave === null) {
+      await prisma.dealer.update({
+        where: { id: effectiveDealerId },
+        data: { address: null, latitude: null, longitude: null },
+      });
+    } else {
+      try {
+        const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(
+          addressToSave
+        )}&key=${process.env.GOOGLE_MAPS_API_KEY}`;
+        const res = await fetch(geocodeUrl);
+        if (!res.ok) {
+          return NextResponse.json({ error: "geocoding_failed" }, { status: 400 });
+        }
+        const data = (await res.json()) as {
+          status?: string;
+          results?: Array<{
+            geometry?: { location?: { lat?: number; lng?: number } };
+          }>;
+        };
+        const location = data?.results?.[0]?.geometry?.location;
+        const lat = location?.lat;
+        const lng = location?.lng;
+        if (
+          data?.status !== "OK" ||
+          typeof lat !== "number" ||
+          typeof lng !== "number"
+        ) {
+          return NextResponse.json({ error: "geocoding_failed" }, { status: 400 });
+        }
+        await prisma.dealer.update({
+          where: { id: effectiveDealerId },
+          data: { address: addressToSave, latitude: lat, longitude: lng },
+        });
+      } catch {
+        return NextResponse.json({ error: "geocoding_failed" }, { status: 400 });
+      }
+    }
   }
 
   // Handle autoCrawlEnabled toggle

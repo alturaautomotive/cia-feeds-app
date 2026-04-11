@@ -13,6 +13,9 @@ export function validateEnv() {
     "RESEND_API_KEY",
     "NEXT_PUBLIC_SUPABASE_URL",
     "SUPABASE_SERVICE_ROLE_KEY",
+    "FB_APP_ID",
+    "FB_APP_SECRET",
+    "GOOGLE_MAPS_API_KEY",
   ];
 
   for (const name of required) {

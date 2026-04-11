@@ -26,6 +26,10 @@ model Dealer {
   profileImageUrl      String?
   websiteUrl           String?
   autoCrawlEnabled     Boolean   @default(false)
+  fbPageId             String?
+  address              String?
+  latitude             Float?
+  longitude            Float?
   vehicles             Vehicle[]
   listings             Listing[]
   crawlJobs            CrawlJob[]
@@ -46,6 +50,11 @@ model Vehicle {
   mileageValue   Float?
   stateOfVehicle String?
   exteriorColor  String?
+  trim           String?
+  drivetrain     String?
+  transmission   String?
+  fuelType       String?
+  msrp           Float?
   url            String
   address        String?
   latitude       Float?

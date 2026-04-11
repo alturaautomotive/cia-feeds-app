@@ -93,7 +93,7 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     const lines = text.split("\r\n").filter(Boolean);
 
     expect(lines[0]).toBe(
-      "dealer_name,vin,year,make,model,body_style,transmission,trim,mileage.value,drivetrain,exterior_color,msrp,price,description,image,fuel_type,address,state_of_vehicle,title,url,latitude,longitude,vehicle_id,mileage.unit,days_on_lot,fb_page_id,link,availability,condition,brand"
+      "vin,state_of_vehicle,year,make,model,trim,drivetrain,transmission,exterior_color,price,msrp,mileage.value,fuel_type,latitude,longitude,body_style,url,title,vehicle_id,mileage.unit,address,image.url,image.url,fb_page_id,description"
     );
     expect(lines[1]).toContain("Honda");
     expect(lines[1]).toContain("24500");

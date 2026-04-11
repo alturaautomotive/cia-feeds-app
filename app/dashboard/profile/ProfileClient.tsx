@@ -13,9 +13,10 @@ interface Props {
   profileImageUrl: string | null;
   currentVertical: string;
   websiteUrl: string | null;
+  address: string | null;
 }
 
-export default function ProfileClient({ profileImageUrl: initialPhotoUrl, currentVertical: initialVertical, websiteUrl: initialWebsiteUrl }: Props) {
+export default function ProfileClient({ profileImageUrl: initialPhotoUrl, currentVertical: initialVertical, websiteUrl: initialWebsiteUrl, address: initialAddress }: Props) {
   const [photoUrl, setPhotoUrl] = useState<string | null>(initialPhotoUrl);
   const [vertical, setVertical] = useState(initialVertical);
   const [uploading, setUploading] = useState(false);
@@ -29,6 +30,13 @@ export default function ProfileClient({ profileImageUrl: initialPhotoUrl, curren
   const [siteUrl, setSiteUrl] = useState(initialWebsiteUrl ?? "");
   const [savingSiteUrl, setSavingSiteUrl] = useState(false);
   const [siteUrlSaved, setSiteUrlSaved] = useState(false);
+
+  const [dealerAddress, setDealerAddress] = useState(initialAddress ?? "");
+  const [savingAddress, setSavingAddress] = useState(false);
+  const [addressSaved, setAddressSaved] = useState(false);
+  const [addressError, setAddressError] = useState<string | null>(null);
+  const [addressLat, setAddressLat] = useState<number | null>(null);
+  const [addressLng, setAddressLng] = useState<number | null>(null);
 
   const showWebsiteUrl = vertical === "automotive";
 
@@ -185,6 +193,81 @@ export default function ProfileClient({ profileImageUrl: initialPhotoUrl, curren
           <p className="text-xs text-gray-400 mt-2">
             Best results: standing pose, plain background, good lighting. Max 5 MB.
           </p>
+        </div>
+
+        {/* Business Address — visible for all verticals */}
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-4">
+          <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
+            Business Address
+          </h2>
+          <p className="text-xs text-gray-400 mb-4">
+            Your address is geocoded and used in your Meta feed.
+          </p>
+          <div className="flex gap-2.5">
+            <input
+              data-element-id="business-address-input"
+              type="text"
+              className="flex-1 border border-gray-400 bg-white rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              placeholder="1875 Buford Highway, Cumming, GA 30041"
+              value={dealerAddress}
+              onChange={(e) => {
+                setDealerAddress(e.target.value);
+                setAddressSaved(false);
+                setAddressError(null);
+              }}
+            />
+            <button
+              type="button"
+              disabled={savingAddress}
+              onClick={async () => {
+                setSavingAddress(true);
+                setAddressError(null);
+                setAddressSaved(false);
+                setAddressLat(null);
+                setAddressLng(null);
+                try {
+                  const res = await fetch("/api/profile", {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ address: dealerAddress.trim() || null }),
+                  });
+                  if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    setAddressError(
+                      data.error === "geocoding_failed"
+                        ? "Could not geocode that address. Please try a more specific address."
+                        : data.error || "Failed to save address."
+                    );
+                    return;
+                  }
+                  const data = await res.json().catch(() => ({}));
+                  setAddressSaved(true);
+                  if (data?.dealer?.latitude != null && data?.dealer?.longitude != null) {
+                    setAddressLat(data.dealer.latitude);
+                    setAddressLng(data.dealer.longitude);
+                  }
+                } catch {
+                  setAddressError("Network error. Please try again.");
+                } finally {
+                  setSavingAddress(false);
+                }
+              }}
+              className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {savingAddress ? "Saving\u2026" : "Save"}
+            </button>
+          </div>
+          {addressSaved && (
+            <p className="text-xs text-green-600 mt-2">Address saved &amp; geocoded.</p>
+          )}
+          {addressSaved && addressLat != null && addressLng != null && (
+            <p className="text-xs text-gray-400 mt-1">
+              {"\u{1F4CD}"} {addressLat.toFixed(3)}, {addressLng.toFixed(3)}
+            </p>
+          )}
+          {addressError && (
+            <p className="text-xs text-red-600 mt-2">{addressError}</p>
+          )}
         </div>
 
         {/* Website URL — only for automotive/ecommerce */}

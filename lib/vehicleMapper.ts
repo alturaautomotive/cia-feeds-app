@@ -8,6 +8,11 @@ export interface FirecrawlRawVehicle {
   mileage_value?: string | number | null;
   state_of_vehicle?: string | null;
   exterior_color?: string | null;
+  trim?: string | null;
+  drivetrain?: string | null;
+  transmission?: string | null;
+  fuel_type?: string | null;
+  msrp?: string | number | null;
   image_url?: string | null;
   image_url_2?: string | null;
   description?: string | null;
@@ -29,6 +34,11 @@ export interface MappedVehicle {
   mileageValue: number | null;
   stateOfVehicle: string | null;
   exteriorColor: string | null;
+  trim: string | null;
+  drivetrain: string | null;
+  transmission: string | null;
+  fuelType: string | null;
+  msrp: number | null;
   imageUrl: string | null;
   description: string;
   address: string | null;
@@ -106,8 +116,13 @@ export function mapFirecrawlToVehicle(
     ? (() => { const n = parseInt(String(rawYear), 10); return isNaN(n) ? null : String(n); })()
     : null;
   const price = parsePrice(raw?.price);
+  const msrp = parsePrice(raw?.msrp);
   const mileageValue = parseMileage(raw?.mileage_value);
   const stateOfVehicle = normalizeStateOfVehicle(raw?.state_of_vehicle);
+  const trim = raw?.trim?.trim() || null;
+  const drivetrain = raw?.drivetrain?.trim() || null;
+  const transmission = raw?.transmission?.trim() || null;
+  const fuelType = raw?.fuel_type?.trim() || null;
 
   const address = typeof raw?.address === "string" && raw.address.trim() !== ""
     ? raw.address.trim()
@@ -188,6 +203,11 @@ export function mapFirecrawlToVehicle(
     mileageValue,
     stateOfVehicle,
     exteriorColor: raw?.exterior_color ?? null,
+    trim,
+    drivetrain,
+    transmission,
+    fuelType,
+    msrp,
     imageUrl: raw?.image_url_2 ?? raw?.image_url ?? null,
     description,
     address,

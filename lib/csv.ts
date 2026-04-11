@@ -106,46 +106,68 @@ export function serializeRealEstateRow(listing: {
   return serializeCSVRow(row, REALESTATE_CSV_HEADERS);
 }
 
+// Meta automotive catalog spec column order. Note: two `image.url` columns are
+// required by Meta's spec — position 22 is the primary image and position 23 is
+// the secondary image.
 export const VEHICLE_CSV_HEADERS = [
-  "dealer_name",
   "vin",
+  "state_of_vehicle",
   "year",
   "make",
   "model",
-  "body_style",
-  "transmission",
   "trim",
-  "mileage.value",
   "drivetrain",
+  "transmission",
   "exterior_color",
-  "msrp",
   "price",
-  "description",
-  "image",
+  "msrp",
+  "mileage.value",
   "fuel_type",
-  "address",
-  "state_of_vehicle",
-  "title",
-  "url",
   "latitude",
   "longitude",
+  "body_style",
+  "url",
+  "title",
   "vehicle_id",
   "mileage.unit",
-  "days_on_lot",
+  "address",
+  "image.url",
+  "image.url",
   "fb_page_id",
-  "link",
-  "availability",
-  "condition",
-  "brand",
+  "description",
 ];
 
-function mapCondition(stateOfVehicle: string | null): string {
-  if (!stateOfVehicle) return "";
-  const lower = stateOfVehicle.toLowerCase();
-  if (lower === "new") return "new";
-  if (lower === "used" || lower === "certified used") return "used";
-  return "";
-}
+export type VehicleForCSV = {
+  id: string;
+  description: string | null;
+  vin: string | null;
+  make: string | null;
+  model: string | null;
+  year: string | null;
+  bodyStyle: string | null;
+  price: number | null;
+  mileageValue: number | null;
+  stateOfVehicle: string | null;
+  exteriorColor: string | null;
+  trim: string | null;
+  drivetrain: string | null;
+  transmission: string | null;
+  fuelType: string | null;
+  msrp: number | null;
+  url: string;
+  imageUrl: string | null;
+  images: string[];
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  dealer?: {
+    name: string;
+    fbPageId?: string | null;
+    address?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+  } | null;
+};
 
 export function mapVehicleToRow(v: {
   id: string;
@@ -159,46 +181,125 @@ export function mapVehicleToRow(v: {
   mileageValue: number | null;
   stateOfVehicle: string | null;
   exteriorColor: string | null;
+  trim?: string | null;
+  drivetrain?: string | null;
+  transmission?: string | null;
+  fuelType?: string | null;
+  msrp?: number | null;
   url: string;
   imageUrl: string | null;
   images: string[];
   address: string | null;
   latitude: number | null;
   longitude: number | null;
-  dealer?: { name: string } | null;
+  dealer?: {
+    name: string;
+    fbPageId?: string | null;
+    address?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+  } | null;
 }): Record<string, unknown> {
+  const resolvedLat = v.latitude ?? v.dealer?.latitude ?? null;
+  const resolvedLng = v.longitude ?? v.dealer?.longitude ?? null;
+  const resolvedAddress = v.address ?? v.dealer?.address ?? "";
   return {
-    dealer_name: v.dealer?.name ?? "",
     vin: v.vin ?? "",
+    state_of_vehicle: v.stateOfVehicle ?? "",
     year: v.year ?? "",
     make: v.make ?? "",
     model: v.model ?? "",
-    body_style: v.bodyStyle ?? "",
-    transmission: "",
-    trim: "",
-    "mileage.value": String(v.mileageValue ?? ""),
-    drivetrain: "",
+    trim: v.trim ?? "",
+    drivetrain: v.drivetrain ?? "",
+    transmission: v.transmission ?? "",
     exterior_color: v.exteriorColor ?? "",
-    msrp: "",
     price: String(v.price ?? ""),
-    description: v.description ?? "",
-    image: v.imageUrl ?? v.images[0] ?? "",
-    fuel_type: "",
-    address: v.address ?? "",
-    state_of_vehicle: v.stateOfVehicle ?? "",
-    title: `${v.make ?? ""} ${v.model ?? ""}`.trim(),
+    msrp: v.msrp != null ? String(v.msrp) : "",
+    "mileage.value": String(v.mileageValue ?? ""),
+    fuel_type: v.fuelType ?? "",
+    latitude: resolvedLat != null ? String(resolvedLat) : "",
+    longitude: resolvedLng != null ? String(resolvedLng) : "",
+    body_style: v.bodyStyle ?? "",
     url: v.url,
-    latitude: v.latitude != null ? String(v.latitude) : "",
-    longitude: v.longitude != null ? String(v.longitude) : "",
+    title: `${v.make ?? ""} ${v.model ?? ""}`.trim(),
     vehicle_id: v.id,
     "mileage.unit": "mi",
-    days_on_lot: "",
-    fb_page_id: "",
-    link: v.url,
-    availability: "in stock",
-    condition: mapCondition(v.stateOfVehicle),
-    brand: v.make ?? "",
+    address: resolvedAddress,
+    "image.url": v.imageUrl ?? v.images[0] ?? "",
+    fb_page_id: v.dealer?.fbPageId ?? "",
+    description: v.description ?? "",
   };
+}
+
+/**
+ * Serialize a vehicle row in Meta automotive catalog spec column order.
+ * Bypasses the generic header-keyed serializer so that the two `image.url`
+ * columns receive the primary and secondary images respectively.
+ */
+export function serializeAutomotiveRow(v: {
+  id: string;
+  description: string | null;
+  vin: string | null;
+  make: string | null;
+  model: string | null;
+  year: string | null;
+  bodyStyle: string | null;
+  price: number | null;
+  mileageValue: number | null;
+  stateOfVehicle: string | null;
+  exteriorColor: string | null;
+  trim?: string | null;
+  drivetrain?: string | null;
+  transmission?: string | null;
+  fuelType?: string | null;
+  msrp?: number | null;
+  url: string;
+  imageUrl: string | null;
+  images: string[];
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  dealer?: {
+    name: string;
+    fbPageId?: string | null;
+    address?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+  } | null;
+}): string {
+  const primaryImage = v.imageUrl ?? v.images[0] ?? "";
+  const secondaryImage = v.images[1] ?? "";
+  const resolvedLat = v.latitude ?? v.dealer?.latitude ?? null;
+  const resolvedLng = v.longitude ?? v.dealer?.longitude ?? null;
+  const resolvedAddress = v.address ?? v.dealer?.address ?? "";
+  const values: unknown[] = [
+    v.vin ?? "",
+    v.stateOfVehicle ?? "",
+    v.year ?? "",
+    v.make ?? "",
+    v.model ?? "",
+    v.trim ?? "",
+    v.drivetrain ?? "",
+    v.transmission ?? "",
+    v.exteriorColor ?? "",
+    v.price != null ? String(v.price) : "",
+    v.msrp != null ? String(v.msrp) : "",
+    v.mileageValue != null ? String(v.mileageValue) : "",
+    v.fuelType ?? "",
+    resolvedLat != null ? String(resolvedLat) : "",
+    resolvedLng != null ? String(resolvedLng) : "",
+    v.bodyStyle ?? "",
+    v.url,
+    `${v.make ?? ""} ${v.model ?? ""}`.trim(),
+    v.id,
+    "mi",
+    resolvedAddress,
+    primaryImage,
+    secondaryImage,
+    v.dealer?.fbPageId ?? "",
+    v.description ?? "",
+  ];
+  return values.map((val) => escapeField(val)).join(",") + "\r\n";
 }
 
 export function getCSVHeadersForVertical(vertical: string): string[] {

@@ -6,7 +6,7 @@ import { checkSubscription } from "@/lib/checkSubscription";
 import { getEffectiveDealerId } from "@/lib/impersonation";
 import { firecrawlClient } from "@/lib/firecrawl";
 
-const ALLOWED_CRAWL_VERTICALS = ["automotive", "ecommerce"];
+const ALLOWED_CRAWL_VERTICALS = ["automotive"];
 const MONTHLY_CRAWL_LIMIT = 4;
 
 /** URL patterns that indicate inventory/listing pages */
@@ -268,6 +268,74 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Geocode a dealer's address via OpenStreetMap Nominatim (no API key required).
+ * Writes latitude/longitude back to the Dealer record. Never throws — failures
+ * are logged but must not block the crawl.
+ */
+async function geocodeDealerAddressIfNeeded(dealerId: string): Promise<void> {
+  try {
+    const dealer = (await prisma.dealer.findUnique({
+      where: { id: dealerId },
+      select: {
+        // These fields may not exist in the schema yet — the schema migration
+        // phase adds them. Cast the select so TS accepts pre-migration builds.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        address: true,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        latitude: true,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        longitude: true,
+      } as unknown as never,
+    })) as unknown as {
+      address?: string | null;
+      latitude?: number | null;
+      longitude?: number | null;
+    } | null;
+
+    if (!dealer) return;
+    if (!dealer.address || dealer.latitude != null) return;
+
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
+      dealer.address
+    )}&format=json&limit=1`;
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "cia-feeds-app/1.0 (dealer geocoding)",
+        Accept: "application/json",
+      },
+    });
+    if (!res.ok) {
+      console.error({
+        event: "geocode_http_error",
+        dealerId,
+        status: res.status,
+      });
+      return;
+    }
+    const data = (await res.json()) as Array<{ lat?: string; lon?: string }>;
+    const first = data?.[0];
+    const lat = first?.lat != null ? parseFloat(first.lat) : NaN;
+    const lon = first?.lon != null ? parseFloat(first.lon) : NaN;
+    if (isNaN(lat) || isNaN(lon)) {
+      console.error({ event: "geocode_no_results", dealerId });
+      return;
+    }
+
+    await prisma.dealer.update({
+      where: { id: dealerId },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      data: { latitude: lat, longitude: lon } as unknown as any,
+    });
+  } catch (err) {
+    console.error({
+      event: "geocode_error",
+      dealerId,
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 function isValidUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
@@ -524,6 +592,10 @@ export async function POST(request: NextRequest) {
         urlsFound: inventoryUrls.length,
       },
     });
+
+    // Fire geocoding as a background task — never blocks the crawl response.
+    // No-op until the schema migration adds address/latitude/longitude fields.
+    after(() => geocodeDealerAddressIfNeeded(dealerId));
 
     // Fire enrichment as a background task — returns immediately
     after(() =>

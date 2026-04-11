@@ -26,7 +26,14 @@ export default async function ProfilePage() {
 
   const dealer = await prisma.dealer.findUnique({
     where: { id: effectiveDealerId },
-    select: { profileImageUrl: true, vertical: true, websiteUrl: true },
+    select: {
+      profileImageUrl: true,
+      vertical: true,
+      websiteUrl: true,
+      address: true,
+      latitude: true,
+      longitude: true,
+    },
   });
 
   return (
@@ -34,6 +41,7 @@ export default async function ProfilePage() {
       profileImageUrl={dealer?.profileImageUrl ?? null}
       currentVertical={dealer?.vertical ?? "automotive"}
       websiteUrl={dealer?.websiteUrl ?? null}
+      address={dealer?.address ?? null}
     />
   );
 }
