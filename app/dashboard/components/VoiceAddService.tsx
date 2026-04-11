@@ -29,6 +29,7 @@ export function VoiceAddService({ onListingAdded }: Props) {
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [uploadingImages, setUploadingImages] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastFailedUserText, setLastFailedUserText] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -36,6 +37,7 @@ export function VoiceAddService({ onListingAdded }: Props) {
   const handleSendMessageRef = useRef<(text: string) => Promise<void>>(async () => {});
   const isProcessingRef = useRef(false);
   const pendingUtteranceRef = useRef<string>("");
+  const messagesRef = useRef<ChatMessage[]>(messages);
 
   const handleUtteranceComplete = useCallback((finalText: string) => {
     const trimmed = finalText.trim();
@@ -70,20 +72,26 @@ export function VoiceAddService({ onListingAdded }: Props) {
     isProcessingRef.current = isProcessing;
   }, [isProcessing]);
 
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
   async function handleSendMessage(text: string) {
     const trimmed = text.trim();
     if (!trimmed || isProcessingRef.current) return;
 
     setError(null);
+    setLastFailedUserText(null);
     const userMessage: ChatMessage = { role: "user", text: trimmed };
-    const nextMessages = [...messages, userMessage];
+    const nextMessages = [...messagesRef.current, userMessage];
+    messagesRef.current = nextMessages;
     setMessages(nextMessages);
     setTextInput("");
     isProcessingRef.current = true;
     setIsProcessing(true);
 
-    try {
-      const res = await fetch("/api/listings/voice-agent", {
+    const attemptFetch = () =>
+      fetch("/api/listings/voice-agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -93,9 +101,36 @@ export function VoiceAddService({ onListingAdded }: Props) {
         }),
       });
 
+    try {
+      let res: Response;
+      try {
+        res = await attemptFetch();
+      } catch {
+        // Network error on first attempt — retry once
+        res = await attemptFetch();
+      }
+
+      if (!res.ok && res.status !== 429) {
+        // Silent auto-retry for non-429 errors
+        try {
+          res = await attemptFetch();
+        } catch {
+          // ignore — we'll handle below via the prior failing res
+        }
+      }
+
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setError(data.error || "Voice agent failed. Please try again.");
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          retryAfterMs?: number;
+        };
+        let errorText = "Something went wrong. Please try again.";
+        if (res.status === 429) {
+          const seconds = Math.ceil((data.retryAfterMs ?? 1000) / 1000);
+          errorText = `You're sending messages too fast. Please wait ${seconds} seconds and try again.`;
+        }
+        setMessages((prev) => [...prev, { role: "assistant", text: errorText }]);
+        setLastFailedUserText(trimmed);
         return;
       }
 
@@ -119,7 +154,11 @@ export function VoiceAddService({ onListingAdded }: Props) {
         setPhase("image");
       }
     } catch {
-      setError("Network error. Please try again.");
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", text: "Something went wrong. Please try again." },
+      ]);
+      setLastFailedUserText(trimmed);
     } finally {
       setIsProcessing(false);
       isProcessingRef.current = false;
@@ -129,6 +168,24 @@ export function VoiceAddService({ onListingAdded }: Props) {
         void handleSendMessageRef.current(pending);
       }
     }
+  }
+
+  function handleRetryLastMessage() {
+    if (!lastFailedUserText || isProcessingRef.current) return;
+    const textToRetry = lastFailedUserText;
+    setLastFailedUserText(null);
+    // Remove the trailing assistant error bubble and the failed user message
+    // so handleSendMessage can re-add the user message cleanly.
+    const trimmed = [...messagesRef.current];
+    if (trimmed.length > 0 && trimmed[trimmed.length - 1].role === "assistant") {
+      trimmed.pop();
+    }
+    if (trimmed.length > 0 && trimmed[trimmed.length - 1].role === "user") {
+      trimmed.pop();
+    }
+    messagesRef.current = trimmed;
+    setMessages(trimmed);
+    void handleSendMessageRef.current(textToRetry);
   }
 
   handleSendMessageRef.current = handleSendMessage;
@@ -247,13 +304,16 @@ export function VoiceAddService({ onListingAdded }: Props) {
     resetTranscript();
   }
 
-  const combinedError = error || voiceError;
+  // Voice-agent errors render as inline chat bubbles; image-upload and
+  // listing-creation errors still use setError and surface in the banner
+  // alongside browser speech errors.
+  const bannerError = voiceError || (phase !== "collecting" ? error : null);
 
   return (
     <div className="flex flex-col gap-4">
-      {combinedError && (
+      {bannerError && (
         <div className="rounded-md bg-red-50 p-3">
-          <p className="text-sm text-red-700">{combinedError}</p>
+          <p className="text-sm text-red-700">{bannerError}</p>
         </div>
       )}
 
@@ -261,22 +321,39 @@ export function VoiceAddService({ onListingAdded }: Props) {
         {/* Chat area */}
         <div className="md:col-span-2 flex flex-col bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
           <div className="flex-1 overflow-y-auto p-3 space-y-2 max-h-80 min-h-64">
-            {messages.map((msg, i) => (
-              <div
-                key={i}
-                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-              >
+            {messages.map((msg, i) => {
+              const isLast = i === messages.length - 1;
+              const showRetry =
+                isLast &&
+                msg.role === "assistant" &&
+                lastFailedUserText !== null &&
+                !isProcessing;
+              return (
                 <div
-                  className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
-                    msg.role === "user"
-                      ? "bg-indigo-600 text-white"
-                      : "bg-white text-gray-900 border border-gray-200"
-                  }`}
+                  key={i}
+                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                 >
-                  {msg.text}
+                  <div
+                    className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
+                      msg.role === "user"
+                        ? "bg-indigo-600 text-white"
+                        : "bg-white text-gray-900 border border-gray-200"
+                    }`}
+                  >
+                    <div>{msg.text}</div>
+                    {showRetry && (
+                      <button
+                        type="button"
+                        onClick={handleRetryLastMessage}
+                        className="mt-2 text-[11px] bg-indigo-600 text-white px-2 py-0.5 rounded hover:bg-indigo-700"
+                      >
+                        Retry
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
             {isListening && interimTranscript && (
               <div className="flex justify-end">
                 <div className="max-w-[80%] rounded-lg px-3 py-2 text-sm bg-indigo-100 text-indigo-900 italic">

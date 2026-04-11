@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { checkSubscription } from "@/lib/checkSubscription";
+import { rateLimit } from "@/lib/rateLimit";
 import { getEffectiveDealerId } from "@/lib/impersonation";
 import { SERVICES_FIELDS, type VerticalFieldDef } from "@/lib/verticals";
 import { GoogleGenAI } from "@google/genai";
@@ -74,6 +75,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "subscription_required" }, { status: 403 });
   }
 
+  const rl = rateLimit(`voice-agent:${dealerId}`, 30, 60_000);
+  if (!rl.allowed) {
+    return NextResponse.json({ error: "rate_limited", retryAfterMs: rl.retryAfterMs }, { status: 429 });
+  }
+
   const dealer = await prisma.dealer.findUnique({
     where: { id: dealerId },
     select: { vertical: true },
@@ -98,7 +104,7 @@ export async function POST(request: NextRequest) {
   }
 
   const transcript = typeof body.transcript === "string" ? body.transcript.trim() : "";
-  const history: HistoryMessage[] = Array.isArray(body.history)
+  let history: HistoryMessage[] = Array.isArray(body.history)
     ? (body.history as unknown[])
         .map((m): HistoryMessage | null => {
           if (!m || typeof m !== "object") return null;
@@ -110,6 +116,7 @@ export async function POST(request: NextRequest) {
         })
         .filter((m): m is HistoryMessage => m !== null)
     : [];
+  history = history.slice(-20);
 
   const collectedFields: Record<string, string> =
     body.collectedFields && typeof body.collectedFields === "object"
