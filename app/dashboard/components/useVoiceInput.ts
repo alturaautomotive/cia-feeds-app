@@ -28,6 +28,7 @@ export function useVoiceInput(options?: UseVoiceInputOptions): UseVoiceInputRetu
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const finalTranscriptRef = useRef<string>("");
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const networkErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onUtteranceCompleteRef = useRef<UseVoiceInputOptions["onUtteranceComplete"]>(
     options?.onUtteranceComplete,
   );
@@ -106,6 +107,10 @@ export function useVoiceInput(options?: UseVoiceInputOptions): UseVoiceInputRetu
         clearTimeout(silenceTimerRef.current);
         silenceTimerRef.current = null;
       }
+      if (networkErrorTimerRef.current) {
+        clearTimeout(networkErrorTimerRef.current);
+        networkErrorTimerRef.current = null;
+      }
       if (event.error === "not-allowed" || event.error === "service-not-allowed") {
         setError("Microphone access denied. Please allow microphone access in your browser.");
         intentionalStopRef.current = true;
@@ -117,6 +122,16 @@ export function useVoiceInput(options?: UseVoiceInputOptions): UseVoiceInputRetu
       } else if (event.error === "aborted") {
         // User-initiated stop; not a real error.
         intentionalStopRef.current = true;
+      } else if (event.error === "network") {
+        // Transient — show temp message and let onend auto-restart.
+        setError("Network issue — reconnecting…");
+        if (networkErrorTimerRef.current) {
+          clearTimeout(networkErrorTimerRef.current);
+        }
+        networkErrorTimerRef.current = setTimeout(() => {
+          networkErrorTimerRef.current = null;
+          setError(null);
+        }, 3000);
       } else {
         setError(`Voice input error: ${event.error}`);
         intentionalStopRef.current = true;
@@ -160,6 +175,10 @@ export function useVoiceInput(options?: UseVoiceInputOptions): UseVoiceInputRetu
       if (silenceTimerRef.current) {
         clearTimeout(silenceTimerRef.current);
         silenceTimerRef.current = null;
+      }
+      if (networkErrorTimerRef.current) {
+        clearTimeout(networkErrorTimerRef.current);
+        networkErrorTimerRef.current = null;
       }
       intentionalStopRef.current = true;
       try {
