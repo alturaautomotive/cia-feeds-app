@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { SERVICES_FIELDS } from "@/lib/verticals";
 import { useVoiceInput } from "./useVoiceInput";
 
@@ -33,46 +33,53 @@ export function VoiceAddService({ onListingAdded }: Props) {
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
 
+  const handleSendMessageRef = useRef<(text: string) => Promise<void>>(async () => {});
+  const isProcessingRef = useRef(false);
+  const pendingUtteranceRef = useRef<string>("");
+
+  const handleUtteranceComplete = useCallback((finalText: string) => {
+    const trimmed = finalText.trim();
+    if (!trimmed) return;
+    if (isProcessingRef.current) {
+      pendingUtteranceRef.current = pendingUtteranceRef.current
+        ? `${pendingUtteranceRef.current} ${trimmed}`
+        : trimmed;
+      return;
+    }
+    void handleSendMessageRef.current(trimmed);
+  }, []);
+
   const {
     isListening,
-    transcript,
     interimTranscript,
     startListening,
     stopListening,
     resetTranscript,
     isSupported,
     error: voiceError,
-  } = useVoiceInput();
+  } = useVoiceInput({ onUtteranceComplete: handleUtteranceComplete });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
-  const lastSubmittedTranscriptRef = useRef<string>("");
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, phase]);
 
-  // Auto-submit the transcript when user stops speaking.
   useEffect(() => {
-    if (isListening) return;
-    const finalText = transcript.trim();
-    if (!finalText) return;
-    if (finalText === lastSubmittedTranscriptRef.current) return;
-    lastSubmittedTranscriptRef.current = finalText;
-    void handleSendMessage(finalText);
-    resetTranscript();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isListening, transcript]);
+    isProcessingRef.current = isProcessing;
+  }, [isProcessing]);
 
   async function handleSendMessage(text: string) {
     const trimmed = text.trim();
-    if (!trimmed || isProcessing) return;
+    if (!trimmed || isProcessingRef.current) return;
 
     setError(null);
     const userMessage: ChatMessage = { role: "user", text: trimmed };
     const nextMessages = [...messages, userMessage];
     setMessages(nextMessages);
     setTextInput("");
+    isProcessingRef.current = true;
     setIsProcessing(true);
 
     try {
@@ -108,20 +115,28 @@ export function VoiceAddService({ onListingAdded }: Props) {
       }
 
       if (data.allFieldsFilled) {
+        stopListening();
         setPhase("image");
       }
     } catch {
       setError("Network error. Please try again.");
     } finally {
       setIsProcessing(false);
+      isProcessingRef.current = false;
+      const pending = pendingUtteranceRef.current.trim();
+      if (pending) {
+        pendingUtteranceRef.current = "";
+        void handleSendMessageRef.current(pending);
+      }
     }
   }
+
+  handleSendMessageRef.current = handleSendMessage;
 
   function handleToggleMic() {
     if (isListening) {
       stopListening();
     } else {
-      lastSubmittedTranscriptRef.current = "";
       startListening();
     }
   }
@@ -207,6 +222,7 @@ export function VoiceAddService({ onListingAdded }: Props) {
         return;
       }
 
+      stopListening();
       setPhase("done");
       setMessages((prev) => [
         ...prev,
@@ -221,13 +237,13 @@ export function VoiceAddService({ onListingAdded }: Props) {
   }
 
   function handleReset() {
+    stopListening();
     setMessages([{ role: "assistant", text: INITIAL_ASSISTANT_MESSAGE }]);
     setCollectedFields({});
     setImageUrls([]);
     setPhase("collecting");
     setError(null);
     setTextInput("");
-    lastSubmittedTranscriptRef.current = "";
     resetTranscript();
   }
 
@@ -318,18 +334,29 @@ export function VoiceAddService({ onListingAdded }: Props) {
                     </svg>
                   </button>
                 )}
+                {isSupported && isListening && (
+                  <button
+                    type="button"
+                    data-element-id="voice-done-btn"
+                    onClick={stopListening}
+                    className="flex items-center justify-center h-10 px-3 rounded-md border border-gray-400 bg-white text-gray-700 text-sm font-semibold hover:bg-gray-100"
+                    aria-label="Stop voice session"
+                  >
+                    Done
+                  </button>
+                )}
                 <input
                   type="text"
                   data-element-id="voice-text-input"
                   value={textInput}
                   onChange={(e) => setTextInput(e.target.value)}
                   placeholder={isListening ? "Listening…" : "Type your response…"}
-                  disabled={isListening || isProcessing}
+                  disabled={isProcessing}
                   className="flex-1 border border-gray-400 bg-white rounded-md px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:opacity-50"
                 />
                 <button
                   type="submit"
-                  disabled={!textInput.trim() || isProcessing || isListening}
+                  disabled={!textInput.trim() || isProcessing}
                   className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Send
