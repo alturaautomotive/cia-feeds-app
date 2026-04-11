@@ -58,6 +58,7 @@ export function ListingsTable({ listings, vertical, onDelete }: Props) {
               <>
                 <th className="px-4 py-3">Name</th>
                 <th className="px-4 py-3">Category</th>
+                <th className="px-4 py-3">Brand</th>
                 <th className="px-4 py-3">Price</th>
                 <th className="px-4 py-3">Location</th>
                 <th className="px-4 py-3">Status</th>
@@ -96,6 +97,7 @@ export function ListingsTable({ listings, vertical, onDelete }: Props) {
             if (vertical === "services") {
               const category = String(listing.data?.category ?? "");
               const location = String(listing.data?.address ?? "");
+              const brand = String(listing.data?.brand ?? "");
               const priceDisplay = listing.data?.price
                 ? String(listing.data.price)
                 : listing.price != null
@@ -121,6 +123,9 @@ export function ListingsTable({ listings, vertical, onDelete }: Props) {
                   </td>
                   <td className="px-4 py-3 text-gray-700">
                     {category || "\u2014"}
+                  </td>
+                  <td className="px-4 py-3 text-gray-700">
+                    {brand || "\u2014"}
                   </td>
                   <td className="px-4 py-3 text-gray-700">
                     {priceDisplay}

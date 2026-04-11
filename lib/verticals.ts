@@ -31,7 +31,8 @@ export const SERVICES_FIELDS: VerticalFieldDef[] = [
   { key: "category", label: "Category", required: true, type: "select", options: ["Home Services", "Beauty & Personal Care", "Auto Repair", "Consulting", "Other"] },
   { key: "address", label: "Service Area / Location", required: true, type: "text", placeholder: "e.g. Atlanta, GA" },
   { key: "url", label: "Booking / Contact URL", required: true, type: "text", placeholder: "https://..." },
-  { key: "availability", label: "Availability", required: false, type: "text", placeholder: "e.g. Mon\u2013Fri 9am\u20135pm" },
+  { key: "brand", label: "Brand", required: true, type: "text", placeholder: "e.g. CleanPro Services" },
+  { key: "condition", label: "Condition", required: true, type: "select", options: ["new", "used"] },
 ];
 
 export const ECOMMERCE_FIELDS: VerticalFieldDef[] = [

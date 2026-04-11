@@ -22,7 +22,7 @@ export function serializeCSV(rows: Record<string, unknown>[], headers: string[])
 // --- Vertical-specific CSV headers ---
 
 export const SERVICES_CSV_HEADERS = [
-  "id", "name", "description", "price", "category", "address", "url", "image_url", "availability",
+  "id", "name", "description", "price", "category", "address", "url", "image_url", "availability", "brand", "condition", "fb_product_category",
 ];
 
 export const ECOMMERCE_CSV_HEADERS = [
@@ -87,6 +87,10 @@ export function serializeServicesRow(listing: {
   }
   // Ensure address is explicitly mapped for Meta's local_service_businesses spec
   row.address = listing.data.address || row.address || "";
+  row.availability = "available for order";
+  row.fb_product_category = "Professional Services";
+  row.brand = listing.data.brand ? String(listing.data.brand) : "";
+  row.condition = listing.data.condition ? String(listing.data.condition) : "";
   return row;
 }
 
