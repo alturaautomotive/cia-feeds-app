@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getEffectiveDealerId } from "@/lib/impersonation";
 import { checkSubscription } from "@/lib/checkSubscription";
+import { decrypt } from "@/lib/crypto";
 
 async function authGuard(): Promise<
   | { ok: true; dealerId: string }
@@ -50,10 +51,11 @@ export async function GET() {
     select: { metaAccessToken: true },
   });
 
-  const accessToken = dealer?.metaAccessToken;
-  if (!accessToken) {
+  const encryptedToken = dealer?.metaAccessToken;
+  if (!encryptedToken) {
     return NextResponse.json({ error: "meta_not_connected" }, { status: 400 });
   }
+  const accessToken = decrypt(encryptedToken);
 
   try {
     const res = await fetch(
@@ -112,10 +114,11 @@ export async function POST(request: NextRequest) {
     where: { id: guard.dealerId },
     select: { metaAccessToken: true },
   });
-  const accessToken = dealer?.metaAccessToken;
-  if (!accessToken) {
+  const encryptedToken = dealer?.metaAccessToken;
+  if (!encryptedToken) {
     return NextResponse.json({ error: "meta_not_connected" }, { status: 400 });
   }
+  const accessToken = decrypt(encryptedToken);
 
   // Verify the selected page is actually one the dealer has access to, so we
   // never persist an arbitrary/attacker-supplied id.

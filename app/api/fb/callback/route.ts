@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getEffectiveDealerId } from "@/lib/impersonation";
+import { encrypt } from "@/lib/crypto";
 
 /**
  * GET /api/fb/callback — Handles the Facebook OAuth callback.
@@ -106,7 +107,7 @@ export async function GET(request: NextRequest) {
     await prisma.dealer.update({
       where: { id: dealerId },
       data: {
-        metaAccessToken: accessToken,
+        metaAccessToken: encrypt(accessToken),
       },
     });
 

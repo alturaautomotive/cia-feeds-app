@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getEffectiveDealerId } from "@/lib/impersonation";
 import { checkSubscription } from "@/lib/checkSubscription";
+import { decrypt } from "@/lib/crypto";
 
 /**
  * POST /api/fb/feed — Registers the dealer's CSV feed as a Data Feed on the
@@ -40,7 +41,7 @@ export async function POST() {
   if (!dealer) {
     return NextResponse.json({ error: "dealer_not_found" }, { status: 404 });
   }
-  const accessToken = dealer.metaAccessToken;
+  const accessToken = dealer.metaAccessToken ? decrypt(dealer.metaAccessToken) : null;
   const catalogId = dealer.metaCatalogId;
   if (!accessToken) {
     return NextResponse.json({ error: "meta_not_connected" }, { status: 400 });

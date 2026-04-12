@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getEffectiveDealerId } from "@/lib/impersonation";
 import { checkSubscription } from "@/lib/checkSubscription";
+import { decrypt } from "@/lib/crypto";
 
 /**
  * GET /api/fb/businesses — Returns the Meta Business Managers the
@@ -30,10 +31,12 @@ export async function GET() {
     select: { metaAccessToken: true },
   });
 
-  const accessToken = dealer?.metaAccessToken;
-  if (!accessToken) {
+  const encryptedToken = dealer?.metaAccessToken;
+  if (!encryptedToken) {
     return NextResponse.json({ error: "meta_not_connected" }, { status: 400 });
   }
+
+  const accessToken = decrypt(encryptedToken);
 
   try {
     const res = await fetch(

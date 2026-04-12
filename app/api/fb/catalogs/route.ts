@@ -4,13 +4,15 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getEffectiveDealerId } from "@/lib/impersonation";
 import { checkSubscription } from "@/lib/checkSubscription";
+import { decrypt } from "@/lib/crypto";
 
 async function loadDealerToken(dealerId: string): Promise<string | null> {
   const dealer = await prisma.dealer.findUnique({
     where: { id: dealerId },
     select: { metaAccessToken: true },
   });
-  return dealer?.metaAccessToken ?? null;
+  if (!dealer?.metaAccessToken) return null;
+  return decrypt(dealer.metaAccessToken);
 }
 
 async function authGuard(): Promise<
