@@ -33,6 +33,7 @@ export async function POST() {
     where: { id: dealerId },
     select: {
       slug: true,
+      vertical: true,
       metaAccessToken: true,
       metaCatalogId: true,
     },
@@ -55,6 +56,14 @@ export async function POST() {
 
   const feedUrl = `https://www.ciafeed.com/feeds/${dealer.slug}.csv`;
 
+  const VERTICAL_TO_FEED_TYPE: Record<string, string> = {
+    automotive: "automotive_vehicles",
+    realestate: "home_listings",
+    services: "products",
+  };
+  const feedType = VERTICAL_TO_FEED_TYPE[dealer.vertical ?? ""] ?? "products";
+  console.log({ event: "fb_feed_type_resolved", vertical: dealer.vertical, feedType });
+
   try {
     const res = await fetch(
       `https://graph.facebook.com/v19.0/${encodeURIComponent(
@@ -65,7 +74,7 @@ export async function POST() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: "CIA Feed",
-          feed_type: "PRODUCTS",
+          feed_type: feedType,
           schedule: {
             interval: "HOURLY",
             url: feedUrl,
