@@ -7,9 +7,9 @@ import { checkSubscription } from "@/lib/checkSubscription";
 import { decrypt } from "@/lib/crypto";
 
 const VERTICAL_TO_META: Record<string, string> = {
-  automotive: "AUTOMOTIVE_VEHICLE",
-  realestate: "HOME_LISTINGS",
-  services: "SERVICES",
+  automotive: "automotive_models",
+  realestate: "home_listings",
+  services: "services",
 };
 
 async function loadDealerToken(dealerId: string): Promise<string | null> {
@@ -168,7 +168,7 @@ export async function POST(request: NextRequest) {
       select: { vertical: true },
     });
     const metaVertical =
-      VERTICAL_TO_META[dealer?.vertical ?? "automotive"] ?? "AUTOMOTIVE_VEHICLE";
+      VERTICAL_TO_META[dealer?.vertical ?? "automotive"] ?? "automotive_models";
 
     const createRes = await fetch(
       `https://graph.facebook.com/v19.0/${encodeURIComponent(
