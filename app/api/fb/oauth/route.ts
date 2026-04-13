@@ -2,11 +2,14 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getEffectiveDealerId } from "@/lib/impersonation";
+import { prisma } from "@/lib/prisma";
+import crypto from "crypto";
 
 /**
  * GET /api/fb/oauth — Redirects the dealer to Facebook's OAuth consent screen.
- * State carries the dealerId so the callback can bind the returned Page to
- * the correct dealer (and validate CSRF against the current session).
+ * A random UUID state is persisted in the OAuthState table so the callback can
+ * recover the dealerId without relying on cookies (which are lost on the
+ * cross-site redirect from Facebook due to SameSite policy).
  */
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -28,12 +31,25 @@ export async function GET() {
     );
   }
 
+  const state = crypto.randomUUID();
+
+  await prisma.oAuthState.create({
+    data: {
+      state,
+      dealerId,
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+    },
+  });
+
+  // Fire-and-forget cleanup of expired state records
+  prisma.oAuthState.deleteMany({ where: { expiresAt: { lt: new Date() } } }).catch(() => {});
+
   const redirectUri = `${appUrl}/api/fb/callback`;
   const params = new URLSearchParams({
     client_id: appId,
     redirect_uri: redirectUri,
     scope: "pages_show_list,business_management,catalog_management,ads_management",
-    state: dealerId,
+    state,
     response_type: "code",
   });
 

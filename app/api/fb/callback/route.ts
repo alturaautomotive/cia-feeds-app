@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getEffectiveDealerId } from "@/lib/impersonation";
 import { encrypt } from "@/lib/crypto";
 
 /**
  * GET /api/fb/callback — Handles the Facebook OAuth callback.
  * Exchanges the returned code for a short-lived access token, upgrades it to a
  * long-lived token, and persists it as metaAccessToken on the Dealer record.
+ *
+ * The dealerId is recovered from the DB-backed OAuthState table (keyed by the
+ * random UUID state param), which avoids any dependency on cookies that are
+ * stripped by the cross-site redirect from Facebook.
  *
  * NOTE: This endpoint deliberately does NOT assign fbPageId. Page selection is
  * performed explicitly by the user via the Meta connect wizard (see
@@ -22,34 +23,33 @@ export async function GET(request: NextRequest) {
     `${appUrl}/dashboard/profile?fb=error`
   );
 
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
-
-  const dealerId = await getEffectiveDealerId();
-  if (!dealerId) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
-
   const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
   const state = searchParams.get("state");
 
   if (!code || !state) {
-    return errorRedirect;
-  }
-
-  // CSRF: state must match the current effective dealer id
-  if (state !== dealerId) {
+    console.error({ event: "fb_callback_missing_params", code: !!code, state: !!state });
     return errorRedirect;
   }
 
   const appId = process.env.FB_APP_ID;
   const appSecret = process.env.FB_APP_SECRET;
   if (!appId || !appSecret || !appUrl) {
+    console.error({ event: "fb_callback_missing_env" });
     return errorRedirect;
   }
+
+  // Look up the state from the DB instead of relying on cookies
+  const oauthState = await prisma.oAuthState.findUnique({ where: { state } });
+  if (!oauthState || oauthState.expiresAt < new Date()) {
+    console.error({ event: "fb_csrf_state_invalid", state });
+    return errorRedirect;
+  }
+
+  const dealerId = oauthState.dealerId;
+
+  // Delete the used state record
+  await prisma.oAuthState.delete({ where: { state } });
 
   const redirectUri = `${appUrl}/api/fb/callback`;
 
@@ -76,6 +76,7 @@ export async function GET(request: NextRequest) {
     };
     const shortLivedToken = tokenData.access_token;
     if (!shortLivedToken) {
+      console.error({ event: "fb_callback_missing_short_lived_token", dealerId });
       return errorRedirect;
     }
 

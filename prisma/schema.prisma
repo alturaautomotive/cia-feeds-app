@@ -143,3 +143,13 @@ model PasswordResetToken {
   expiresAt DateTime
   createdAt DateTime @default(now())
 }
+
+model OAuthState {
+  id        String   @id @default(uuid())
+  state     String   @unique
+  dealerId  String
+  expiresAt DateTime
+
+  @@index([state])
+  @@index([expiresAt])
+}

@@ -6,6 +6,12 @@ import { getEffectiveDealerId } from "@/lib/impersonation";
 import { checkSubscription } from "@/lib/checkSubscription";
 import { decrypt } from "@/lib/crypto";
 
+const VERTICAL_TO_META: Record<string, string> = {
+  automotive: "AUTOMOTIVE_VEHICLE",
+  realestate: "HOME_LISTINGS",
+  services: "SERVICES",
+};
+
 async function loadDealerToken(dealerId: string): Promise<string | null> {
   const dealer = await prisma.dealer.findUnique({
     where: { id: dealerId },
@@ -157,6 +163,13 @@ export async function POST(request: NextRequest) {
 
   // Case 2 — create new catalog
   try {
+    const dealer = await prisma.dealer.findUnique({
+      where: { id: guard.dealerId },
+      select: { vertical: true },
+    });
+    const metaVertical =
+      VERTICAL_TO_META[dealer?.vertical ?? "automotive"] ?? "AUTOMOTIVE_VEHICLE";
+
     const createRes = await fetch(
       `https://graph.facebook.com/v19.0/${encodeURIComponent(
         businessId
@@ -166,7 +179,7 @@ export async function POST(request: NextRequest) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: catalogName,
-          vertical: "AUTOMOTIVE_VEHICLE",
+          vertical: metaVertical,
           access_token: accessToken,
         }),
       }
