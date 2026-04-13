@@ -65,15 +65,7 @@ export default function ProfileClient({
   const [metaCatalogId, setMetaCatalogId] = useState<string | null>(initialMetaCatalogId);
   const [fbPageId, setFbPageId] = useState<string | null>(initialFbPageId);
   const [metaStep, setMetaStep] = useState<MetaStep>(
-    initialMetaFeedId
-      ? "done"
-      : initialIsMetaConnected
-        ? initialMetaCatalogId
-          ? "feed"
-          : initialFbPageId
-            ? "businesses"
-            : "pages"
-        : "idle"
+    initialMetaFeedId ? "done" : "idle"
   );
   const [pages, setPages] = useState<{ id: string; name: string }[]>([]);
   const [selectedPageId, setSelectedPageId] = useState(initialFbPageId ?? "");
@@ -88,17 +80,20 @@ export default function ProfileClient({
   const [metaMode, setMetaMode] = useState<"existing" | "new">("existing");
 
   async function loadPages() {
+    console.log("[Meta Wizard] loadPages — starting");
     setMetaLoading(true);
     setMetaError(null);
     try {
       const res = await fetch("/api/fb/pages");
       const data = await res.json().catch(() => ({}));
+      console.log("[Meta Wizard] loadPages — response status:", res.status, "pages count:", (data.pages || []).length);
       if (!res.ok) {
         setMetaError(data.error || "Failed to load Facebook Pages.");
         return;
       }
       setPages(data.pages || []);
       setMetaStep("pages");
+      console.log("[Meta Wizard] metaStep -> pages");
     } catch {
       setMetaError("Network error. Please try again.");
     } finally {
@@ -235,20 +230,58 @@ export default function ProfileClient({
     }
   }
 
+  function resetWizard() {
+    setMetaStep("idle");
+    setMetaError(null);
+    setMetaTosRequired(false);
+    setPages([]);
+    setBusinesses([]);
+    setCatalogs([]);
+    setSelectedPageId(initialFbPageId ?? "");
+    setSelectedBusinessId("");
+    setSelectedCatalogId("");
+    setNewCatalogName("");
+  }
+
   // On mount — if the query param says we just connected, auto-load Pages so
   // the user can explicitly select which Facebook Page to bind to fb_page_id.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
-    if (params.get("fb") === "connected") {
+    const fbParam = params.get("fb");
+    console.log("[Meta Wizard] mount effect — fb param:", fbParam, "initialMetaFeedId:", initialMetaFeedId);
+    if (fbParam === "connected") {
+      console.log("[Meta Wizard] fb=connected detected — resetting wizard and loading pages unconditionally");
       setIsMetaConnected(true);
-      if (!initialMetaFeedId) {
-        loadPages();
-      }
+      // Always restart the wizard from pages step — regardless of whether a
+      // feed already exists. This lets `?fb=connected` act as a forced
+      // recovery/restart mechanism for already-connected users too.
+      resetWizard();
+      loadPages();
       // Clean the URL so a refresh doesn't re-trigger the wizard.
       const cleanUrl = window.location.pathname;
       window.history.replaceState({}, "", cleanUrl);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Cleanup on unmount/backout — reset wizard state so re-entry always lands
+  // on idle/Continue Setup for incomplete setups (prevents frozen-button UX).
+  useEffect(() => {
+    return () => {
+      console.log("[Meta Wizard] unmount — resetting wizard state");
+      setMetaStep("idle");
+      setMetaError(null);
+      setMetaTosRequired(false);
+      setMetaLoading(false);
+      setPages([]);
+      setBusinesses([]);
+      setCatalogs([]);
+      setSelectedPageId(initialFbPageId ?? "");
+      setSelectedBusinessId("");
+      setSelectedCatalogId("");
+      setNewCatalogName("");
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -498,7 +531,11 @@ export default function ProfileClient({
               <p className="text-sm text-red-600">{metaError}</p>
               {metaTosRequired && (
                 <a
-                  href="https://business.facebook.com/commerce_manager/catalogs/"
+                  href={
+                    selectedBusinessId
+                      ? `https://business.facebook.com/${selectedBusinessId}/commerce_manager/catalogs/`
+                      : "https://business.facebook.com/commerce_manager/catalogs/"
+                  }
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-xs text-indigo-600 hover:text-indigo-700 underline mt-1 inline-block"
@@ -510,18 +547,28 @@ export default function ProfileClient({
           )}
 
           {metaStep === "done" && metaFeedId && (
-            <div className="rounded-md bg-green-50 border border-green-200 p-3">
-              <p className="text-sm text-green-700 font-medium">
-                {"\u2705"} Feed connected to Meta
-              </p>
-              {fbPageId && (
-                <p className="text-xs text-green-600 mt-1 break-all">
-                  Page ID: {fbPageId}
+            <div>
+              <div className="rounded-md bg-green-50 border border-green-200 p-3">
+                <p className="text-sm text-green-700 font-medium">
+                  {"\u2705"} Feed connected to Meta
                 </p>
-              )}
-              <p className="text-xs text-green-600 mt-1 break-all">
-                Feed ID: {metaFeedId}
-              </p>
+                {fbPageId && (
+                  <p className="text-xs text-green-600 mt-1 break-all">
+                    Page ID: {fbPageId}
+                  </p>
+                )}
+                <p className="text-xs text-green-600 mt-1 break-all">
+                  Feed ID: {metaFeedId}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { resetWizard(); loadPages(); }}
+                disabled={metaLoading}
+                className="mt-2 text-xs text-indigo-600 hover:text-indigo-700 underline disabled:opacity-50"
+              >
+                Reconnect / Change Setup
+              </button>
             </div>
           )}
 
@@ -589,6 +636,9 @@ export default function ProfileClient({
               >
                 {metaLoading ? "Saving\u2026" : "Next \u2192"}
               </button>
+              <button type="button" onClick={resetWizard} className="mt-2 text-xs text-gray-500 hover:text-gray-700 underline">
+                Start Over
+              </button>
             </div>
           )}
 
@@ -619,6 +669,9 @@ export default function ProfileClient({
                 className="w-full bg-indigo-600 text-white rounded-md py-2 text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
               >
                 {metaLoading ? "Loading\u2026" : "Next \u2192"}
+              </button>
+              <button type="button" onClick={resetWizard} className="mt-2 text-xs text-gray-500 hover:text-gray-700 underline">
+                Start Over
               </button>
             </div>
           )}
@@ -689,6 +742,9 @@ export default function ProfileClient({
               >
                 {metaLoading ? "Saving\u2026" : metaTosRequired ? "Retry" : "Next \u2192"}
               </button>
+              <button type="button" onClick={resetWizard} className="mt-2 text-xs text-gray-500 hover:text-gray-700 underline">
+                Start Over
+              </button>
             </div>
           )}
 
@@ -711,6 +767,9 @@ export default function ProfileClient({
                 className="w-full bg-indigo-600 text-white rounded-md py-2 text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
               >
                 {metaLoading ? "Publishing\u2026" : "Publish Feed to Meta \u2192"}
+              </button>
+              <button type="button" onClick={resetWizard} className="mt-2 text-xs text-gray-500 hover:text-gray-700 underline">
+                Start Over
               </button>
             </div>
           )}
