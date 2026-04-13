@@ -61,7 +61,14 @@ export async function POST() {
     realestate: "home_listings",
     services: "products",
   };
-  const feedType = VERTICAL_TO_FEED_TYPE[dealer.vertical ?? ""] ?? "products";
+  const normalizedVertical = (dealer.vertical ?? "").toLowerCase().trim();
+  const feedType = VERTICAL_TO_FEED_TYPE[normalizedVertical] ?? "products";
+  if (normalizedVertical === "automotive" && feedType !== "automotive_vehicles") {
+    return NextResponse.json(
+      { error: "feed_type_mismatch", detail: "Automotive catalogs must not use products feed type" },
+      { status: 500 }
+    );
+  }
   console.log({ event: "fb_feed_type_resolved", vertical: dealer.vertical, feedType });
 
   try {
