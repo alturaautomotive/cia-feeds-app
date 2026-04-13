@@ -78,6 +78,41 @@ export default function ProfileClient({
   const [metaTosRequired, setMetaTosRequired] = useState(false);
   const [metaLoading, setMetaLoading] = useState(false);
   const [metaMode, setMetaMode] = useState<"existing" | "new">("existing");
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [businessSkipped, setBusinessSkipped] = useState(false);
+
+  async function handleDisconnect() {
+    setDisconnecting(true);
+    setMetaError(null);
+    try {
+      const res = await fetch("/api/fb/disconnect", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMetaError(data.error || "Failed to disconnect Meta.");
+        return;
+      }
+      // Reset all Meta UI state on success
+      setIsMetaConnected(false);
+      setMetaFeedId(null);
+      setMetaCatalogId(null);
+      setFbPageId(null);
+      setMetaStep("idle");
+      setPages([]);
+      setBusinesses([]);
+      setCatalogs([]);
+      setSelectedPageId("");
+      setSelectedBusinessId("");
+      setSelectedCatalogId("");
+      setNewCatalogName("");
+      setMetaError(null);
+      setMetaTosRequired(false);
+      setBusinessSkipped(false);
+    } catch {
+      setMetaError("Network error. Please try again.");
+    } finally {
+      setDisconnecting(false);
+    }
+  }
 
   async function loadPages() {
     console.log("[Meta Wizard] loadPages — starting");
@@ -234,6 +269,7 @@ export default function ProfileClient({
     setMetaStep("idle");
     setMetaError(null);
     setMetaTosRequired(false);
+    setBusinessSkipped(false);
     setPages([]);
     setBusinesses([]);
     setCatalogs([]);
@@ -546,6 +582,17 @@ export default function ProfileClient({
             </div>
           )}
 
+          {(isMetaConnected || metaFeedId || fbPageId || metaCatalogId) && (
+            <button
+              type="button"
+              onClick={handleDisconnect}
+              disabled={disconnecting}
+              className="w-full border border-red-300 text-red-600 bg-white rounded-md py-2 text-sm font-medium hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed mb-3"
+            >
+              {disconnecting ? "Disconnecting\u2026" : "Disconnect Meta"}
+            </button>
+          )}
+
           {metaStep === "done" && metaFeedId && (
             <div>
               <div className="rounded-md bg-green-50 border border-green-200 p-3">
@@ -646,9 +693,44 @@ export default function ProfileClient({
             <div>
               <div className="text-xs text-gray-500 mb-2">Step 3 of 5 — Select Business Manager</div>
               {businesses.length === 0 ? (
-                <p className="text-sm text-gray-500 mb-2">
-                  No Business Managers found for your account.
-                </p>
+                <div className="mb-3">
+                  {(() => { console.log("[Meta Wizard] businesses.length === 0 — no Business Managers found"); return null; })()}
+                  <p className="text-sm text-gray-500 mb-2">
+                    No Business Managers found for your account.
+                  </p>
+                  <p className="text-xs text-gray-500 mb-3">
+                    No Business Managers?{" "}
+                    <a
+                      href="https://business.facebook.com/overview"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-indigo-600 hover:text-indigo-700 underline"
+                    >
+                      Create one
+                    </a>
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={metaLoading}
+                      onClick={loadBusinesses}
+                      className="flex-1 border border-gray-300 text-gray-700 bg-white rounded-md py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      {metaLoading ? "Loading\u2026" : "Retry"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        console.log("[Meta Wizard] User skipped business selection — falling back to pages step");
+                        setBusinessSkipped(true);
+                        setMetaStep("pages");
+                      }}
+                      className="flex-1 border border-gray-300 text-gray-700 bg-white rounded-md py-2 text-sm font-medium hover:bg-gray-50"
+                    >
+                      Skip
+                    </button>
+                  </div>
+                </div>
               ) : (
                 <select
                   data-element-id="meta-business-select"
@@ -662,14 +744,16 @@ export default function ProfileClient({
                   ))}
                 </select>
               )}
-              <button
-                type="button"
-                disabled={!selectedBusinessId || metaLoading}
-                onClick={() => loadCatalogs(selectedBusinessId)}
-                className="w-full bg-indigo-600 text-white rounded-md py-2 text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
-              >
-                {metaLoading ? "Loading\u2026" : "Next \u2192"}
-              </button>
+              {businesses.length > 0 && (
+                <button
+                  type="button"
+                  disabled={!selectedBusinessId || metaLoading}
+                  onClick={() => loadCatalogs(selectedBusinessId)}
+                  className="w-full bg-indigo-600 text-white rounded-md py-2 text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {metaLoading ? "Loading\u2026" : "Next \u2192"}
+                </button>
+              )}
               <button type="button" onClick={resetWizard} className="mt-2 text-xs text-gray-500 hover:text-gray-700 underline">
                 Start Over
               </button>
