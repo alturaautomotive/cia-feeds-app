@@ -1,11 +1,20 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { checkSubscription } from "@/lib/checkSubscription";
 import { getEffectiveDealerContext } from "@/lib/impersonation";
+import { VERTICAL_LABELS, type Vertical } from "@/lib/verticals";
 import FeedUrlCard from "./FeedUrlCard";
 import EmbedWidgetCard from "./EmbedWidgetCard";
+
+const BACK_LABEL: Record<string, string> = {
+  automotive: "Vehicles",
+  services: "Services",
+  ecommerce: "Products",
+  realestate: "Listings",
+};
 
 export default async function FeedPage() {
   const session = await getServerSession(authOptions);
@@ -44,19 +53,48 @@ export default async function FeedPage() {
   const dealerPhone = dealer?.phone ?? null;
   const dealerFbPageId = dealer?.fbPageId ?? null;
 
+  const userName = session.user.name ?? "";
+
   return (
-    <FeedUrlCard
-      feedUrl={feedUrl}
-      userName={session.user.name ?? ""}
-      vertical={dealerVertical}
-    >
-      <EmbedWidgetCard
-        slug={slug}
-        phone={dealerPhone}
-        fbPageId={dealerFbPageId}
-        vertical={dealerVertical}
-        catalogApiUrl={catalogApiUrl}
-      />
-    </FeedUrlCard>
+    <div className="min-h-screen bg-gray-50">
+      {/* Top bar */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-4xl mx-auto px-6 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Link
+              href="/dashboard"
+              className="text-sm text-indigo-600 hover:text-indigo-500"
+            >
+              &larr; {BACK_LABEL[dealerVertical] ?? "Dashboard"}
+            </Link>
+            <span className="font-bold text-lg text-gray-900">CIAfeeds</span>
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-gray-500">{userName}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="max-w-xl mx-auto px-6 py-12">
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">
+          Your Meta Catalog Feed
+        </h1>
+        <p className="text-sm text-gray-500 mb-8">
+          Use this URL in Meta&apos;s catalog setup to power your{" "}
+          {VERTICAL_LABELS[dealerVertical as Vertical] ?? dealerVertical} catalog feed.
+        </p>
+
+        <FeedUrlCard feedUrl={feedUrl} vertical={dealerVertical} />
+
+        <EmbedWidgetCard
+          slug={slug}
+          phone={dealerPhone}
+          fbPageId={dealerFbPageId}
+          vertical={dealerVertical}
+          catalogApiUrl={catalogApiUrl}
+        />
+      </div>
+    </div>
   );
 }

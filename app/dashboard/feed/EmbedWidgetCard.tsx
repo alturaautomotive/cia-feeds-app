@@ -188,12 +188,12 @@ ${phone ? `
     try {
       await navigator.clipboard.writeText(snippet);
     } catch {
-      const input = document.createElement("input");
-      input.value = snippet;
-      document.body.appendChild(input);
-      input.select();
+      const textarea = document.createElement("textarea");
+      textarea.value = snippet;
+      document.body.appendChild(textarea);
+      textarea.select();
       document.execCommand("copy");
-      document.body.removeChild(input);
+      document.body.removeChild(textarea);
     }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);

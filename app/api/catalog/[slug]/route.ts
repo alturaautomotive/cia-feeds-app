@@ -118,7 +118,11 @@ export async function GET(
       const data = (listing.data as Record<string, unknown>) ?? {};
       const details: Record<string, unknown> = {};
 
-      if (dealer.vertical === "services") {
+      if (dealer.vertical === "ecommerce") {
+        if (data.brand != null) details.brand = data.brand;
+        if (data.category != null) details.category = data.category;
+        if (data.condition != null) details.condition = data.condition;
+      } else if (dealer.vertical === "services") {
         if (data.category != null) details.category = data.category;
         if (data.address != null) details.address = data.address;
         if (data.brand != null) details.brand = data.brand;
@@ -144,14 +148,18 @@ export async function GET(
   }
 
   // --- Response ---
+  // NOTE: phone and fbPageId are exposed publicly via this unauthenticated endpoint.
+  // Dealers should be aware that adding a phone number or Facebook Page ID makes
+  // it publicly accessible through this catalog API. Consider adding an
+  // `embedEnabled` opt-in flag on the Dealer model to gate this exposure.
   return NextResponse.json(
     {
       dealer: {
         name: dealer.name,
         slug: dealer.slug,
         vertical: dealer.vertical,
-        phone: dealer.phone,
-        fbPageId: dealer.fbPageId,
+        phone: dealer.phone ?? null,
+        fbPageId: dealer.fbPageId ?? null,
       },
       items,
     },

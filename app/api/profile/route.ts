@@ -155,15 +155,12 @@ export async function PATCH(request: NextRequest) {
     const phoneToSave = trimmed || null;
 
     if (phoneToSave) {
-      if (!/^\+?[\d\s\-().]{7,20}$/.test(phoneToSave)) {
-        return NextResponse.json({ error: "invalid_phone" }, { status: 400 });
-      }
-      // Strip non-digit characters except leading +
+      // Strip non-digit characters except leading +, then validate digit count
       const cleaned = phoneToSave.startsWith("+")
         ? "+" + phoneToSave.slice(1).replace(/\D/g, "")
         : phoneToSave.replace(/\D/g, "");
       const digits = cleaned.replace(/\D/g, "");
-      if (digits.length < 7) {
+      if (digits.length < 7 || digits.length > 20) {
         return NextResponse.json({ error: "invalid_phone" }, { status: 400 });
       }
       await prisma.dealer.update({
