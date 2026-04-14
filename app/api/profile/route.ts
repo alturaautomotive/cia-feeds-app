@@ -2,8 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { checkSubscription } from "@/lib/checkSubscription";
 import { getEffectiveDealerContext } from "@/lib/impersonation";
+import { decrypt } from "@/lib/crypto";
 
 const VALID_VERTICALS = ["automotive", "services", "ecommerce", "realestate"];
+
+const VERTICAL_TO_META: Record<string, string> = {
+  automotive: "automotive_models",
+  realestate: "home_listings",
+  services: "local_service_businesses",
+};
 
 const SAFE_SELECT = {
   id: true,
@@ -158,7 +165,13 @@ export async function PATCH(request: NextRequest) {
 
     const dealer = await prisma.dealer.findUnique({
       where: { id: effectiveDealerId },
-      select: { vertical: true },
+      select: {
+        vertical: true,
+        metaAccessToken: true,
+        metaFeedId: true,
+        metaCatalogId: true,
+        metaBusinessId: true,
+      },
     });
 
     if (!dealer) {
@@ -168,49 +181,72 @@ export async function PATCH(request: NextRequest) {
     const oldVertical = dealer.vertical;
 
     if (oldVertical !== newVertical) {
-      const now = new Date();
+      let accessToken: string | null = null;
 
+      // Step 3: Delete old Meta feed (non-blocking)
+      if (dealer.metaAccessToken && dealer.metaFeedId) {
+        try {
+          accessToken = decrypt(dealer.metaAccessToken);
+          const metaFeedId = dealer.metaFeedId;
+          const delRes = await fetch(
+            `https://graph.facebook.com/v19.0/${metaFeedId}?access_token=${accessToken}`,
+            { method: "DELETE" }
+          );
+          const delData = await delRes.json();
+          console.log("fb_feed_delete_on_vertical_switch", { metaFeedId, ok: delRes.ok, delData });
+        } catch (err) {
+          console.error("fb_feed_delete_on_vertical_switch", err);
+        }
+      }
+
+      // Step 4: Create new Meta catalog for new vertical (non-blocking)
+      let newCatalogId: string | null = null;
+      if (dealer.metaAccessToken && dealer.metaBusinessId) {
+        try {
+          if (!accessToken) {
+            accessToken = decrypt(dealer.metaAccessToken);
+          }
+          const metaVertical = VERTICAL_TO_META[newVertical] ?? "automotive_models";
+          const catRes = await fetch(
+            `https://graph.facebook.com/v19.0/${dealer.metaBusinessId}/owned_product_catalogs`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: "CIA Feed",
+                vertical: metaVertical,
+                access_token: accessToken,
+              }),
+            }
+          );
+          const catData = (await catRes.json()) as { id?: string };
+          if (catRes.ok && catData.id) {
+            newCatalogId = catData.id;
+            console.log("fb_catalog_recreate_on_vertical_switch", { newCatalogId });
+          } else {
+            console.error("fb_catalog_recreate_failed", catData);
+          }
+        } catch (err) {
+          console.error("fb_catalog_recreate_failed", err);
+        }
+      }
+
+      // Step 5: Hard-delete all dealer data and update vertical
       let updatedDealer;
 
       await prisma.$transaction(async (tx) => {
-        // Archive current inventory for the old vertical
-        if (oldVertical === "automotive") {
-          await tx.vehicle.updateMany({
-            where: { dealerId: effectiveDealerId, archivedAt: null },
-            data: { archivedAt: now },
-          });
-        } else {
-          await tx.listing.updateMany({
-            where: {
-              dealerId: effectiveDealerId,
-              vertical: oldVertical,
-              archivedAt: null,
-            },
-            data: { archivedAt: now },
-          });
-        }
+        await tx.crawlSnapshot.deleteMany({ where: { dealerId: effectiveDealerId } });
+        await tx.crawlJob.deleteMany({ where: { dealerId: effectiveDealerId } });
+        await tx.vehicle.deleteMany({ where: { dealerId: effectiveDealerId } });
+        await tx.listing.deleteMany({ where: { dealerId: effectiveDealerId } });
 
-        // Restore any previously archived inventory for the new vertical
-        if (newVertical === "automotive") {
-          await tx.vehicle.updateMany({
-            where: { dealerId: effectiveDealerId, archivedAt: { not: null } },
-            data: { archivedAt: null },
-          });
-        } else {
-          await tx.listing.updateMany({
-            where: {
-              dealerId: effectiveDealerId,
-              vertical: newVertical,
-              archivedAt: { not: null },
-            },
-            data: { archivedAt: null },
-          });
-        }
-
-        // Update dealer vertical
         updatedDealer = await tx.dealer.update({
           where: { id: effectiveDealerId },
-          data: { vertical: newVertical },
+          data: {
+            vertical: newVertical,
+            metaFeedId: null,
+            metaCatalogId: newCatalogId ?? null,
+          },
           select: SAFE_SELECT,
         });
       });

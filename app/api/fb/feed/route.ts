@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getEffectiveDealerId } from "@/lib/impersonation";
 import { checkSubscription } from "@/lib/checkSubscription";
 import { decrypt } from "@/lib/crypto";
+import { VERTICAL_FEED_TYPE } from "@/lib/verticals";
 
 /**
  * POST /api/fb/feed — Registers the dealer's CSV feed as a Data Feed on the
@@ -56,20 +57,18 @@ export async function POST() {
 
   const feedUrl = `https://www.ciafeed.com/feeds/${dealer.slug}.csv`;
 
-  const VERTICAL_TO_FEED_TYPE: Record<string, string> = {
-    automotive: "automotive_vehicles",
-    realestate: "home_listings",
-    services: "products",
-  };
   const normalizedVertical = (dealer.vertical ?? "").toLowerCase().trim();
-  const feedType = VERTICAL_TO_FEED_TYPE[normalizedVertical] ?? "products";
-  if (normalizedVertical === "automotive" && feedType !== "automotive_vehicles") {
-    return NextResponse.json(
-      { error: "feed_type_mismatch", detail: "Automotive catalogs must not use products feed type" },
-      { status: 500 }
-    );
-  }
+  const feedType = VERTICAL_FEED_TYPE[normalizedVertical as keyof typeof VERTICAL_FEED_TYPE] ?? "PRODUCTS";
   console.log({ event: "fb_feed_type_resolved", vertical: dealer.vertical, feedType });
+
+  const itemCount =
+    normalizedVertical === "automotive"
+      ? await prisma.vehicle.count({ where: { dealerId, archivedAt: null } })
+      : await prisma.listing.count({ where: { dealerId, vertical: normalizedVertical, archivedAt: null } });
+
+  if (itemCount === 0) {
+    return NextResponse.json({ error: "add_items_first" }, { status: 400 });
+  }
 
   try {
     const res = await fetch(

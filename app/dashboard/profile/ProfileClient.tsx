@@ -70,7 +70,7 @@ export default function ProfileClient({
   const [pages, setPages] = useState<{ id: string; name: string }[]>([]);
   const [selectedPageId, setSelectedPageId] = useState(initialFbPageId ?? "");
   const [businesses, setBusinesses] = useState<{ id: string; name: string }[]>([]);
-  const [selectedBusinessId, setSelectedBusinessId] = useState("");
+  const [selectedBmId, setSelectedBmId] = useState("");
   const [catalogs, setCatalogs] = useState<{ id: string; name: string }[]>([]);
   const [selectedCatalogId, setSelectedCatalogId] = useState("");
   const [newCatalogName, setNewCatalogName] = useState("");
@@ -101,7 +101,7 @@ export default function ProfileClient({
       setBusinesses([]);
       setCatalogs([]);
       setSelectedPageId("");
-      setSelectedBusinessId("");
+      setSelectedBmId("");
       setSelectedCatalogId("");
       setNewCatalogName("");
       setMetaError(null);
@@ -206,7 +206,7 @@ export default function ProfileClient({
     setMetaError(null);
     setMetaTosRequired(false);
     try {
-      const body: Record<string, string> = { businessId: selectedBusinessId };
+      const body: Record<string, string> = { businessId: selectedBmId };
       if (metaMode === "existing") {
         if (!selectedCatalogId) {
           setMetaError("Please pick a catalog.");
@@ -253,7 +253,12 @@ export default function ProfileClient({
       const res = await fetch("/api/fb/feed", { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setMetaError(data.error || "Failed to register feed.");
+        const feedErrorMessages: Record<string, string> = {
+          add_items_first: "Please add at least one item to your inventory before registering a feed.",
+          meta_not_connected: "Please connect your Meta account first.",
+          catalog_not_selected: "Please select a catalog before registering a feed.",
+        };
+        setMetaError(feedErrorMessages[data.error] || data.error || "Failed to register feed.");
         return;
       }
       setMetaFeedId(data.feedId);
@@ -274,7 +279,7 @@ export default function ProfileClient({
     setBusinesses([]);
     setCatalogs([]);
     setSelectedPageId(initialFbPageId ?? "");
-    setSelectedBusinessId("");
+    setSelectedBmId("");
     setSelectedCatalogId("");
     setNewCatalogName("");
   }
@@ -314,7 +319,7 @@ export default function ProfileClient({
       setBusinesses([]);
       setCatalogs([]);
       setSelectedPageId(initialFbPageId ?? "");
-      setSelectedBusinessId("");
+      setSelectedBmId("");
       setSelectedCatalogId("");
       setNewCatalogName("");
     };
@@ -568,8 +573,8 @@ export default function ProfileClient({
               {metaTosRequired && (
                 <a
                   href={
-                    selectedBusinessId
-                      ? `https://business.facebook.com/${selectedBusinessId}/commerce_manager/catalogs/`
+                    selectedBmId
+                      ? `https://business.facebook.com/${selectedBmId}/commerce_manager/catalogs/`
                       : "https://business.facebook.com/commerce_manager/catalogs/"
                   }
                   target="_blank"
@@ -735,8 +740,8 @@ export default function ProfileClient({
                 <select
                   data-element-id="meta-business-select"
                   className="w-full border border-gray-400 bg-white rounded-md px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  value={selectedBusinessId}
-                  onChange={(e) => setSelectedBusinessId(e.target.value)}
+                  value={selectedBmId}
+                  onChange={(e) => setSelectedBmId(e.target.value)}
                 >
                   <option value="">-- Choose a business --</option>
                   {businesses.map((b) => (
@@ -747,8 +752,8 @@ export default function ProfileClient({
               {businesses.length > 0 && (
                 <button
                   type="button"
-                  disabled={!selectedBusinessId || metaLoading}
-                  onClick={() => loadCatalogs(selectedBusinessId)}
+                  disabled={!selectedBmId || metaLoading}
+                  onClick={() => loadCatalogs(selectedBmId)}
                   className="w-full bg-indigo-600 text-white rounded-md py-2 text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
                 >
                   {metaLoading ? "Loading\u2026" : "Next \u2192"}
@@ -951,15 +956,19 @@ export default function ProfileClient({
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div data-element-id="switch-modal" className="bg-white rounded-xl p-6 max-w-[400px] w-full mx-4">
             <div className="text-3xl mb-3">{"\u26A0\uFE0F"}</div>
-            <h3 className="text-base font-bold text-gray-900 mb-2">Switch to {targetVerticalInfo.title}?</h3>
+            <h3 className="text-base font-bold text-gray-900 mb-2">Permanently switch to {targetVerticalInfo.title}?</h3>
             <p className="text-sm text-gray-600 leading-relaxed mb-4">
-              You&apos;re switching from <strong>{currentVerticalInfo?.title}</strong> to{" "}
-              <strong>{targetVerticalInfo.title}</strong>. Your current inventory will be hidden
-              from your feed while you&apos;re on the {targetVerticalInfo.title} vertical.
+              Switching from <strong>{currentVerticalInfo?.title}</strong> to{" "}
+              <strong>{targetVerticalInfo.title}</strong> will <strong>permanently delete</strong> all
+              inventory, crawl jobs, and crawl snapshots. This <strong>cannot be undone</strong>. A new
+              empty CSV feed will be created when you add your first item.
             </p>
-            <div className="bg-amber-50 rounded-md p-3 text-xs text-amber-800 mb-5">
-              Your inventory is not deleted. If you switch back, all your items will be restored automatically.
-            </div>
+            {isMetaConnected && (
+              <div className="bg-red-50 rounded-md p-3 text-xs text-red-700 mb-5">
+                Your existing Meta catalog will be deleted and a new one created for the{" "}
+                {targetVerticalInfo.title} vertical. You&apos;ll need to re-publish your feed after adding items.
+              </div>
+            )}
             <div className="flex gap-2.5">
               <button
                 data-element-id="cancel-switch"
@@ -975,9 +984,9 @@ export default function ProfileClient({
                 type="button"
                 onClick={handleConfirmSwitch}
                 disabled={switching}
-                className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
+                className="flex-1 py-2 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700 disabled:opacity-50"
               >
-                {switching ? "Switching\u2026" : `Switch to ${targetVerticalInfo.title}`}
+                {switching ? "Switching\u2026" : "Permanently Switch"}
               </button>
             </div>
           </div>

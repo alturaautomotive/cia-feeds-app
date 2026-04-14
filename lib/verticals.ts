@@ -13,6 +13,12 @@ export const VERTICAL_META_TYPE: Record<Vertical, string> = {
   realestate: "home_listings",
 };
 
+export const VERTICAL_FEED_TYPE: Record<Vertical, string> = {
+  automotive: "VEHICLES",
+  realestate: "HOME_LISTING",
+  services: "PRODUCTS",
+};
+
 export interface VerticalFieldDef {
   key: string;
   label: string;

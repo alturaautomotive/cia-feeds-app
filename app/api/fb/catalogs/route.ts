@@ -9,7 +9,7 @@ import { decrypt } from "@/lib/crypto";
 const VERTICAL_TO_META: Record<string, string> = {
   automotive: "automotive_models",
   realestate: "home_listings",
-  services: "services",
+  services: "local_service_businesses",
 };
 
 async function loadDealerToken(dealerId: string): Promise<string | null> {
