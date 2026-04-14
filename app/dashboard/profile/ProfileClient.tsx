@@ -14,6 +14,7 @@ interface Props {
   currentVertical: string;
   websiteUrl: string | null;
   address: string | null;
+  phone: string | null;
   fbPageId: string | null;
   isMetaConnected: boolean;
   metaCatalogId: string | null;
@@ -33,6 +34,7 @@ export default function ProfileClient({
   currentVertical: initialVertical,
   websiteUrl: initialWebsiteUrl,
   address: initialAddress,
+  phone: initialPhone,
   fbPageId: initialFbPageId,
   isMetaConnected: initialIsMetaConnected,
   metaCatalogId: initialMetaCatalogId,
@@ -58,6 +60,11 @@ export default function ProfileClient({
   const [addressError, setAddressError] = useState<string | null>(null);
   const [addressLat, setAddressLat] = useState<number | null>(null);
   const [addressLng, setAddressLng] = useState<number | null>(null);
+
+  const [phone, setPhone] = useState(initialPhone ?? "");
+  const [savingPhone, setSavingPhone] = useState(false);
+  const [phoneSaved, setPhoneSaved] = useState(false);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
 
   // Meta Business Integration wizard state
   const [isMetaConnected, setIsMetaConnected] = useState(initialIsMetaConnected);
@@ -558,6 +565,69 @@ export default function ProfileClient({
           )}
         </div>
 
+        {/* Business Phone */}
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-4">
+          <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
+            Business Phone
+          </h2>
+          <p className="text-xs text-gray-400 mb-3">
+            Your phone number is used for SMS contact in your catalog widget.
+          </p>
+          <div className="flex gap-2.5">
+            <input
+              type="tel"
+              data-element-id="business-phone-input"
+              placeholder="(770) 555-1234"
+              value={phone}
+              onChange={(e) => {
+                setPhone(e.target.value);
+                setPhoneSaved(false);
+                setPhoneError(null);
+              }}
+              className="flex-1 border border-gray-400 bg-white rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            />
+            <button
+              type="button"
+              disabled={savingPhone}
+              onClick={async () => {
+                setSavingPhone(true);
+                setPhoneSaved(false);
+                setPhoneError(null);
+                try {
+                  const res = await fetch("/api/profile", {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ phone: phone.trim() || null }),
+                  });
+                  if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    setPhoneError(
+                      data.error === "invalid_phone"
+                        ? "Please enter a valid phone number."
+                        : data.error || "Failed to save phone number."
+                    );
+                    return;
+                  }
+                  setPhoneSaved(true);
+                } catch {
+                  setPhoneError("Network error. Please try again.");
+                } finally {
+                  setSavingPhone(false);
+                }
+              }}
+              className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {savingPhone ? "Saving\u2026" : "Save"}
+            </button>
+          </div>
+          {phoneSaved && (
+            <p className="text-xs text-green-600 mt-2">Phone number saved.</p>
+          )}
+          {phoneError && (
+            <p className="text-xs text-red-600 mt-2">{phoneError}</p>
+          )}
+        </div>
+
         {/* Meta Business Integration */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-4">
           <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
@@ -965,7 +1035,7 @@ export default function ProfileClient({
             </p>
             {isMetaConnected && (
               <div className="bg-red-50 rounded-md p-3 text-xs text-red-700 mb-5">
-                Your existing Meta catalog will be deleted and a new one created for the{" "}
+                Your existing Meta catalog will be replaced with a new one created for the{" "}
                 {targetVerticalInfo.title} vertical. You&apos;ll need to re-publish your feed after adding items.
               </div>
             )}

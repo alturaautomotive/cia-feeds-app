@@ -32,6 +32,7 @@ model Dealer {
   metaCatalogId        String?
   metaFeedId           String?
   address              String?
+  phone                String?
   latitude             Float?
   longitude            Float?
   vehicles             Vehicle[]

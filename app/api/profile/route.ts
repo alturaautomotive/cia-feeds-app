@@ -22,6 +22,7 @@ const SAFE_SELECT = {
   websiteUrl: true,
   autoCrawlEnabled: true,
   address: true,
+  phone: true,
   latitude: true,
   longitude: true,
 } as const;
@@ -144,6 +145,39 @@ export async function PATCH(request: NextRequest) {
     }
   }
 
+  // Handle phone update
+  if ("phone" in b) {
+    const rawPhone = b.phone;
+    if (rawPhone !== null && typeof rawPhone !== "string") {
+      return NextResponse.json({ error: "invalid_phone" }, { status: 400 });
+    }
+    const trimmed = typeof rawPhone === "string" ? rawPhone.trim() : null;
+    const phoneToSave = trimmed || null;
+
+    if (phoneToSave) {
+      if (!/^\+?[\d\s\-().]{7,20}$/.test(phoneToSave)) {
+        return NextResponse.json({ error: "invalid_phone" }, { status: 400 });
+      }
+      // Strip non-digit characters except leading +
+      const cleaned = phoneToSave.startsWith("+")
+        ? "+" + phoneToSave.slice(1).replace(/\D/g, "")
+        : phoneToSave.replace(/\D/g, "");
+      const digits = cleaned.replace(/\D/g, "");
+      if (digits.length < 7) {
+        return NextResponse.json({ error: "invalid_phone" }, { status: 400 });
+      }
+      await prisma.dealer.update({
+        where: { id: effectiveDealerId },
+        data: { phone: cleaned },
+      });
+    } else {
+      await prisma.dealer.update({
+        where: { id: effectiveDealerId },
+        data: { phone: null },
+      });
+    }
+  }
+
   // Handle autoCrawlEnabled toggle
   if ("autoCrawlEnabled" in b) {
     if (typeof b.autoCrawlEnabled !== "boolean") {
@@ -196,6 +230,24 @@ export async function PATCH(request: NextRequest) {
           console.log("fb_feed_delete_on_vertical_switch", { metaFeedId, ok: delRes.ok, delData });
         } catch (err) {
           console.error("fb_feed_delete_on_vertical_switch", err);
+        }
+      }
+
+      // Step 3b: Delete old Meta catalog (non-blocking)
+      if (dealer.metaAccessToken && dealer.metaCatalogId) {
+        try {
+          if (!accessToken) {
+            accessToken = decrypt(dealer.metaAccessToken);
+          }
+          const oldCatalogId = dealer.metaCatalogId;
+          const delCatRes = await fetch(
+            `https://graph.facebook.com/v19.0/${oldCatalogId}?access_token=${accessToken}`,
+            { method: "DELETE" }
+          );
+          const delCatData = await delCatRes.json();
+          console.log("fb_catalog_delete_on_vertical_switch", { oldCatalogId, ok: delCatRes.ok, delCatData });
+        } catch (err) {
+          console.error("fb_catalog_delete_on_vertical_switch", err);
         }
       }
 

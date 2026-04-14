@@ -31,6 +31,7 @@ export default async function ProfilePage() {
       vertical: true,
       websiteUrl: true,
       address: true,
+      phone: true,
       latitude: true,
       longitude: true,
       fbPageId: true,
@@ -46,6 +47,7 @@ export default async function ProfilePage() {
       currentVertical={dealer?.vertical ?? "automotive"}
       websiteUrl={dealer?.websiteUrl ?? null}
       address={dealer?.address ?? null}
+      phone={dealer?.phone ?? null}
       fbPageId={dealer?.fbPageId ?? null}
       isMetaConnected={!!dealer?.metaAccessToken}
       metaCatalogId={dealer?.metaCatalogId ?? null}
