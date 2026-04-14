@@ -23,9 +23,10 @@ interface FeedUrlCardProps {
   feedUrl: string;
   userName: string;
   vertical: string;
+  children?: React.ReactNode;
 }
 
-export default function FeedUrlCard({ feedUrl, userName, vertical }: FeedUrlCardProps) {
+export default function FeedUrlCard({ feedUrl, userName, vertical, children }: FeedUrlCardProps) {
   const [copied, setCopied] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
@@ -171,6 +172,8 @@ export default function FeedUrlCard({ feedUrl, userName, vertical }: FeedUrlCard
             </li>
           </ol>
         </div>
+
+        {children}
       </div>
     </div>
   );
