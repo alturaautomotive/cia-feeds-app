@@ -32,6 +32,7 @@ export default async function ProfilePage() {
       websiteUrl: true,
       address: true,
       phone: true,
+      ctaPreference: true,
       latitude: true,
       longitude: true,
       fbPageId: true,
@@ -48,6 +49,7 @@ export default async function ProfilePage() {
       websiteUrl={dealer?.websiteUrl ?? null}
       address={dealer?.address ?? null}
       phone={dealer?.phone ?? null}
+      ctaPreference={dealer?.ctaPreference ?? null}
       fbPageId={dealer?.fbPageId ?? null}
       isMetaConnected={!!dealer?.metaAccessToken}
       metaCatalogId={dealer?.metaCatalogId ?? null}

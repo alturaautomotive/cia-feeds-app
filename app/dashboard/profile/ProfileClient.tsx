@@ -3,6 +3,13 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 
+const CTA_OPTIONS = [
+  { value: "", label: "Auto", icon: "🔄", desc: "Show all available contact options" },
+  { value: "sms", label: "SMS", icon: "💬", desc: "Text message link" },
+  { value: "whatsapp", label: "WhatsApp", icon: "📱", desc: "Opens WhatsApp chat" },
+  { value: "messenger", label: "Messenger", icon: "💙", desc: "Opens Facebook Messenger" },
+] as const;
+
 const VERTICALS = [
   { id: "automotive", icon: "\u{1F697}", title: "Automotive", desc: "Vehicle listings" },
   { id: "services", icon: "\u{1F527}", title: "Services", desc: "Local service businesses" },
@@ -15,6 +22,7 @@ interface Props {
   websiteUrl: string | null;
   address: string | null;
   phone: string | null;
+  ctaPreference: string | null;
   fbPageId: string | null;
   isMetaConnected: boolean;
   metaCatalogId: string | null;
@@ -35,6 +43,7 @@ export default function ProfileClient({
   websiteUrl: initialWebsiteUrl,
   address: initialAddress,
   phone: initialPhone,
+  ctaPreference: initialCtaPreference,
   fbPageId: initialFbPageId,
   isMetaConnected: initialIsMetaConnected,
   metaCatalogId: initialMetaCatalogId,
@@ -65,6 +74,11 @@ export default function ProfileClient({
   const [savingPhone, setSavingPhone] = useState(false);
   const [phoneSaved, setPhoneSaved] = useState(false);
   const [phoneError, setPhoneError] = useState<string | null>(null);
+
+  const [ctaPref, setCtaPref] = useState(initialCtaPreference ?? "");
+  const [savingCta, setSavingCta] = useState(false);
+  const [ctaSaved, setCtaSaved] = useState(false);
+  const [ctaError, setCtaError] = useState<string | null>(null);
 
   // Meta Business Integration wizard state
   const [isMetaConnected, setIsMetaConnected] = useState(initialIsMetaConnected);
@@ -625,6 +639,85 @@ export default function ProfileClient({
           )}
           {phoneError && (
             <p className="text-xs text-red-600 mt-2">{phoneError}</p>
+          )}
+        </div>
+
+        {/* Contact Button Preference */}
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-4">
+          <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
+            Contact Button Preference
+          </h2>
+          <p className="text-xs text-gray-400 mb-4">
+            Choose how customers contact you from the catalog embed widget.
+          </p>
+          <div className="space-y-2">
+            {CTA_OPTIONS.map((opt) => {
+              const selected = ctaPref === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  disabled={savingCta}
+                  onClick={async () => {
+                    if (ctaPref === opt.value) return;
+                    const prev = ctaPref;
+                    setCtaPref(opt.value);
+                    setCtaSaved(false);
+                    setCtaError(null);
+                    setSavingCta(true);
+                    try {
+                      const res = await fetch("/api/profile", {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ ctaPreference: opt.value || null }),
+                      });
+                      if (!res.ok) {
+                        const data = await res.json().catch(() => ({}));
+                        setCtaError(data.error ?? "Failed to save preference.");
+                        setCtaPref(prev);
+                        return;
+                      }
+                      setCtaSaved(true);
+                    } catch {
+                      setCtaError("Network error. Please try again.");
+                      setCtaPref(prev);
+                    } finally {
+                      setSavingCta(false);
+                    }
+                  }}
+                  className={`w-full flex items-center gap-3 border rounded-lg px-4 py-3 text-left transition-colors ${
+                    selected
+                      ? "border-indigo-500 bg-indigo-50"
+                      : "border-gray-200 hover:border-indigo-300"
+                  } disabled:opacity-50`}
+                >
+                  <span className="text-xl">{opt.icon}</span>
+                  <div className="flex-1">
+                    <span className="text-sm font-semibold text-gray-800">{opt.label}</span>
+                    <p className="text-xs text-gray-500">{opt.desc}</p>
+                  </div>
+                  {selected && (
+                    <span className="text-indigo-600 text-sm font-medium">✓</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          {(ctaPref === "sms" || ctaPref === "whatsapp") && !phone && (
+            <p className="text-xs text-amber-600 mt-3">
+              Add a phone number above for this option to work.
+            </p>
+          )}
+          {ctaPref === "messenger" && !fbPageId && (
+            <p className="text-xs text-amber-600 mt-3">
+              Connect Meta below for Messenger to work.
+            </p>
+          )}
+          {ctaSaved && (
+            <p className="text-xs text-green-600 mt-2">Preference saved.</p>
+          )}
+          {ctaError && (
+            <p className="text-xs text-red-600 mt-2">{ctaError}</p>
           )}
         </div>
 

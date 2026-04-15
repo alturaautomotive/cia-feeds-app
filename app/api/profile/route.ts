@@ -5,6 +5,7 @@ import { getEffectiveDealerContext } from "@/lib/impersonation";
 import { decrypt } from "@/lib/crypto";
 
 const VALID_VERTICALS = ["automotive", "services", "ecommerce", "realestate"];
+const VALID_CTA_PREFERENCES = ["sms", "whatsapp", "messenger"];
 
 const VERTICAL_TO_META: Record<string, string> = {
   automotive: "automotive_models",
@@ -172,6 +173,24 @@ export async function PATCH(request: NextRequest) {
       await prisma.dealer.update({
         where: { id: effectiveDealerId },
         data: { phone: null },
+      });
+    }
+  }
+
+  // Handle ctaPreference update
+  if ("ctaPreference" in b) {
+    const rawCta = b.ctaPreference;
+    if (rawCta === null) {
+      await prisma.dealer.update({
+        where: { id: effectiveDealerId },
+        data: { ctaPreference: null },
+      });
+    } else if (typeof rawCta !== "string" || !VALID_CTA_PREFERENCES.includes(rawCta)) {
+      return NextResponse.json({ error: "invalid_cta_preference" }, { status: 400 });
+    } else {
+      await prisma.dealer.update({
+        where: { id: effectiveDealerId },
+        data: { ctaPreference: rawCta as "sms" | "whatsapp" | "messenger" },
       });
     }
   }
