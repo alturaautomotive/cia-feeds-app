@@ -91,7 +91,11 @@ export function getRequiredFields(vertical: string): string[] {
     .filter((f) => f.required)
     .map((f) => f.key);
 
-  const imageField = VERTICAL_REQUIRED_IMAGE[vertical];
+  if (!VALID_VERTICALS.includes(vertical as Vertical)) {
+    return fields;
+  }
+
+  const imageField = VERTICAL_REQUIRED_IMAGE[vertical as Vertical];
   if (imageField && !fields.includes(imageField)) {
     fields.push(imageField);
   }
