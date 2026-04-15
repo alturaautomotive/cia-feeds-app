@@ -318,25 +318,25 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     // Row 1: New Honda
     const cols1 = lines[1].split(",");
     expect(cols1[linkIdx]).toBe("https://dealer.com/civic");
-    expect(cols1[availIdx]).toBe("in stock");
-    expect(cols1[condIdx]).toBe("new");
+    expect(cols1[availIdx]).toBe("AVAILABLE");
+    expect(cols1[condIdx]).toBe("EXCELLENT");
     expect(cols1[makeIdx]).toBe("Honda");
 
     // Row 2: Used Ford
     const cols2 = lines[2].split(",");
     expect(cols2[linkIdx]).toBe("https://dealer.com/f150");
-    expect(cols2[availIdx]).toBe("in stock");
-    expect(cols2[condIdx]).toBe("used");
+    expect(cols2[availIdx]).toBe("AVAILABLE");
+    expect(cols2[condIdx]).toBe("GOOD");
     expect(cols2[makeIdx]).toBe("Ford");
 
-    // Row 3: Certified Used BMW → condition = "used"
+    // Row 3: Certified Used BMW → condition = "VERY_GOOD"
     const cols3 = lines[3].split(",");
-    expect(cols3[condIdx]).toBe("used");
+    expect(cols3[condIdx]).toBe("VERY_GOOD");
     expect(cols3[makeIdx]).toBe("BMW");
 
-    // Row 4: null stateOfVehicle → condition defaults to "used"
+    // Row 4: null stateOfVehicle → condition defaults to "GOOD"
     const cols4 = lines[4].split(",");
-    expect(cols4[condIdx]).toBe("used");
+    expect(cols4[condIdx]).toBe("GOOD");
     expect(cols4[makeIdx]).toBe("Tesla");
   });
 
@@ -489,8 +489,8 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     const trimIdx = headers.indexOf("trim");
     const cols = lines[1].split(",");
 
-    expect(cols[fuelIdx]).toBe("Diesel");
-    expect(cols[transIdx]).toBe("Manual");
+    expect(cols[fuelIdx]).toBe("DIESEL");
+    expect(cols[transIdx]).toBe("MANUAL");
     expect(cols[driveIdx]).toBe("AWD");
     expect(cols[trimIdx]).toBe("XLE");
   });

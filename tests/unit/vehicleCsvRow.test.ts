@@ -90,29 +90,29 @@ describe("mapVehicleToRow() — Meta-spec fields", () => {
     expect(row.image_link).toBe("");
   });
 
-  it("availability always equals 'in stock'", () => {
+  it("availability always equals 'AVAILABLE'", () => {
     const row = mapVehicleToRow(baseVehicle);
-    expect(row.availability).toBe("in stock");
+    expect(row.availability).toBe("AVAILABLE");
   });
 
-  it("condition is 'new' for stateOfVehicle 'New'", () => {
+  it("condition is 'EXCELLENT' for stateOfVehicle 'New'", () => {
     const row = mapVehicleToRow({ ...baseVehicle, stateOfVehicle: "New" });
-    expect(row.condition).toBe("new");
+    expect(row.condition).toBe("EXCELLENT");
   });
 
-  it("condition is 'used' for stateOfVehicle 'Used'", () => {
+  it("condition is 'GOOD' for stateOfVehicle 'Used'", () => {
     const row = mapVehicleToRow({ ...baseVehicle, stateOfVehicle: "Used" });
-    expect(row.condition).toBe("used");
+    expect(row.condition).toBe("GOOD");
   });
 
-  it("condition is 'used' for stateOfVehicle 'Certified Used' (CPO)", () => {
+  it("condition is 'VERY_GOOD' for stateOfVehicle 'Certified Used' (CPO)", () => {
     const row = mapVehicleToRow({ ...baseVehicle, stateOfVehicle: "Certified Used" });
-    expect(row.condition).toBe("used");
+    expect(row.condition).toBe("VERY_GOOD");
   });
 
-  it("condition defaults to 'used' for null stateOfVehicle", () => {
+  it("condition defaults to 'GOOD' for null stateOfVehicle", () => {
     const row = mapVehicleToRow({ ...baseVehicle, stateOfVehicle: null });
-    expect(row.condition).toBe("used");
+    expect(row.condition).toBe("GOOD");
   });
 
   it("state_of_vehicle outputs uppercase: NEW, USED, CPO", () => {
@@ -131,15 +131,15 @@ describe("mapVehicleToRow() — Meta-spec fields", () => {
 
   it("fuel_type, transmission, drivetrain, trim appear in CSV row", () => {
     const row = mapVehicleToRow(baseVehicle);
-    expect(row.fuel_type).toBe("Gasoline");
-    expect(row.transmission).toBe("Automatic");
+    expect(row.fuel_type).toBe("GASOLINE");
+    expect(row.transmission).toBe("AUTOMATIC");
     expect(row.drivetrain).toBe("FWD");
     expect(row.trim).toBe("SE");
 
     // Verify they appear in the serialized CSV
     const line = serializeCSVRow(row, VEHICLE_CSV_HEADERS);
-    expect(line).toContain("Gasoline");
-    expect(line).toContain("Automatic");
+    expect(line).toContain("GASOLINE");
+    expect(line).toContain("AUTOMATIC");
     expect(line).toContain("FWD");
     expect(line).toContain("SE");
   });

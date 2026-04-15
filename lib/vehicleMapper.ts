@@ -76,7 +76,7 @@ export function parseMileage(
 
 /**
  * Normalize state_of_vehicle to "NEW" | "USED" | "CPO".
- * Returns the original string for unrecognized values; null for empty/null.
+ * Returns "USED" as fallback for unrecognized values; null for empty/null.
  */
 export function normalizeStateOfVehicle(
   raw: string | null | undefined
@@ -149,6 +149,96 @@ export function normalizeBodyStyle(raw: string | null | undefined): string {
   if (mapped) return mapped;
   const upper = raw.toUpperCase().trim();
   if (VALID_BODY_STYLES.has(upper)) return upper;
+  return "OTHER";
+}
+
+// ── Fuel Type normalization ──────────────────────────────────────────
+const FUEL_TYPE_MAP: Record<string, string> = {
+  gasoline: "GASOLINE",
+  gas: "GASOLINE",
+  unleaded: "GASOLINE",
+  regular: "GASOLINE",
+  diesel: "DIESEL",
+  electric: "ELECTRIC",
+  ev: "ELECTRIC",
+  bev: "ELECTRIC",
+  hybrid: "HYBRID",
+  "plugin hybrid": "PLUGIN_HYBRID",
+  "plug-in hybrid": "PLUGIN_HYBRID",
+  phev: "PLUGIN_HYBRID",
+  plugin_hybrid: "PLUGIN_HYBRID",
+  flex: "FLEX",
+  "flex fuel": "FLEX",
+  "flex-fuel": "FLEX",
+  e85: "FLEX",
+  petrol: "PETROL",
+};
+
+export function normalizeFuelType(raw: string | null | undefined): string {
+  if (!raw) return "";
+  const lower = raw.toLowerCase().trim();
+  if (!lower) return "";
+  const mapped = FUEL_TYPE_MAP[lower];
+  if (mapped) return mapped;
+  return "OTHER";
+}
+
+// ── Transmission normalization ──────────────────────────────────────
+const TRANSMISSION_MAP: Record<string, string> = {
+  automatic: "AUTOMATIC",
+  auto: "AUTOMATIC",
+  cvt: "AUTOMATIC",
+  "continuously variable": "AUTOMATIC",
+  dct: "AUTOMATIC",
+  "dual-clutch": "AUTOMATIC",
+  "dual clutch": "AUTOMATIC",
+  tiptronic: "AUTOMATIC",
+  manual: "MANUAL",
+  stick: "MANUAL",
+  "stick shift": "MANUAL",
+  mt: "MANUAL",
+  standard: "MANUAL",
+};
+
+export function normalizeTransmission(raw: string | null | undefined): string {
+  if (!raw) return "";
+  const lower = raw.toLowerCase().trim();
+  if (!lower) return "";
+  const mapped = TRANSMISSION_MAP[lower];
+  if (mapped) return mapped;
+  return "OTHER";
+}
+
+// ── Drivetrain normalization ────────────────────────────────────────
+const DRIVETRAIN_MAP: Record<string, string> = {
+  fwd: "FWD",
+  "front wheel drive": "FWD",
+  "front-wheel drive": "FWD",
+  "2wd": "FWD",
+  rwd: "RWD",
+  "rear wheel drive": "RWD",
+  "rear-wheel drive": "RWD",
+  awd: "AWD",
+  "all wheel drive": "AWD",
+  "all-wheel drive": "AWD",
+  "4x4": "4WD",
+  "4wd": "4WD",
+  "four wheel drive": "4WD",
+  "four-wheel drive": "4WD",
+  "4x4/4wd": "4WD",
+  "4x2": "4X2",
+};
+
+const VALID_DRIVETRAINS = new Set(Object.values(DRIVETRAIN_MAP));
+
+export function normalizeDrivetrain(raw: string | null | undefined): string {
+  if (!raw) return "";
+  const lower = raw.toLowerCase().trim();
+  if (!lower) return "";
+  const mapped = DRIVETRAIN_MAP[lower];
+  if (mapped) return mapped;
+  const upper = raw.toUpperCase().trim();
+  if (VALID_DRIVETRAINS.has(upper)) return upper;
   return "OTHER";
 }
 

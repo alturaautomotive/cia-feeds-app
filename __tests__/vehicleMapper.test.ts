@@ -161,7 +161,7 @@ describe("normalizeStateOfVehicle()", () => {
     expect(normalizeStateOfVehicle("Certified Used")).toBe("CPO");
   });
 
-  it("returns null for unrecognized value", () => {
-    expect(normalizeStateOfVehicle("Unknown")).toBeNull();
+  it("returns USED for unrecognized value", () => {
+    expect(normalizeStateOfVehicle("Unknown")).toBe("USED");
   });
 });

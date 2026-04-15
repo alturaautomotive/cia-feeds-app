@@ -5,6 +5,9 @@ import {
   parseMileage,
   normalizeStateOfVehicle,
   normalizeBodyStyle,
+  normalizeFuelType,
+  normalizeTransmission,
+  normalizeDrivetrain,
 } from "@/lib/vehicleMapper";
 
 const TEST_DEALER_ID = "test-dealer-id";
@@ -439,7 +442,84 @@ describe("normalizeStateOfVehicle()", () => {
     expect(normalizeStateOfVehicle("Certified Used")).toBe("CPO");
   });
 
-  it("returns null for unrecognized values", () => {
-    expect(normalizeStateOfVehicle("Lease Return")).toBeNull();
+  it("returns USED for unrecognized values", () => {
+    expect(normalizeStateOfVehicle("Lease Return")).toBe("USED");
+  });
+});
+
+describe("normalizeFuelType()", () => {
+  it("maps known fuel types to Meta enums", () => {
+    expect(normalizeFuelType("gasoline")).toBe("GASOLINE");
+    expect(normalizeFuelType("gas")).toBe("GASOLINE");
+    expect(normalizeFuelType("diesel")).toBe("DIESEL");
+    expect(normalizeFuelType("electric")).toBe("ELECTRIC");
+    expect(normalizeFuelType("hybrid")).toBe("HYBRID");
+    expect(normalizeFuelType("phev")).toBe("PLUGIN_HYBRID");
+    expect(normalizeFuelType("flex")).toBe("FLEX");
+    expect(normalizeFuelType("petrol")).toBe("PETROL");
+  });
+
+  it("is case-insensitive", () => {
+    expect(normalizeFuelType("GASOLINE")).toBe("GASOLINE");
+    expect(normalizeFuelType("Diesel")).toBe("DIESEL");
+  });
+
+  it("returns OTHER for unrecognized values", () => {
+    expect(normalizeFuelType("hydrogen")).toBe("OTHER");
+  });
+
+  it("returns empty string for null, undefined, and empty string", () => {
+    expect(normalizeFuelType(null)).toBe("");
+    expect(normalizeFuelType(undefined)).toBe("");
+    expect(normalizeFuelType("")).toBe("");
+  });
+});
+
+describe("normalizeTransmission()", () => {
+  it("maps known transmission types to Meta enums", () => {
+    expect(normalizeTransmission("automatic")).toBe("AUTOMATIC");
+    expect(normalizeTransmission("cvt")).toBe("AUTOMATIC");
+    expect(normalizeTransmission("manual")).toBe("MANUAL");
+    expect(normalizeTransmission("stick")).toBe("MANUAL");
+  });
+
+  it("is case-insensitive", () => {
+    expect(normalizeTransmission("Auto")).toBe("AUTOMATIC");
+  });
+
+  it("returns OTHER for unrecognized values", () => {
+    expect(normalizeTransmission("sequential")).toBe("OTHER");
+  });
+
+  it("returns empty string for null, undefined, and empty string", () => {
+    expect(normalizeTransmission(null)).toBe("");
+    expect(normalizeTransmission(undefined)).toBe("");
+    expect(normalizeTransmission("")).toBe("");
+  });
+});
+
+describe("normalizeDrivetrain()", () => {
+  it("maps known drivetrain types to Meta enums", () => {
+    expect(normalizeDrivetrain("fwd")).toBe("FWD");
+    expect(normalizeDrivetrain("rwd")).toBe("RWD");
+    expect(normalizeDrivetrain("awd")).toBe("AWD");
+    expect(normalizeDrivetrain("4wd")).toBe("4WD");
+    expect(normalizeDrivetrain("4x4")).toBe("4WD");
+    expect(normalizeDrivetrain("4x2")).toBe("4X2");
+    expect(normalizeDrivetrain("front wheel drive")).toBe("FWD");
+  });
+
+  it("is case-insensitive", () => {
+    expect(normalizeDrivetrain("AWD")).toBe("AWD");
+  });
+
+  it("returns OTHER for unrecognized values", () => {
+    expect(normalizeDrivetrain("unknown")).toBe("OTHER");
+  });
+
+  it("returns empty string for null, undefined, and empty string", () => {
+    expect(normalizeDrivetrain(null)).toBe("");
+    expect(normalizeDrivetrain(undefined)).toBe("");
+    expect(normalizeDrivetrain("")).toBe("");
   });
 });

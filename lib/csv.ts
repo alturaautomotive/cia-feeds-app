@@ -1,4 +1,4 @@
-import { normalizeBodyStyle, normalizeStateOfVehicle } from "@/lib/vehicleMapper";
+import { normalizeBodyStyle, normalizeStateOfVehicle, normalizeFuelType, normalizeTransmission, normalizeDrivetrain } from "@/lib/vehicleMapper";
 
 function escapeField(value: unknown): string {
   if (value === null || value === undefined) return "";
@@ -191,12 +191,12 @@ export function mapVehicleToRow(v: VehicleForCSV): Record<string, unknown> {
     description: v.description ?? "",
     link: v.url,
     image_link: selectBestImage(v.imageUrl, v.images, v.id),
-    availability: "in stock",
+    availability: "AVAILABLE",
     condition: (() => {
       const state = normalizeStateOfVehicle(v.stateOfVehicle);
-      if (state === "NEW") return "new";
-      if (state === "USED" || state === "CPO") return "used";
-      return "used";
+      if (state === "NEW") return "EXCELLENT";
+      if (state === "CPO") return "VERY_GOOD";
+      return "GOOD";
     })(),
     vehicle_id: v.id,
     vin: (v.vin ?? "").toUpperCase(),
@@ -207,9 +207,9 @@ export function mapVehicleToRow(v: VehicleForCSV): Record<string, unknown> {
     "mileage.value": String(v.mileageValue ?? ""),
     "mileage.unit": "MI",
     body_style: normalizeBodyStyle(v.bodyStyle),
-    fuel_type: v.fuelType ?? "",
-    transmission: v.transmission ?? "",
-    drivetrain: v.drivetrain ?? "",
+    fuel_type: normalizeFuelType(v.fuelType),
+    transmission: normalizeTransmission(v.transmission),
+    drivetrain: normalizeDrivetrain(v.drivetrain),
     trim: v.trim ?? "",
     address: resolvedAddress,
     price: String(v.price ?? ""),
