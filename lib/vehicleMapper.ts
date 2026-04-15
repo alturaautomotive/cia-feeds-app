@@ -75,7 +75,7 @@ export function parseMileage(
 }
 
 /**
- * Normalize state_of_vehicle to "New" | "Used" | "Certified Used".
+ * Normalize state_of_vehicle to "NEW" | "USED" | "CPO".
  * Returns the original string for unrecognized values; null for empty/null.
  */
 export function normalizeStateOfVehicle(
@@ -83,17 +83,72 @@ export function normalizeStateOfVehicle(
 ): string | null {
   if (!raw) return null;
   const lower = raw.toLowerCase().trim();
-  if (lower === "new" || lower === "brand new") return "New";
+  if (lower === "new" || lower === "brand new") return "NEW";
   if (lower === "used" || lower === "pre-owned" || lower === "pre owned")
-    return "Used";
+    return "USED";
   if (
     lower === "certified pre-owned" ||
     lower === "certified pre owned" ||
     lower === "cpo" ||
     lower === "certified used"
   )
-    return "Certified Used";
+    return "CPO";
   return null;
+}
+
+const BODY_STYLE_MAP: Record<string, string> = {
+  sedan: "SEDAN",
+  saloon: "SEDAN",
+  suv: "SUV",
+  "sport utility": "SUV",
+  "sport utility vehicle": "SUV",
+  truck: "TRUCK",
+  "pickup truck": "TRUCK",
+  pickup: "PICKUP",
+  coupe: "COUPE",
+  coupé: "COUPE",
+  convertible: "CONVERTIBLE",
+  hatchback: "HATCHBACK",
+  hatch: "HATCHBACK",
+  wagon: "WAGON",
+  estate: "WAGON",
+  "station wagon": "WAGON",
+  van: "VAN",
+  minivan: "MINIVAN",
+  "mini van": "MINIVAN",
+  crossover: "CROSSOVER",
+  roadster: "ROADSTER",
+  mpv: "MPV",
+  minibus: "MINIBUS",
+  "mini bus": "MINIBUS",
+  sportscar: "SPORTSCAR",
+  "sports car": "SPORTSCAR",
+  supercar: "SUPERCAR",
+  "super car": "SUPERCAR",
+  supermini: "SUPERMINI",
+  "super mini": "SUPERMINI",
+  grandtourer: "GRANDTOURER",
+  "grand tourer": "GRANDTOURER",
+  gt: "GRANDTOURER",
+  "small car": "SMALL_CAR",
+  small_car: "SMALL_CAR",
+};
+
+const VALID_BODY_STYLES = new Set(Object.values(BODY_STYLE_MAP));
+
+/**
+ * Normalize body_style to Meta's uppercase enum values.
+ * Returns "" for null/undefined/empty, "OTHER" for unrecognized non-empty values.
+ */
+export function normalizeBodyStyle(raw: string | null | undefined): string {
+  if (!raw) return "";
+  const lower = raw.toLowerCase().trim();
+  if (!lower) return "";
+  const mapped = BODY_STYLE_MAP[lower];
+  if (mapped) return mapped;
+  const upper = raw.toUpperCase().trim();
+  if (VALID_BODY_STYLES.has(upper)) return upper;
+  return "OTHER";
 }
 
 /**

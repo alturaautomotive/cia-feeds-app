@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { serializeCSVHeader, serializeCSVRow, mapListingToRow, serializeServicesRow, getCSVHeadersForVertical, VEHICLE_CSV_HEADERS, serializeAutomotiveRow } from "@/lib/csv";
+import { serializeCSVHeader, serializeCSVRow, mapListingToRow, serializeServicesRow, getCSVHeadersForVertical, VEHICLE_CSV_HEADERS, mapVehicleToRow } from "@/lib/csv";
 import { logCsvGeneration } from "@/lib/logger";
 
 const BATCH_SIZE = 100;
@@ -72,7 +72,7 @@ function streamAutomotiveCSV(
         });
 
         for (const v of batch) {
-          controller.enqueue(encoder.encode(serializeAutomotiveRow(v)));
+          controller.enqueue(encoder.encode(serializeCSVRow(mapVehicleToRow(v), VEHICLE_CSV_HEADERS)));
         }
 
         vehicleCount += batch.length;

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
+import { VEHICLE_CSV_HEADERS } from "@/lib/csv";
 
 // vi.mock is hoisted before imports by Vitest
 vi.mock("@/lib/prisma", () => ({
@@ -109,9 +110,7 @@ describe("GET /feeds/[slug].csv", () => {
     const text = await res.text();
     const lines = text.split("\r\n").filter(Boolean);
 
-    expect(lines[0]).toBe(
-      "vin,state_of_vehicle,year,make,model,trim,drivetrain,transmission,exterior_color,price,msrp,mileage.value,fuel_type,latitude,longitude,body_style,url,title,vehicle_id,mileage.unit,address,image.url,image.url,fb_page_id,description"
-    );
+    expect(lines[0]).toBe(VEHICLE_CSV_HEADERS.join(","));
   });
 
   it("serializes vehicle rows with correct values including dealer_name and mileage.value", async () => {

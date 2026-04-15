@@ -52,16 +52,16 @@ describe("mapFirecrawlToVehicle()", () => {
       TEST_DEALER_ID,
       TEST_URL
     );
-    expect(result.stateOfVehicle).toBe("Used");
+    expect(result.stateOfVehicle).toBe("USED");
   });
 
-  it("normalizes 'CPO' state to 'Certified Used'", () => {
+  it("normalizes 'CPO' state to 'CPO'", () => {
     const result = mapFirecrawlToVehicle(
       { state_of_vehicle: "CPO" },
       TEST_DEALER_ID,
       TEST_URL
     );
-    expect(result.stateOfVehicle).toBe("Certified Used");
+    expect(result.stateOfVehicle).toBe("CPO");
   });
 
   it("detects missing required fields and marks vehicle as incomplete", () => {
@@ -149,25 +149,25 @@ describe("mapFirecrawlToVehicle()", () => {
       TEST_DEALER_ID,
       TEST_URL
     );
-    expect(result.stateOfVehicle).toBe("New");
+    expect(result.stateOfVehicle).toBe("NEW");
   });
 
-  it("normalizes 'Brand New' state to 'New'", () => {
+  it("normalizes 'Brand New' state to 'NEW'", () => {
     const result = mapFirecrawlToVehicle(
       { state_of_vehicle: "Brand New" },
       TEST_DEALER_ID,
       TEST_URL
     );
-    expect(result.stateOfVehicle).toBe("New");
+    expect(result.stateOfVehicle).toBe("NEW");
   });
 
-  it("normalizes 'Certified Pre-Owned' state to 'Certified Used'", () => {
+  it("normalizes 'Certified Pre-Owned' state to 'CPO'", () => {
     const result = mapFirecrawlToVehicle(
       { state_of_vehicle: "Certified Pre-Owned" },
       TEST_DEALER_ID,
       TEST_URL
     );
-    expect(result.stateOfVehicle).toBe("Certified Used");
+    expect(result.stateOfVehicle).toBe("CPO");
   });
 
   it("attaches dealerId and url to the result", () => {
@@ -385,20 +385,20 @@ describe("normalizeStateOfVehicle()", () => {
   });
 
   it("normalizes all New variants", () => {
-    expect(normalizeStateOfVehicle("New")).toBe("New");
-    expect(normalizeStateOfVehicle("brand new")).toBe("New");
+    expect(normalizeStateOfVehicle("New")).toBe("NEW");
+    expect(normalizeStateOfVehicle("brand new")).toBe("NEW");
   });
 
   it("normalizes all Used variants", () => {
-    expect(normalizeStateOfVehicle("used")).toBe("Used");
-    expect(normalizeStateOfVehicle("Pre-Owned")).toBe("Used");
-    expect(normalizeStateOfVehicle("pre owned")).toBe("Used");
+    expect(normalizeStateOfVehicle("used")).toBe("USED");
+    expect(normalizeStateOfVehicle("Pre-Owned")).toBe("USED");
+    expect(normalizeStateOfVehicle("pre owned")).toBe("USED");
   });
 
-  it("normalizes all Certified Used variants", () => {
-    expect(normalizeStateOfVehicle("CPO")).toBe("Certified Used");
-    expect(normalizeStateOfVehicle("Certified Pre-Owned")).toBe("Certified Used");
-    expect(normalizeStateOfVehicle("Certified Used")).toBe("Certified Used");
+  it("normalizes all CPO variants", () => {
+    expect(normalizeStateOfVehicle("CPO")).toBe("CPO");
+    expect(normalizeStateOfVehicle("Certified Pre-Owned")).toBe("CPO");
+    expect(normalizeStateOfVehicle("Certified Used")).toBe("CPO");
   });
 
   it("returns null for unrecognized values", () => {
