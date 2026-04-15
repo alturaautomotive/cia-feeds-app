@@ -21,7 +21,7 @@ const baseVehicle = {
   url: "https://dealer.com/camry",
   imageUrl: "https://img.com/camry.jpg",
   images: ["https://img.com/camry.jpg"],
-  dealer: { name: "Test Dealer" },
+  dealer: { name: "Test Dealer", fbPageId: "fb-page-unit-123" },
   address: null,
   latitude: null,
   longitude: null,
@@ -33,7 +33,7 @@ describe("mapVehicleToRow() — address resolution", () => {
       ...baseVehicle,
       address: "123 Main St, Springfield, IL 62701",
     });
-    expect(row.address).toBe("123 Main St, Springfield, IL 62701");
+    expect(row.address).toBe(JSON.stringify({addr1:"123 Main St",city:"Springfield",region:"IL",postal_code:"62701",country:"US"}));
   });
 
   it("maps null address to empty string", () => {
@@ -62,44 +62,44 @@ describe("mapVehicleToRow() — address resolution", () => {
 });
 
 describe("mapVehicleToRow() — Meta-spec fields", () => {
-  it("link equals vehicle url", () => {
+  it("url field equals vehicle url", () => {
     const row = mapVehicleToRow(baseVehicle);
-    expect(row.link).toBe(baseVehicle.url);
+    expect(row.url).toBe(baseVehicle.url);
   });
 
-  it("image_link equals imageUrl when present", () => {
+  it("image[0].url equals imageUrl when present", () => {
     const row = mapVehicleToRow(baseVehicle);
-    expect(row.image_link).toBe("https://img.com/camry.jpg");
+    expect(row["image[0].url"]).toBe("https://img.com/camry.jpg");
   });
 
-  it("image_link falls back to images[0] when imageUrl is null", () => {
+  it("image[0].url falls back to images[0] when imageUrl is null", () => {
     const row = mapVehicleToRow({
       ...baseVehicle,
       imageUrl: null,
       images: ["https://cdn.com/fallback.jpg"],
     });
-    expect(row.image_link).toBe("https://cdn.com/fallback.jpg");
+    expect(row["image[0].url"]).toBe("https://cdn.com/fallback.jpg");
   });
 
-  it("image_link is empty string when both imageUrl and images are absent", () => {
+  it("image[0].url is empty string when both imageUrl and images are absent", () => {
     const row = mapVehicleToRow({
       ...baseVehicle,
       imageUrl: null,
       images: [],
     });
-    expect(row.image_link).toBe("");
+    expect(row["image[0].url"]).toBe("");
   });
 
-  it("image_link returns CDN URL without file extension when it is the only candidate", () => {
+  it("image[0].url returns CDN URL without file extension when it is the only candidate", () => {
     const row = mapVehicleToRow({
       ...baseVehicle,
       imageUrl: "https://cdn.example.com/vehicle/img?w=800&fmt=jpg",
       images: [],
     });
-    expect(row.image_link).toBe("https://cdn.example.com/vehicle/img?w=800&fmt=jpg");
+    expect(row["image[0].url"]).toBe("https://cdn.example.com/vehicle/img?w=800&fmt=jpg");
   });
 
-  it("image_link returns first CDN URL when imageUrl is null and images have no extensions", () => {
+  it("image[0].url returns first CDN URL when imageUrl is null and images have no extensions", () => {
     const row = mapVehicleToRow({
       ...baseVehicle,
       imageUrl: null,
@@ -108,10 +108,10 @@ describe("mapVehicleToRow() — Meta-spec fields", () => {
         "https://cdn.example.com/b/img?w=800",
       ],
     });
-    expect(row.image_link).toBe("https://cdn.example.com/a/img?w=800");
+    expect(row["image[0].url"]).toBe("https://cdn.example.com/a/img?w=800");
   });
 
-  it("image_link prefers .jpg URL over extension-less CDN URL", () => {
+  it("image[0].url prefers .jpg URL over extension-less CDN URL", () => {
     const row = mapVehicleToRow({
       ...baseVehicle,
       imageUrl: null,
@@ -120,37 +120,12 @@ describe("mapVehicleToRow() — Meta-spec fields", () => {
         "https://img.com/photo.jpg",
       ],
     });
-    expect(row.image_link).toBe("https://img.com/photo.jpg");
+    expect(row["image[0].url"]).toBe("https://img.com/photo.jpg");
   });
 
-  it("availability always equals 'AVAILABLE'", () => {
-    const row = mapVehicleToRow(baseVehicle);
-    expect(row.availability).toBe("AVAILABLE");
-  });
-
-  it("condition is 'EXCELLENT' for stateOfVehicle 'New'", () => {
-    const row = mapVehicleToRow({ ...baseVehicle, stateOfVehicle: "New" });
-    expect(row.condition).toBe("EXCELLENT");
-  });
-
-  it("condition is 'GOOD' for stateOfVehicle 'Used'", () => {
-    const row = mapVehicleToRow({ ...baseVehicle, stateOfVehicle: "Used" });
-    expect(row.condition).toBe("GOOD");
-  });
-
-  it("condition is 'VERY_GOOD' for stateOfVehicle 'Certified Used' (CPO)", () => {
-    const row = mapVehicleToRow({ ...baseVehicle, stateOfVehicle: "Certified Used" });
-    expect(row.condition).toBe("VERY_GOOD");
-  });
-
-  it("condition defaults to 'GOOD' for null stateOfVehicle", () => {
-    const row = mapVehicleToRow({ ...baseVehicle, stateOfVehicle: null });
-    expect(row.condition).toBe("GOOD");
-  });
-
-  it("state_of_vehicle outputs uppercase: NEW, USED, CPO", () => {
-    expect(mapVehicleToRow({ ...baseVehicle, stateOfVehicle: "New" }).state_of_vehicle).toBe("NEW");
-    expect(mapVehicleToRow({ ...baseVehicle, stateOfVehicle: "Used" }).state_of_vehicle).toBe("USED");
+  it("state_of_vehicle outputs title-case: New, Used, CPO", () => {
+    expect(mapVehicleToRow({ ...baseVehicle, stateOfVehicle: "New" }).state_of_vehicle).toBe("New");
+    expect(mapVehicleToRow({ ...baseVehicle, stateOfVehicle: "Used" }).state_of_vehicle).toBe("Used");
     expect(mapVehicleToRow({ ...baseVehicle, stateOfVehicle: "Certified Used" }).state_of_vehicle).toBe("CPO");
     expect(mapVehicleToRow({ ...baseVehicle, stateOfVehicle: null }).state_of_vehicle).toBe("");
   });
@@ -158,7 +133,7 @@ describe("mapVehicleToRow() — Meta-spec fields", () => {
   it("body_style normalizes known values and falls back to OTHER", () => {
     expect(normalizeBodyStyle("Sedan")).toBe("SEDAN");
     expect(normalizeBodyStyle("suv")).toBe("SUV");
-    expect(normalizeBodyStyle("unknown style")).toBe("OTHER");
+    expect(normalizeBodyStyle("unknown style")).toBe("");
     expect(normalizeBodyStyle(null)).toBe("");
   });
 
@@ -206,20 +181,112 @@ describe("mapVehicleToRow() — Meta-spec fields", () => {
     expect(row.title).toBe("Toyota Camry");
   });
 
-  it("link is empty string when url is empty (vehicle will be skipped by route guard)", () => {
+  it("url is empty string when url is empty (vehicle will be skipped by route guard)", () => {
     const row = mapVehicleToRow({ ...baseVehicle, url: "" });
-    expect(row.link).toBe("");
+    expect(row.url).toBe("");
+  });
+
+  it("price appends ' USD' suffix", () => {
+    const row = mapVehicleToRow(baseVehicle);
+    expect(row.price).toBe("27500 USD");
+  });
+
+  it("price is empty string when null", () => {
+    const row = mapVehicleToRow({ ...baseVehicle, price: null });
+    expect(row.price).toBe("");
+  });
+
+  it("msrp appends ' USD' suffix", () => {
+    const row = mapVehicleToRow({ ...baseVehicle, msrp: 30000 });
+    expect(row.msrp).toBe("30000 USD");
+  });
+
+  it("msrp is empty string when null", () => {
+    const row = mapVehicleToRow({ ...baseVehicle, msrp: null });
+    expect(row.msrp).toBe("");
+  });
+
+  it("exterior_color maps from exteriorColor", () => {
+    const row = mapVehicleToRow(baseVehicle);
+    expect(row.exterior_color).toBe("Silver");
+  });
+
+  it("exterior_color is empty string when null", () => {
+    const row = mapVehicleToRow({ ...baseVehicle, exteriorColor: null });
+    expect(row.exterior_color).toBe("");
+  });
+
+  it("latitude/longitude use vehicle coords when present", () => {
+    const row = mapVehicleToRow({ ...baseVehicle, latitude: 40.7128, longitude: -74.006 });
+    expect(row.latitude).toBe("40.7128");
+    expect(row.longitude).toBe("-74.006");
+  });
+
+  it("latitude/longitude fall back to dealer coords", () => {
+    const row = mapVehicleToRow({
+      ...baseVehicle,
+      latitude: null,
+      longitude: null,
+      dealer: { name: "Test Dealer", fbPageId: "fb-page-unit-123", latitude: 34.0522, longitude: -118.2437 },
+    });
+    expect(row.latitude).toBe("34.0522");
+    expect(row.longitude).toBe("-118.2437");
+  });
+
+  it("latitude/longitude are empty string when both null", () => {
+    const row = mapVehicleToRow({ ...baseVehicle, latitude: null, longitude: null });
+    expect(row.latitude).toBe("");
+    expect(row.longitude).toBe("");
+  });
+
+  it("fb_page_id equals dealer fbPageId", () => {
+    const row = mapVehicleToRow(baseVehicle);
+    expect(row.fb_page_id).toBe("fb-page-unit-123");
+  });
+
+  it("fb_page_id is empty string when dealer has no fbPageId", () => {
+    const row = mapVehicleToRow({ ...baseVehicle, dealer: { name: "No FB Dealer" } });
+    expect(row.fb_page_id).toBe("");
+  });
+
+  it("image[1].url populated when multiple images exist", () => {
+    const row = mapVehicleToRow({
+      ...baseVehicle,
+      images: ["https://img.com/camry.jpg", "https://img.com/camry2.jpg"],
+    });
+    expect(row["image[1].url"]).toBe("https://img.com/camry2.jpg");
+  });
+
+  it("image[1].url is empty string for single-image vehicles", () => {
+    const row = mapVehicleToRow(baseVehicle);
+    expect(row["image[1].url"]).toBe("");
+  });
+
+  it("address is structured JSON with addr1, city, region, postal_code, country", () => {
+    const row = mapVehicleToRow({
+      ...baseVehicle,
+      address: "123 Main St, Springfield, IL 62701",
+    });
+    const parsed = JSON.parse(row.address as string);
+    expect(parsed.addr1).toBe("123 Main St");
+    expect(parsed.city).toBe("Springfield");
+    expect(parsed.region).toBe("IL");
+    expect(parsed.postal_code).toBe("62701");
+    expect(parsed.country).toBe("US");
   });
 });
 
 describe("mapVehicleToRow() — CSV serialization", () => {
-  it("serializes populated address containing commas as a quoted CSV field", () => {
+  it("serializes JSON address as a quoted CSV field (RFC 4180)", () => {
     const row = mapVehicleToRow({
       ...baseVehicle,
       address: "123 Main St, Springfield, IL 62701",
     });
     const line = serializeCSVRow(row, VEHICLE_CSV_HEADERS);
-    // Address must be quoted due to embedded commas.
-    expect(line).toContain('"123 Main St, Springfield, IL 62701"');
+    // JSON address contains commas and double-quotes, so escapeField wraps and doubles inner quotes
+    const jsonAddr = JSON.stringify({addr1:"123 Main St",city:"Springfield",region:"IL",postal_code:"62701",country:"US"});
+    // RFC 4180: inner " → "", entire field wrapped in "
+    const escaped = `"${jsonAddr.replace(/"/g, '""')}"`;
+    expect(line).toContain(escaped);
   });
 });

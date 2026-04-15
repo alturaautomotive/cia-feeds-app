@@ -369,8 +369,8 @@ describe("normalizeBodyStyle()", () => {
     expect(normalizeBodyStyle("Sedan")).toBe("SEDAN");
   });
 
-  it("returns OTHER for unrecognized non-empty values", () => {
-    expect(normalizeBodyStyle("unknown style")).toBe("OTHER");
+  it("returns empty string for unrecognized non-empty values", () => {
+    expect(normalizeBodyStyle("unknown style")).toBe("");
   });
 
   it("returns empty string for null, undefined, and empty string", () => {
@@ -464,8 +464,8 @@ describe("normalizeFuelType()", () => {
     expect(normalizeFuelType("Diesel")).toBe("DIESEL");
   });
 
-  it("returns OTHER for unrecognized values", () => {
-    expect(normalizeFuelType("hydrogen")).toBe("OTHER");
+  it("returns empty string for unrecognized values", () => {
+    expect(normalizeFuelType("hydrogen")).toBe("");
   });
 
   it("returns empty string for null, undefined, and empty string", () => {
@@ -487,8 +487,8 @@ describe("normalizeTransmission()", () => {
     expect(normalizeTransmission("Auto")).toBe("AUTOMATIC");
   });
 
-  it("returns OTHER for unrecognized values", () => {
-    expect(normalizeTransmission("sequential")).toBe("OTHER");
+  it("returns empty string for unrecognized values", () => {
+    expect(normalizeTransmission("sequential")).toBe("");
   });
 
   it("returns empty string for null, undefined, and empty string", () => {
@@ -514,8 +514,8 @@ describe("normalizeDrivetrain()", () => {
     expect(normalizeDrivetrain("AWD")).toBe("AWD");
   });
 
-  it("returns OTHER for unrecognized values", () => {
-    expect(normalizeDrivetrain("unknown")).toBe("OTHER");
+  it("returns empty string for unrecognized values", () => {
+    expect(normalizeDrivetrain("unknown")).toBe("");
   });
 
   it("returns empty string for null, undefined, and empty string", () => {

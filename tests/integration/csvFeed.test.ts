@@ -44,7 +44,7 @@ function makeVehicle(overrides: Partial<{
   address: string | null;
   latitude: number | null;
   longitude: number | null;
-  dealer: { name: string } | null;
+  dealer: { name: string; fbPageId?: string | null; address?: string | null; latitude?: number | null; longitude?: number | null } | null;
 }> = {}) {
   return {
     id: "v-int-default",
@@ -70,7 +70,7 @@ function makeVehicle(overrides: Partial<{
     address: null,
     latitude: null,
     longitude: null,
-    dealer: { name: dealer.name },
+    dealer: { name: dealer.name, fbPageId: "fb-page-int-123" },
     isComplete: true,
     missingFields: [],
     createdAt: new Date(),
@@ -105,7 +105,7 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
 
     expect(lines[0]).toBe(VEHICLE_CSV_HEADERS.join(","));
     expect(lines[1]).toContain("Honda");
-    expect(lines[1]).toContain("24500");
+    expect(lines[1]).toContain("24500 USD");
     expect(lines[1]).toContain("5000"); // mileage.value
     expect(lines[2]).toContain("Ford");
     // null DB values must become empty strings, never the literal word "null"
@@ -225,7 +225,7 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     const res1 = await GET(req1, { params: Promise.resolve({ slug: "int-dealer.csv" }) });
     const text1 = await res1.text();
     const lines1 = text1.split("\r\n").filter(Boolean);
-    expect(lines1[1]).toContain("20000");
+    expect(lines1[1]).toContain("20000 USD");
 
     // Second GET — same vehicle updated to price 25000
     vi.mocked(prisma.dealer.findUnique).mockResolvedValue(dealer as never);
@@ -238,8 +238,8 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     const text2 = await res2.text();
     const lines2 = text2.split("\r\n").filter(Boolean);
 
-    expect(lines2[1]).toContain("25000");
-    expect(lines2[1]).not.toContain("20000");
+    expect(lines2[1]).toContain("25000 USD");
+    expect(lines2[1]).not.toContain("20000 USD");
   });
 
   it("image column uses imageUrl with fallback to images[0]", async () => {
@@ -296,7 +296,7 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     expect(lines3.length).toBe(1); // header only, no data row
   });
 
-  it("automotive feed populates link, availability, condition, and make columns", async () => {
+  it("automotive feed populates url, make, and state_of_vehicle columns", async () => {
     vi.mocked(prisma.dealer.findUnique).mockResolvedValue(dealer as never);
     vi.mocked(prisma.vehicle.findMany).mockResolvedValue([
       makeVehicle({ id: "v-meta-1", make: "Honda", model: "Civic", stateOfVehicle: "New", url: "https://dealer.com/civic" }),
@@ -310,33 +310,30 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     const text = await res.text();
     const lines = text.split("\r\n").filter(Boolean);
     const headers = lines[0].split(",");
-    const linkIdx = headers.indexOf("link");
-    const availIdx = headers.indexOf("availability");
-    const condIdx = headers.indexOf("condition");
+    const urlIdx = headers.indexOf("url");
+    const stateIdx = headers.indexOf("state_of_vehicle");
     const makeIdx = headers.indexOf("make");
 
     // Row 1: New Honda
     const cols1 = lines[1].split(",");
-    expect(cols1[linkIdx]).toBe("https://dealer.com/civic");
-    expect(cols1[availIdx]).toBe("AVAILABLE");
-    expect(cols1[condIdx]).toBe("EXCELLENT");
+    expect(cols1[urlIdx]).toBe("https://dealer.com/civic");
+    expect(cols1[stateIdx]).toBe("New");
     expect(cols1[makeIdx]).toBe("Honda");
 
     // Row 2: Used Ford
     const cols2 = lines[2].split(",");
-    expect(cols2[linkIdx]).toBe("https://dealer.com/f150");
-    expect(cols2[availIdx]).toBe("AVAILABLE");
-    expect(cols2[condIdx]).toBe("GOOD");
+    expect(cols2[urlIdx]).toBe("https://dealer.com/f150");
+    expect(cols2[stateIdx]).toBe("Used");
     expect(cols2[makeIdx]).toBe("Ford");
 
-    // Row 3: Certified Used BMW → condition = "VERY_GOOD"
+    // Row 3: Certified Used BMW → state_of_vehicle = "CPO"
     const cols3 = lines[3].split(",");
-    expect(cols3[condIdx]).toBe("VERY_GOOD");
+    expect(cols3[stateIdx]).toBe("CPO");
     expect(cols3[makeIdx]).toBe("BMW");
 
-    // Row 4: null stateOfVehicle → condition defaults to "GOOD"
+    // Row 4: null stateOfVehicle → state_of_vehicle = ""
     const cols4 = lines[4].split(",");
-    expect(cols4[condIdx]).toBe("GOOD");
+    expect(cols4[stateIdx]).toBe("");
     expect(cols4[makeIdx]).toBe("Tesla");
   });
 
@@ -362,13 +359,13 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     const text = await res.text();
     const lines = text.split("\r\n").filter(Boolean);
     const headers = lines[0].split(",");
+
+    // Row 1: populated address — now JSON format; contains commas so split won't work, use toContain
+    const expectedJson = JSON.stringify({addr1:"123 Main St Springfield IL 62701",country:"US"});
+    expect(lines[1]).toContain(expectedJson.replace(/"/g, '""'));
+
+    // Row 2: null address → empty string; no JSON-with-commas, so split is fine
     const addressIdx = headers.indexOf("address");
-
-    // Row 1: populated address
-    const cols1 = lines[1].split(",");
-    expect(cols1[addressIdx]).toBe("123 Main St Springfield IL 62701");
-
-    // Row 2: null values must become empty strings, never the literal word "null"
     const cols2 = lines[2].split(",");
     expect(cols2[addressIdx]).toBe("");
     expect(lines[2]).not.toContain("null");
@@ -509,7 +506,7 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     const msrpIdx = headers.indexOf("msrp");
     const cols = lines[1].split(",");
 
-    expect(cols[msrpIdx]).toBe("250000");
+    expect(cols[msrpIdx]).toBe("250000 USD");
   });
 
   it("vehicle with empty url is excluded from feed (header-only response)", async () => {
