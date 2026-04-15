@@ -28,20 +28,28 @@ const baseVehicle = {
 };
 
 describe("mapVehicleToRow() — address resolution", () => {
-  it("renders populated address into its column", () => {
+  it("renders populated address into flat columns", () => {
     const row = mapVehicleToRow({
       ...baseVehicle,
       address: "123 Main St, Springfield, IL 62701",
     });
-    expect(row.address).toBe(JSON.stringify({addr1:"123 Main St",city:"Springfield",region:"IL",postal_code:"62701",country:"US"}));
+    expect(row.street_address).toBe("123 Main St");
+    expect(row.city).toBe("Springfield");
+    expect(row.region).toBe("IL");
+    expect(row.postal_code).toBe("62701");
+    expect(row.country).toBe("US");
   });
 
-  it("maps null address to empty string", () => {
+  it("maps null address to empty strings", () => {
     const row = mapVehicleToRow({
       ...baseVehicle,
       address: null,
     });
-    expect(row.address).toBe("");
+    expect(row.street_address).toBe("");
+    expect(row.city).toBe("");
+    expect(row.region).toBe("");
+    expect(row.postal_code).toBe("");
+    expect(row.country).toBe("");
   });
 
   it("does not emit the literal 'null' for null address when serialized", () => {
@@ -51,7 +59,7 @@ describe("mapVehicleToRow() — address resolution", () => {
     });
     const line = serializeCSVRow(row, VEHICLE_CSV_HEADERS);
     const header = VEHICLE_CSV_HEADERS;
-    const addressIdx = header.indexOf("address");
+    const addressIdx = header.indexOf("street_address");
 
     // Naive split is adequate — none of the base fixture fields contain commas.
     const fields = line.replace(/\r\n$/, "").split(",");
@@ -262,31 +270,43 @@ describe("mapVehicleToRow() — Meta-spec fields", () => {
     expect(row["image[1].url"]).toBe("");
   });
 
-  it("address is structured JSON with addr1, city, region, postal_code, country", () => {
+  it("renders 2-part address into flat columns", () => {
     const row = mapVehicleToRow({
       ...baseVehicle,
-      address: "123 Main St, Springfield, IL 62701",
+      address: "Springfield, IL 62701",
     });
-    const parsed = JSON.parse(row.address as string);
-    expect(parsed.addr1).toBe("123 Main St");
-    expect(parsed.city).toBe("Springfield");
-    expect(parsed.region).toBe("IL");
-    expect(parsed.postal_code).toBe("62701");
-    expect(parsed.country).toBe("US");
+    expect(row.street_address).toBe("");
+    expect(row.city).toBe("Springfield");
+    expect(row.region).toBe("IL");
+    expect(row.postal_code).toBe("62701");
+    expect(row.country).toBe("US");
+  });
+
+  it("renders 1-part (no-comma) address into flat columns", () => {
+    const row = mapVehicleToRow({
+      ...baseVehicle,
+      address: "123 Main St",
+    });
+    expect(row.street_address).toBe("123 Main St");
+    expect(row.city).toBe("");
+    expect(row.region).toBe("");
+    expect(row.postal_code).toBe("");
+    expect(row.country).toBe("US");
   });
 });
 
 describe("mapVehicleToRow() — CSV serialization", () => {
-  it("serializes JSON address as a quoted CSV field (RFC 4180)", () => {
+  it("flat address columns appear correctly in serialized CSV line", () => {
     const row = mapVehicleToRow({
       ...baseVehicle,
       address: "123 Main St, Springfield, IL 62701",
     });
     const line = serializeCSVRow(row, VEHICLE_CSV_HEADERS);
-    // JSON address contains commas and double-quotes, so escapeField wraps and doubles inner quotes
-    const jsonAddr = JSON.stringify({addr1:"123 Main St",city:"Springfield",region:"IL",postal_code:"62701",country:"US"});
-    // RFC 4180: inner " → "", entire field wrapped in "
-    const escaped = `"${jsonAddr.replace(/"/g, '""')}"`;
-    expect(line).toContain(escaped);
+    const fields = line.replace(/\r\n$/, "").split(",");
+    expect(fields[VEHICLE_CSV_HEADERS.indexOf("street_address")]).toBe("123 Main St");
+    expect(fields[VEHICLE_CSV_HEADERS.indexOf("city")]).toBe("Springfield");
+    expect(fields[VEHICLE_CSV_HEADERS.indexOf("region")]).toBe("IL");
+    expect(fields[VEHICLE_CSV_HEADERS.indexOf("postal_code")]).toBe("62701");
+    expect(fields[VEHICLE_CSV_HEADERS.indexOf("country")]).toBe("US");
   });
 });

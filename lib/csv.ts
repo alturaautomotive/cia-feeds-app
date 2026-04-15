@@ -129,7 +129,11 @@ export const VEHICLE_CSV_HEADERS = [
   "title",
   "vehicle_id",
   "mileage.unit",
-  "address",
+  "street_address",
+  "city",
+  "region",
+  "postal_code",
+  "country",
   "image[0].url",
   "image[1].url",
   "fb_page_id",
@@ -202,30 +206,31 @@ function parseStateZip(segment: string): { region?: string; postal_code?: string
   return out;
 }
 
-function formatAddressAsJSON(raw: string): string {
-  if (!raw) return "";
+function parseAddressFields(raw: string): { street_address: string; city: string; region: string; postal_code: string; country: string } {
+  if (!raw) return { street_address: "", city: "", region: "", postal_code: "", country: "" };
   const parts = raw.split(",").map((p) => p.trim());
-  const result: Record<string, string> = {};
 
   if (parts.length >= 3) {
-    result.addr1 = parts.slice(0, parts.length - 2).join(", ");
-    result.city = parts[parts.length - 2];
-    Object.assign(result, parseStateZip(parts[parts.length - 1]));
+    const stateZip = parseStateZip(parts[parts.length - 1]);
+    return {
+      street_address: parts.slice(0, parts.length - 2).join(", "),
+      city: parts[parts.length - 2],
+      region: stateZip.region ?? "",
+      postal_code: stateZip.postal_code ?? "",
+      country: "US",
+    };
   } else if (parts.length === 2) {
-    result.city = parts[0];
-    Object.assign(result, parseStateZip(parts[1]));
+    const stateZip = parseStateZip(parts[1]);
+    return {
+      street_address: "",
+      city: parts[0],
+      region: stateZip.region ?? "",
+      postal_code: stateZip.postal_code ?? "",
+      country: "US",
+    };
   } else {
-    result.addr1 = raw;
+    return { street_address: raw, city: "", region: "", postal_code: "", country: "US" };
   }
-
-  result.country = "US";
-
-  // Remove empty keys
-  for (const key of Object.keys(result)) {
-    if (!result[key]) delete result[key];
-  }
-
-  return JSON.stringify(result);
 }
 
 export function mapVehicleToRow(v: VehicleForCSV): Record<string, unknown> {
@@ -258,7 +263,7 @@ export function mapVehicleToRow(v: VehicleForCSV): Record<string, unknown> {
     title: `${v.make ?? ""} ${v.model ?? ""}`.trim(),
     vehicle_id: v.id,
     "mileage.unit": "MI",
-    address: formatAddressAsJSON(v.address ?? v.dealer?.address ?? ""),
+    ...parseAddressFields(v.address ?? v.dealer?.address ?? ""),
     "image[0].url": imgs[0] ?? "",
     "image[1].url": imgs[1] ?? "",
     fb_page_id: v.dealer?.fbPageId ?? "",

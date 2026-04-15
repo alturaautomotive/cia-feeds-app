@@ -337,14 +337,14 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     expect(cols4[makeIdx]).toBe("Tesla");
   });
 
-  it("automotive feed populates address column when present", async () => {
+  it("automotive feed populates address columns when present", async () => {
     vi.mocked(prisma.dealer.findUnique).mockResolvedValue(dealer as never);
     vi.mocked(prisma.vehicle.findMany).mockResolvedValue([
       makeVehicle({
         id: "v-geo-1",
         make: "Honda",
         model: "Civic",
-        address: "123 Main St Springfield IL 62701",
+        address: "123 Main St, Springfield, IL 62701",
       }),
       makeVehicle({
         id: "v-geo-2",
@@ -360,14 +360,27 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     const lines = text.split("\r\n").filter(Boolean);
     const headers = lines[0].split(",");
 
-    // Row 1: populated address — now JSON format; contains commas so split won't work, use toContain
-    const expectedJson = JSON.stringify({addr1:"123 Main St Springfield IL 62701",country:"US"});
-    expect(lines[1]).toContain(expectedJson.replace(/"/g, '""'));
+    const streetIdx = headers.indexOf("street_address");
+    const cityIdx = headers.indexOf("city");
+    const regionIdx = headers.indexOf("region");
+    const postalIdx = headers.indexOf("postal_code");
+    const countryIdx = headers.indexOf("country");
 
-    // Row 2: null address → empty string; no JSON-with-commas, so split is fine
-    const addressIdx = headers.indexOf("address");
+    // Row 1: populated address with comma-separated parts
+    const cols1 = lines[1].split(",");
+    expect(cols1[streetIdx]).toBe("123 Main St");
+    expect(cols1[cityIdx]).toBe("Springfield");
+    expect(cols1[regionIdx]).toBe("IL");
+    expect(cols1[postalIdx]).toBe("62701");
+    expect(cols1[countryIdx]).toBe("US");
+
+    // Row 2: null address → all flat columns are empty strings
     const cols2 = lines[2].split(",");
-    expect(cols2[addressIdx]).toBe("");
+    expect(cols2[streetIdx]).toBe("");
+    expect(cols2[cityIdx]).toBe("");
+    expect(cols2[regionIdx]).toBe("");
+    expect(cols2[postalIdx]).toBe("");
+    expect(cols2[countryIdx]).toBe("");
     expect(lines[2]).not.toContain("null");
   });
 
