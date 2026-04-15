@@ -189,8 +189,17 @@ export function mapVehicleToRow(v: VehicleForCSV): Record<string, unknown> {
     id: v.id,
     title: `${v.make ?? ""} ${v.model ?? ""}`.trim(),
     description: v.description ?? "",
-    link: v.url,
-    image_link: selectBestImage(v.imageUrl, v.images, v.id),
+    link: v.url && v.url.startsWith("https://")
+      ? v.url
+      : `https://www.ciafeed.com/vehicles/${v.id}`,
+    image_link: (() => {
+      const img = selectBestImage(v.imageUrl, v.images, v.id);
+      if (!img) return "";
+      if (img.startsWith("https://") || img.startsWith("http://")) return img;
+      if (img.startsWith("//")) return `https:${img}`;
+      if (img.startsWith("/")) return `https://www.ciafeed.com${img}`;
+      return `https://www.ciafeed.com/${img}`;
+    })(),
     availability: "AVAILABLE",
     condition: (() => {
       const state = normalizeStateOfVehicle(v.stateOfVehicle);

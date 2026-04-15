@@ -75,7 +75,16 @@ function streamAutomotiveCSV(
             skippedCount++;
             continue;
           }
-          controller.enqueue(encoder.encode(serializeCSVRow(mapVehicleToRow(v), VEHICLE_CSV_HEADERS)));
+          const row = mapVehicleToRow(v);
+          if (row.link !== v.url) {
+            console.log({ event: 'csv_link_fallback', vehicleId: v.id, originalUrl: v.url });
+          }
+          if (row.image_link === "") {
+            console.log({ event: 'csv_missing_image', vehicleId: v.id });
+            skippedCount++;
+            continue;
+          }
+          controller.enqueue(encoder.encode(serializeCSVRow(row, VEHICLE_CSV_HEADERS)));
           vehicleCount++;
         }
 
