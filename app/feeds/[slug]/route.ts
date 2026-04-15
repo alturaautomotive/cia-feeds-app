@@ -59,6 +59,7 @@ function streamAutomotiveCSV(
           include: {
             dealer: {
               select: {
+                name: true,
                 address: true,
               },
             },
