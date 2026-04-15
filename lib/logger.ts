@@ -38,6 +38,7 @@ export interface CsvGenerationPayload {
   dealerId: string;
   vehicleCount: number;
   durationMs: number;
+  skippedCount?: number;
 }
 
 export function logScrapeStart(payload: ScrapeStartPayload): void {

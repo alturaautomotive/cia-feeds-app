@@ -51,6 +51,7 @@ function streamAutomotiveCSV(
 
       let cursor: string | undefined;
       let vehicleCount = 0;
+      let skippedCount = 0;
 
       while (true) {
         const batch = await prisma.vehicle.findMany({
@@ -58,11 +59,7 @@ function streamAutomotiveCSV(
           include: {
             dealer: {
               select: {
-                name: true,
-                fbPageId: true,
                 address: true,
-                latitude: true,
-                longitude: true,
               },
             },
           },
@@ -72,13 +69,17 @@ function streamAutomotiveCSV(
         });
 
         for (const v of batch) {
+          const hasImage = !!(v.imageUrl || (v.images && (v.images as string[]).length > 0));
+          if (!hasImage) {
+            skippedCount++;
+            continue;
+          }
           controller.enqueue(encoder.encode(serializeCSVRow(mapVehicleToRow(v), VEHICLE_CSV_HEADERS)));
+          vehicleCount++;
         }
 
-        vehicleCount += batch.length;
-
         if (batch.length < BATCH_SIZE) {
-          logCsvGeneration({ slug, dealerId, vehicleCount, durationMs: Date.now() - startMs });
+          logCsvGeneration({ slug, dealerId, vehicleCount, skippedCount, durationMs: Date.now() - startMs });
           break;
         }
 

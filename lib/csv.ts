@@ -126,16 +126,7 @@ export const VEHICLE_CSV_HEADERS = [
   "mileage.unit",
   "body_style",
   "address",
-  "latitude",
-  "longitude",
-  "exterior_color",
-  "fuel_type",
-  "transmission",
-  "drivetrain",
-  "trim",
   "price",
-  "msrp",
-  "fb_page_id",
 ];
 
 export type VehicleForCSV = {
@@ -171,8 +162,6 @@ export type VehicleForCSV = {
 };
 
 export function mapVehicleToRow(v: VehicleForCSV): Record<string, unknown> {
-  const resolvedLat = v.latitude ?? v.dealer?.latitude ?? null;
-  const resolvedLng = v.longitude ?? v.dealer?.longitude ?? null;
   const resolvedAddress = v.address ?? v.dealer?.address ?? "";
   return {
     id: v.id,
@@ -197,16 +186,7 @@ export function mapVehicleToRow(v: VehicleForCSV): Record<string, unknown> {
     "mileage.unit": "MI",
     body_style: normalizeBodyStyle(v.bodyStyle),
     address: resolvedAddress,
-    latitude: resolvedLat != null ? String(resolvedLat) : "",
-    longitude: resolvedLng != null ? String(resolvedLng) : "",
-    exterior_color: v.exteriorColor ?? "",
-    fuel_type: v.fuelType ?? "",
-    transmission: v.transmission ?? "",
-    drivetrain: v.drivetrain ?? "",
-    trim: v.trim ?? "",
     price: String(v.price ?? ""),
-    msrp: v.msrp != null ? String(v.msrp) : "",
-    fb_page_id: v.dealer?.fbPageId ?? "",
   };
 }
 

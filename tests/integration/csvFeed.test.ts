@@ -55,8 +55,8 @@ function makeVehicle(overrides: Partial<{
     stateOfVehicle: "New",
     exteriorColor: "Blue",
     url: "https://dealer.com/corolla",
-    imageUrl: null,
-    images: [],
+    imageUrl: "https://img.test/default.jpg",
+    images: ["https://img.test/default.jpg"],
     address: null,
     latitude: null,
     longitude: null,
@@ -268,7 +268,7 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
 
     expect(lines2[1]).toContain("https://cdn.com/fallback.jpg");
 
-    // Sub-case C — empty string when both are absent
+    // Sub-case C — vehicle with no images is filtered from the feed
     vi.mocked(prisma.dealer.findUnique).mockResolvedValue(dealer as never);
     vi.mocked(prisma.vehicle.findMany).mockResolvedValue([
       makeVehicle({
@@ -283,7 +283,7 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     const text3 = await res3.text();
     const lines3 = text3.split("\r\n").filter(Boolean);
 
-    expect(lines3[1]).not.toContain("null");
+    expect(lines3.length).toBe(1); // header only, no data row
   });
 
   it("automotive feed populates link, availability, condition, and make columns", async () => {
@@ -330,7 +330,7 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     expect(cols4[makeIdx]).toBe("Tesla");
   });
 
-  it("automotive feed populates address, latitude, and longitude columns when present", async () => {
+  it("automotive feed populates address column when present", async () => {
     vi.mocked(prisma.dealer.findUnique).mockResolvedValue(dealer as never);
     vi.mocked(prisma.vehicle.findMany).mockResolvedValue([
       makeVehicle({
@@ -338,16 +338,12 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
         make: "Honda",
         model: "Civic",
         address: "123 Main St Springfield IL 62701",
-        latitude: 39.7817,
-        longitude: -89.6501,
       }),
       makeVehicle({
         id: "v-geo-2",
         make: "Ford",
         model: "F-150",
         address: null,
-        latitude: null,
-        longitude: null,
       }),
     ] as never);
 
@@ -357,20 +353,14 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     const lines = text.split("\r\n").filter(Boolean);
     const headers = lines[0].split(",");
     const addressIdx = headers.indexOf("address");
-    const latIdx = headers.indexOf("latitude");
-    const lngIdx = headers.indexOf("longitude");
 
-    // Row 1: populated coordinates/address
+    // Row 1: populated address
     const cols1 = lines[1].split(",");
     expect(cols1[addressIdx]).toBe("123 Main St Springfield IL 62701");
-    expect(cols1[latIdx]).toBe("39.7817");
-    expect(cols1[lngIdx]).toBe("-89.6501");
 
     // Row 2: null values must become empty strings, never the literal word "null"
     const cols2 = lines[2].split(",");
     expect(cols2[addressIdx]).toBe("");
-    expect(cols2[latIdx]).toBe("");
-    expect(cols2[lngIdx]).toBe("");
     expect(lines[2]).not.toContain("null");
   });
 
