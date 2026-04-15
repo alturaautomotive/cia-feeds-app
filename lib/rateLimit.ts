@@ -1,3 +1,9 @@
+// NOTE: This in-memory rate limiter resets on every cold start in serverless
+// environments like Vercel. For production use, replace with an edge-compatible
+// store such as Upstash Redis (@upstash/ratelimit) or use Vercel's built-in
+// WAF rate limiting if available on your plan. Consider using Vercel
+// x-middleware- headers for basic throttling in middleware.ts as an interim measure.
+
 const store = new Map<string, { count: number; resetAt: number }>();
 
 export function rateLimit(
@@ -19,15 +25,4 @@ export function rateLimit(
     allowed: current.count <= limit,
     retryAfterMs: Math.max(0, current.resetAt - Date.now()),
   };
-}
-
-if (typeof setInterval !== "undefined") {
-  setInterval(() => {
-    const now = Date.now();
-    for (const [key, entry] of store) {
-      if (now > entry.resetAt) {
-        store.delete(key);
-      }
-    }
-  }, 60_000);
 }

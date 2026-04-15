@@ -11,6 +11,7 @@ const VERTICAL_TO_META: Record<string, string> = {
   automotive: "automotive_models",
   realestate: "home_listings",
   services: "local_service_businesses",
+  ecommerce: "ecommerce",
 };
 
 const SAFE_SELECT = {
@@ -67,12 +68,13 @@ export async function PATCH(request: NextRequest) {
 
   const b = body as Record<string, unknown>;
 
+  try {
+  // Collect simple field updates into a single batch
+  const batchData: Record<string, unknown> = {};
+
   // Handle profile image removal
   if ("profileImageUrl" in b && b.profileImageUrl === null) {
-    await prisma.dealer.update({
-      where: { id: effectiveDealerId },
-      data: { profileImageUrl: null },
-    });
+    batchData.profileImageUrl = null;
   }
 
   // Handle websiteUrl update
@@ -92,13 +94,10 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ error: "invalid_websiteUrl" }, { status: 400 });
       }
     }
-    await prisma.dealer.update({
-      where: { id: effectiveDealerId },
-      data: { websiteUrl: urlToSave },
-    });
+    batchData.websiteUrl = urlToSave;
   }
 
-  // Handle address update (+ geocoding)
+  // Handle address update (+ geocoding) — kept separate due to side effects
   if ("address" in b) {
     const rawAddress = b.address;
     if (rawAddress !== null && typeof rawAddress !== "string") {
@@ -157,7 +156,6 @@ export async function PATCH(request: NextRequest) {
     const phoneToSave = trimmed || null;
 
     if (phoneToSave) {
-      // Strip non-digit characters except leading +, then validate digit count
       const cleaned = phoneToSave.startsWith("+")
         ? "+" + phoneToSave.slice(1).replace(/\D/g, "")
         : phoneToSave.replace(/\D/g, "");
@@ -165,15 +163,9 @@ export async function PATCH(request: NextRequest) {
       if (digits.length < 7 || digits.length > 20) {
         return NextResponse.json({ error: "invalid_phone" }, { status: 400 });
       }
-      await prisma.dealer.update({
-        where: { id: effectiveDealerId },
-        data: { phone: cleaned },
-      });
+      batchData.phone = cleaned;
     } else {
-      await prisma.dealer.update({
-        where: { id: effectiveDealerId },
-        data: { phone: null },
-      });
+      batchData.phone = null;
     }
   }
 
@@ -181,17 +173,11 @@ export async function PATCH(request: NextRequest) {
   if ("ctaPreference" in b) {
     const rawCta = b.ctaPreference;
     if (rawCta === null) {
-      await prisma.dealer.update({
-        where: { id: effectiveDealerId },
-        data: { ctaPreference: null },
-      });
+      batchData.ctaPreference = null;
     } else if (typeof rawCta !== "string" || !VALID_CTA_PREFERENCES.includes(rawCta)) {
       return NextResponse.json({ error: "invalid_cta_preference" }, { status: 400 });
     } else {
-      await prisma.dealer.update({
-        where: { id: effectiveDealerId },
-        data: { ctaPreference: rawCta as "sms" | "whatsapp" | "messenger" },
-      });
+      batchData.ctaPreference = rawCta as "sms" | "whatsapp" | "messenger";
     }
   }
 
@@ -200,13 +186,18 @@ export async function PATCH(request: NextRequest) {
     if (typeof b.autoCrawlEnabled !== "boolean") {
       return NextResponse.json({ error: "invalid_autoCrawlEnabled" }, { status: 400 });
     }
+    batchData.autoCrawlEnabled = b.autoCrawlEnabled;
+  }
+
+  // Perform a single DB write for all simple field updates
+  if (Object.keys(batchData).length > 0) {
     await prisma.dealer.update({
       where: { id: effectiveDealerId },
-      data: { autoCrawlEnabled: b.autoCrawlEnabled },
+      data: batchData,
     });
   }
 
-  // Handle vertical switch
+  // Handle vertical switch — kept separate due to Meta API side effects
   if ("vertical" in b) {
     if (typeof b.vertical !== "string" || !VALID_VERTICALS.includes(b.vertical)) {
       return NextResponse.json({ error: "invalid_vertical" }, { status: 400 });
@@ -240,8 +231,8 @@ export async function PATCH(request: NextRequest) {
           accessToken = decrypt(dealer.metaAccessToken);
           const metaFeedId = dealer.metaFeedId;
           const delRes = await fetch(
-            `https://graph.facebook.com/v19.0/${metaFeedId}?access_token=${accessToken}`,
-            { method: "DELETE" }
+            `https://graph.facebook.com/v19.0/${metaFeedId}`,
+            { method: "DELETE", headers: { 'Authorization': 'Bearer ' + accessToken } }
           );
           const delData = await delRes.json();
           console.log("fb_feed_delete_on_vertical_switch", { metaFeedId, ok: delRes.ok, delData });
@@ -258,8 +249,8 @@ export async function PATCH(request: NextRequest) {
           }
           const oldCatalogId = dealer.metaCatalogId;
           const delCatRes = await fetch(
-            `https://graph.facebook.com/v19.0/${oldCatalogId}?access_token=${accessToken}`,
-            { method: "DELETE" }
+            `https://graph.facebook.com/v19.0/${oldCatalogId}`,
+            { method: "DELETE", headers: { 'Authorization': 'Bearer ' + accessToken } }
           );
           const delCatData = await delCatRes.json();
           console.log("fb_catalog_delete_on_vertical_switch", { oldCatalogId, ok: delCatRes.ok, delCatData });
@@ -280,11 +271,13 @@ export async function PATCH(request: NextRequest) {
             `https://graph.facebook.com/v19.0/${dealer.metaBusinessId}/owned_product_catalogs`,
             {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer " + accessToken,
+              },
               body: JSON.stringify({
                 name: "CIA Feed",
                 vertical: metaVertical,
-                access_token: accessToken,
               }),
             }
           );
@@ -329,4 +322,9 @@ export async function PATCH(request: NextRequest) {
     select: SAFE_SELECT,
   });
   return NextResponse.json({ ok: true, dealer: currentDealer });
+
+  } catch (err) {
+    console.error("profile_patch_error", err);
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+  }
 }

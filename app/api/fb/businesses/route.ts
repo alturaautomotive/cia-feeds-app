@@ -40,9 +40,8 @@ export async function GET() {
 
   try {
     const res = await fetch(
-      `https://graph.facebook.com/v19.0/me?fields=businesses{id,name}&access_token=${encodeURIComponent(
-        accessToken
-      )}`
+      `https://graph.facebook.com/v19.0/me?fields=businesses{id,name}`,
+      { headers: { 'Authorization': 'Bearer ' + accessToken } }
     );
     if (!res.ok) {
       console.error({

@@ -84,7 +84,7 @@ export function normalizeStateOfVehicle(
   if (!raw) return null;
   const lower = raw.toLowerCase().trim();
   if (lower === "new" || lower === "brand new") return "NEW";
-  if (lower === "used" || lower === "pre-owned" || lower === "pre owned")
+  if (lower === "used" || lower === "pre-owned" || lower === "pre owned" || lower === "pre-driven" || lower === "preowned" || lower === "like new")
     return "USED";
   if (
     lower === "certified pre-owned" ||
@@ -93,7 +93,8 @@ export function normalizeStateOfVehicle(
     lower === "certified used"
   )
     return "CPO";
-  return null;
+  console.log({ event: 'state_of_vehicle_fallback', raw, defaultedTo: 'USED' });
+  return "USED";
 }
 
 const BODY_STYLE_MAP: Record<string, string> = {

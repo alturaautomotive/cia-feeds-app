@@ -167,7 +167,8 @@ export async function POST(request: NextRequest) {
   try {
     // Step 0 — Derive ad account ID from the ad set
     const adSetRes = await fetch(
-      `https://graph.facebook.com/v19.0/${encodeURIComponent(adSetId)}?fields=account_id&access_token=${encodeURIComponent(accessToken)}`
+      `https://graph.facebook.com/v19.0/${encodeURIComponent(adSetId)}?fields=account_id`,
+      { headers: { 'Authorization': 'Bearer ' + accessToken } }
     );
     if (!adSetRes.ok) {
       console.error({ event: "fb_adset_lookup_failed", status: adSetRes.status });
@@ -216,10 +217,10 @@ export async function POST(request: NextRequest) {
     const creativeRes = await fetch(
       `https://graph.facebook.com/v19.0/${encodeURIComponent(
         adAccountId
-      )}/adcreatives?access_token=${encodeURIComponent(accessToken)}`,
+      )}/adcreatives`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + accessToken },
         body: JSON.stringify({
           name: headline,
           object_story_spec: {
@@ -255,10 +256,10 @@ export async function POST(request: NextRequest) {
     const adRes = await fetch(
       `https://graph.facebook.com/v19.0/${encodeURIComponent(
         adSetId
-      )}/ads?access_token=${encodeURIComponent(accessToken)}`,
+      )}/ads`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + accessToken },
         body: JSON.stringify({
           name: headline,
           adset_id: adSetId,

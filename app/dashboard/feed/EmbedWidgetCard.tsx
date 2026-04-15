@@ -21,14 +21,23 @@ export default function EmbedWidgetCard({
 }: Props) {
   const [copied, setCopied] = useState(false);
 
+  function escapeJS(s: string): string {
+    return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/</g, '\\x3c').replace(/>/g, '\\x3e');
+  }
+
   function generateSnippet(): string {
+    // Validate that catalogApiUrl points to our own domain
+    const appOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+    const safeCatalogApiUrl = catalogApiUrl.startsWith(appOrigin + '/') || catalogApiUrl.startsWith('/') ? catalogApiUrl : '';
+    const escapedUrl = escapeJS(safeCatalogApiUrl);
+
     return `<script>
 (function(){
   var container = document.createElement('div');
   container.id = 'cia-catalog-widget';
   document.currentScript.parentElement.appendChild(container);
 
-  fetch('${catalogApiUrl}')
+  fetch('${escapedUrl}')
     .then(function(r){ return r.json(); })
     .then(function(data){
       var dealer = data.dealer;

@@ -33,6 +33,11 @@ function makeVehicle(overrides: Partial<{
   mileageValue: number | null;
   stateOfVehicle: string | null;
   exteriorColor: string | null;
+  fuelType: string | null;
+  transmission: string | null;
+  drivetrain: string | null;
+  trim: string | null;
+  msrp: number | null;
   url: string;
   imageUrl: string | null;
   images: string[];
@@ -54,6 +59,11 @@ function makeVehicle(overrides: Partial<{
     mileageValue: 5000,
     stateOfVehicle: "New",
     exteriorColor: "Blue",
+    fuelType: "Gasoline",
+    transmission: "Automatic",
+    drivetrain: "FWD",
+    trim: "LE",
+    msrp: null,
     url: "https://dealer.com/corolla",
     imageUrl: "https://img.test/default.jpg",
     images: ["https://img.test/default.jpg"],
@@ -454,6 +464,52 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
 
     expect(cols[8]).toBe("https://fallback.example.com/item"); // link falls back to data.link
     expect(cols[9]).toBe("");                                   // image empty when imageUrls is empty
+  });
+
+  it("automotive feed includes fuel_type, transmission, drivetrain, trim columns", async () => {
+    vi.mocked(prisma.dealer.findUnique).mockResolvedValue(dealer as never);
+    vi.mocked(prisma.vehicle.findMany).mockResolvedValue([
+      makeVehicle({ id: "v-fields", fuelType: "Diesel", transmission: "Manual", drivetrain: "AWD", trim: "XLE" }),
+    ] as never);
+
+    const req = new Request("http://localhost:3000/feeds/int-dealer.csv");
+    const res = await GET(req, { params: Promise.resolve({ slug: "int-dealer.csv" }) });
+    const text = await res.text();
+    const lines = text.split("\r\n").filter(Boolean);
+    const headers = lines[0].split(",");
+
+    expect(headers).toContain("fuel_type");
+    expect(headers).toContain("transmission");
+    expect(headers).toContain("drivetrain");
+    expect(headers).toContain("trim");
+
+    const fuelIdx = headers.indexOf("fuel_type");
+    const transIdx = headers.indexOf("transmission");
+    const driveIdx = headers.indexOf("drivetrain");
+    const trimIdx = headers.indexOf("trim");
+    const cols = lines[1].split(",");
+
+    expect(cols[fuelIdx]).toBe("Diesel");
+    expect(cols[transIdx]).toBe("Manual");
+    expect(cols[driveIdx]).toBe("AWD");
+    expect(cols[trimIdx]).toBe("XLE");
+  });
+
+  it("msrp is not capped at 100000 — luxury prices pass through", async () => {
+    vi.mocked(prisma.dealer.findUnique).mockResolvedValue(dealer as never);
+    vi.mocked(prisma.vehicle.findMany).mockResolvedValue([
+      makeVehicle({ id: "v-luxury", msrp: 250000 }),
+    ] as never);
+
+    const req = new Request("http://localhost:3000/feeds/int-dealer.csv");
+    const res = await GET(req, { params: Promise.resolve({ slug: "int-dealer.csv" }) });
+    const text = await res.text();
+    const lines = text.split("\r\n").filter(Boolean);
+    const headers = lines[0].split(",");
+    const msrpIdx = headers.indexOf("msrp");
+    const cols = lines[1].split(",");
+
+    expect(cols[msrpIdx]).toBe("250000");
   });
 
   it("pagination: >100 vehicles yields all rows", async () => {

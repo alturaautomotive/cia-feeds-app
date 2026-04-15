@@ -14,6 +14,10 @@ const baseVehicle = {
   mileageValue: 5000,
   stateOfVehicle: "Used",
   exteriorColor: "Silver",
+  fuelType: "Gasoline",
+  transmission: "Automatic",
+  drivetrain: "FWD",
+  trim: "SE",
   url: "https://dealer.com/camry",
   imageUrl: "https://img.com/camry.jpg",
   images: ["https://img.com/camry.jpg"],
@@ -123,6 +127,35 @@ describe("mapVehicleToRow() — Meta-spec fields", () => {
     expect(normalizeBodyStyle("suv")).toBe("SUV");
     expect(normalizeBodyStyle("unknown style")).toBe("OTHER");
     expect(normalizeBodyStyle(null)).toBe("");
+  });
+
+  it("fuel_type, transmission, drivetrain, trim appear in CSV row", () => {
+    const row = mapVehicleToRow(baseVehicle);
+    expect(row.fuel_type).toBe("Gasoline");
+    expect(row.transmission).toBe("Automatic");
+    expect(row.drivetrain).toBe("FWD");
+    expect(row.trim).toBe("SE");
+
+    // Verify they appear in the serialized CSV
+    const line = serializeCSVRow(row, VEHICLE_CSV_HEADERS);
+    expect(line).toContain("Gasoline");
+    expect(line).toContain("Automatic");
+    expect(line).toContain("FWD");
+    expect(line).toContain("SE");
+  });
+
+  it("fuel_type, transmission, drivetrain, trim default to empty string when null", () => {
+    const row = mapVehicleToRow({
+      ...baseVehicle,
+      fuelType: null,
+      transmission: null,
+      drivetrain: null,
+      trim: null,
+    });
+    expect(row.fuel_type).toBe("");
+    expect(row.transmission).toBe("");
+    expect(row.drivetrain).toBe("");
+    expect(row.trim).toBe("");
   });
 
   it("mileage.unit always equals 'MI'", () => {

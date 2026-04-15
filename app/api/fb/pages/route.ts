@@ -59,9 +59,8 @@ export async function GET() {
 
   try {
     const res = await fetch(
-      `https://graph.facebook.com/v19.0/me/accounts?fields=id,name&access_token=${encodeURIComponent(
-        accessToken
-      )}`
+      `https://graph.facebook.com/v19.0/me/accounts?fields=id,name`,
+      { headers: { 'Authorization': 'Bearer ' + accessToken } }
     );
     if (!res.ok) {
       console.error({
@@ -124,9 +123,8 @@ export async function POST(request: NextRequest) {
   // never persist an arbitrary/attacker-supplied id.
   try {
     const res = await fetch(
-      `https://graph.facebook.com/v19.0/me/accounts?fields=id&access_token=${encodeURIComponent(
-        accessToken
-      )}`
+      `https://graph.facebook.com/v19.0/me/accounts?fields=id`,
+      { headers: { 'Authorization': 'Bearer ' + accessToken } }
     );
     if (!res.ok) {
       return NextResponse.json({ error: "meta_api_error" }, { status: 502 });

@@ -1,22 +1,25 @@
-export const VALID_VERTICALS = ["automotive", "services", "realestate"] as const;
+export const VALID_VERTICALS = ["automotive", "services", "realestate", "ecommerce"] as const;
 export type Vertical = (typeof VALID_VERTICALS)[number];
 
 export const VERTICAL_LABELS: Record<Vertical, string> = {
   automotive: "Automotive",
   services: "Services",
   realestate: "Real Estate",
+  ecommerce: "Ecommerce",
 };
 
 export const VERTICAL_META_TYPE: Record<Vertical, string> = {
   automotive: "vehicles",
   services: "local_service_businesses",
   realestate: "home_listings",
+  ecommerce: "ecommerce",
 };
 
 export const VERTICAL_FEED_TYPE: Record<Vertical, string> = {
   automotive: "VEHICLES",
   realestate: "HOME_LISTING",
   services: "PRODUCTS",
+  ecommerce: "PRODUCTS",
 };
 
 export interface VerticalFieldDef {

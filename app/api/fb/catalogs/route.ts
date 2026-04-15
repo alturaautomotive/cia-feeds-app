@@ -10,6 +10,7 @@ const VERTICAL_TO_META: Record<string, string> = {
   automotive: "automotive_models",
   realestate: "home_listings",
   services: "local_service_businesses",
+  ecommerce: "ecommerce",
 };
 
 async function loadDealerToken(dealerId: string): Promise<string | null> {
@@ -78,9 +79,8 @@ export async function GET(request: NextRequest) {
     const res = await fetch(
       `https://graph.facebook.com/v19.0/${encodeURIComponent(
         businessId
-      )}/owned_product_catalogs?fields=id,name&access_token=${encodeURIComponent(
-        accessToken
-      )}`
+      )}/owned_product_catalogs?fields=id,name`,
+      { headers: { 'Authorization': 'Bearer ' + accessToken } }
     );
     if (!res.ok) {
       console.error({
@@ -176,11 +176,13 @@ export async function POST(request: NextRequest) {
       )}/owned_product_catalogs`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + accessToken,
+        },
         body: JSON.stringify({
           name: catalogName,
           vertical: metaVertical,
-          access_token: accessToken,
         }),
       }
     );

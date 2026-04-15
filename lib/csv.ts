@@ -125,6 +125,10 @@ export const VEHICLE_CSV_HEADERS = [
   "mileage.value",
   "mileage.unit",
   "body_style",
+  "fuel_type",
+  "transmission",
+  "drivetrain",
+  "trim",
   "address",
   "price",
   "msrp",
@@ -203,9 +207,13 @@ export function mapVehicleToRow(v: VehicleForCSV): Record<string, unknown> {
     "mileage.value": String(v.mileageValue ?? ""),
     "mileage.unit": "MI",
     body_style: normalizeBodyStyle(v.bodyStyle),
+    fuel_type: v.fuelType ?? "",
+    transmission: v.transmission ?? "",
+    drivetrain: v.drivetrain ?? "",
+    trim: v.trim ?? "",
     address: resolvedAddress,
     price: String(v.price ?? ""),
-    msrp: v.msrp != null && v.msrp <= 100000 ? String(v.msrp) : "",
+    msrp: v.msrp != null ? String(v.msrp) : "",
   };
 }
 

@@ -50,9 +50,8 @@ export async function GET(request: NextRequest) {
     const res = await fetch(
       `https://graph.facebook.com/v19.0/${encodeURIComponent(
         businessId
-      )}/owned_ad_accounts?fields=id,name,account_status&access_token=${encodeURIComponent(
-        accessToken
-      )}`
+      )}/owned_ad_accounts?fields=id,name,account_status`,
+      { headers: { 'Authorization': 'Bearer ' + accessToken } }
     );
     if (!res.ok) {
       console.error({

@@ -59,10 +59,10 @@ export async function POST(request: NextRequest) {
     const campaignRes = await fetch(
       `https://graph.facebook.com/v19.0/${encodeURIComponent(
         adAccountId
-      )}/campaigns?access_token=${encodeURIComponent(accessToken)}`,
+      )}/campaigns`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + accessToken },
         body: JSON.stringify({
           name,
           objective: "CATALOG_SALES",
@@ -91,10 +91,10 @@ export async function POST(request: NextRequest) {
     const adSetRes = await fetch(
       `https://graph.facebook.com/v19.0/${encodeURIComponent(
         adAccountId
-      )}/adsets?access_token=${encodeURIComponent(accessToken)}`,
+      )}/adsets`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + accessToken },
         body: JSON.stringify({
           name,
           campaign_id: campaignId,
