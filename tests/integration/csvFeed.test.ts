@@ -19,6 +19,7 @@ const dealer = {
   name: "Integration Dealer",
   slug: "int-dealer",
   vertical: "automotive",
+  address: "100 Test Blvd, Test City, TX 75001",
 };
 
 function makeVehicle(overrides: Partial<{
@@ -427,7 +428,7 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
   // ── Ecommerce vertical CSV contract ──────────────────────────────────────
 
   it("ecommerce feed has correct CSV header row with link and image columns", async () => {
-    const ecomDealer = { id: "dealer-ecom-uuid", name: "Ecom Dealer", slug: "ecom-dealer", vertical: "ecommerce" };
+    const ecomDealer = { id: "dealer-ecom-uuid", name: "Ecom Dealer", slug: "ecom-dealer", vertical: "ecommerce", address: "200 Commerce St, Dallas, TX 75201" };
     vi.mocked(prisma.dealer.findUnique).mockResolvedValue(ecomDealer as never);
     vi.mocked(prisma.listing.findMany).mockResolvedValue([] as never);
 
@@ -444,7 +445,7 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
   });
 
   it("ecommerce feed maps link from listing.url and image from listing.imageUrls[0]", async () => {
-    const ecomDealer = { id: "dealer-ecom-uuid", name: "Ecom Dealer", slug: "ecom-dealer", vertical: "ecommerce" };
+    const ecomDealer = { id: "dealer-ecom-uuid", name: "Ecom Dealer", slug: "ecom-dealer", vertical: "ecommerce", address: "200 Commerce St, Dallas, TX 75201" };
     vi.mocked(prisma.dealer.findUnique).mockResolvedValue(ecomDealer as never);
     vi.mocked(prisma.listing.findMany).mockResolvedValue([
       {
@@ -487,7 +488,7 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
   });
 
   it("ecommerce feed falls back link to data.link when listing.url is null", async () => {
-    const ecomDealer = { id: "dealer-ecom-uuid", name: "Ecom Dealer", slug: "ecom-dealer", vertical: "ecommerce" };
+    const ecomDealer = { id: "dealer-ecom-uuid", name: "Ecom Dealer", slug: "ecom-dealer", vertical: "ecommerce", address: "200 Commerce St, Dallas, TX 75201" };
     vi.mocked(prisma.dealer.findUnique).mockResolvedValue(ecomDealer as never);
     vi.mocked(prisma.listing.findMany).mockResolvedValue([
       {
@@ -574,6 +575,51 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     const lines = text.split("\r\n").filter(Boolean);
 
     expect(lines.length).toBe(1); // header only — vehicle with empty url is skipped
+  });
+
+  it("returns 422 when dealer has no address (null)", async () => {
+    vi.mocked(prisma.dealer.findUnique).mockResolvedValue({
+      ...dealer,
+      address: null,
+    } as never);
+
+    const req = new Request("http://localhost:3000/feeds/int-dealer.csv");
+    const res = await GET(req, { params: Promise.resolve({ slug: "int-dealer.csv" }) });
+
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body).toEqual({ error: "dealer_address_required" });
+    expect(prisma.vehicle.findMany).not.toHaveBeenCalled();
+  });
+
+  it("returns 422 when dealer has empty-string address", async () => {
+    vi.mocked(prisma.dealer.findUnique).mockResolvedValue({
+      ...dealer,
+      address: "",
+    } as never);
+
+    const req = new Request("http://localhost:3000/feeds/int-dealer.csv");
+    const res = await GET(req, { params: Promise.resolve({ slug: "int-dealer.csv" }) });
+
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body).toEqual({ error: "dealer_address_required" });
+    expect(prisma.vehicle.findMany).not.toHaveBeenCalled();
+  });
+
+  it("returns 422 when dealer has whitespace-only address", async () => {
+    vi.mocked(prisma.dealer.findUnique).mockResolvedValue({
+      ...dealer,
+      address: "   ",
+    } as never);
+
+    const req = new Request("http://localhost:3000/feeds/int-dealer.csv");
+    const res = await GET(req, { params: Promise.resolve({ slug: "int-dealer.csv" }) });
+
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body).toEqual({ error: "dealer_address_required" });
+    expect(prisma.vehicle.findMany).not.toHaveBeenCalled();
   });
 
   it("pagination: >100 vehicles yields all rows", async () => {

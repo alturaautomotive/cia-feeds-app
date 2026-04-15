@@ -14,11 +14,15 @@ export async function GET(
 
   const dealer = await prisma.dealer.findUnique({
     where: { slug },
-    select: { id: true, name: true, vertical: true },
+    select: { id: true, name: true, vertical: true, address: true },
   });
 
   if (!dealer) {
     return NextResponse.json({ error: "dealer_not_found" }, { status: 404 });
+  }
+
+  if (!dealer.address?.trim()) {
+    return NextResponse.json({ error: "dealer_address_required" }, { status: 422 });
   }
 
   const startMs = Date.now();

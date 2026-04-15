@@ -37,7 +37,7 @@ export default async function FeedPage() {
 
   const dealer = await prisma.dealer.findUnique({
     where: { id: effectiveDealerId },
-    select: { slug: true, vertical: true, phone: true, fbPageId: true, ctaPreference: true },
+    select: { slug: true, vertical: true, phone: true, fbPageId: true, ctaPreference: true, address: true },
   });
 
   const slug = dealer?.slug ?? (session.user.slug as string | undefined) ?? "";
@@ -86,16 +86,33 @@ export default async function FeedPage() {
           {VERTICAL_LABELS[dealerVertical as Vertical] ?? dealerVertical} catalog feed.
         </p>
 
-        <FeedUrlCard feedUrl={feedUrl} vertical={dealerVertical} />
+        {!dealer?.address?.trim() ? (
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-md p-4">
+            <p>
+              Please add your dealership address in your{" "}
+              <Link
+                href="/dashboard/profile"
+                className="text-indigo-600 hover:text-indigo-500 underline font-medium"
+              >
+                Profile
+              </Link>{" "}
+              before your feed can be used.
+            </p>
+          </div>
+        ) : (
+          <>
+            <FeedUrlCard feedUrl={feedUrl} vertical={dealerVertical} />
 
-        <EmbedWidgetCard
-          slug={slug}
-          phone={dealerPhone}
-          fbPageId={dealerFbPageId}
-          vertical={dealerVertical}
-          catalogApiUrl={catalogApiUrl}
-          ctaPreference={dealerCtaPreference}
-        />
+            <EmbedWidgetCard
+              slug={slug}
+              phone={dealerPhone}
+              fbPageId={dealerFbPageId}
+              vertical={dealerVertical}
+              catalogApiUrl={catalogApiUrl}
+              ctaPreference={dealerCtaPreference}
+            />
+          </>
+        )}
       </div>
     </div>
   );

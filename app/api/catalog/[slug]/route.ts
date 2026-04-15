@@ -47,6 +47,7 @@ export async function GET(
       phone: true,
       fbPageId: true,
       ctaPreference: true,
+      address: true,
     },
   });
 
@@ -54,6 +55,13 @@ export async function GET(
     return NextResponse.json(
       { error: "dealer_not_found" },
       { status: 404, headers: corsHeaders }
+    );
+  }
+
+  if (!dealer.address?.trim()) {
+    return NextResponse.json(
+      { error: "dealer_address_required" },
+      { status: 422, headers: corsHeaders }
     );
   }
 
