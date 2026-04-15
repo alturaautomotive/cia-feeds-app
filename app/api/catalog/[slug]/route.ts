@@ -46,6 +46,7 @@ export async function GET(
       name: true,
       phone: true,
       fbPageId: true,
+      ctaPreference: true,
     },
   });
 
@@ -160,6 +161,7 @@ export async function GET(
         vertical: dealer.vertical,
         phone: dealer.phone ?? null,
         fbPageId: dealer.fbPageId ?? null,
+        ctaPreference: dealer.ctaPreference ?? null,
       },
       items,
     },

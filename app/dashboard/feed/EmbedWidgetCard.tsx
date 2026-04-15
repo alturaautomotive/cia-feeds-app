@@ -8,6 +8,7 @@ interface Props {
   fbPageId: string | null;
   vertical: string;
   catalogApiUrl: string;
+  ctaPreference: string | null;
 }
 
 export default function EmbedWidgetCard({
@@ -16,17 +17,11 @@ export default function EmbedWidgetCard({
   fbPageId,
   vertical,
   catalogApiUrl,
+  ctaPreference,
 }: Props) {
   const [copied, setCopied] = useState(false);
 
   function generateSnippet(): string {
-    const smsHref = phone
-      ? `sms:${phone}?body=${encodeURIComponent("Hi, I'm interested in your inventory")}`
-      : "";
-    const messengerHref = fbPageId
-      ? `https://m.me/${fbPageId}`
-      : "";
-
     return `<script>
 (function(){
   var container = document.createElement('div');
@@ -133,44 +128,57 @@ export default function EmbedWidgetCard({
       });
 
       wrapper.appendChild(grid);
-${phone || fbPageId ? `
-      var cta = document.createElement('div');
-      cta.style.display = 'flex';
-      cta.style.gap = '12px';
-      cta.style.marginTop = '20px';
-      cta.style.justifyContent = 'center';
-      cta.style.flexWrap = 'wrap';
-${phone ? `
-      var smsBtn = document.createElement('a');
-      smsBtn.href = '${smsHref}';
-      smsBtn.textContent = 'Text Us';
-      smsBtn.style.display = 'inline-block';
-      smsBtn.style.padding = '10px 24px';
-      smsBtn.style.backgroundColor = '#4f46e5';
-      smsBtn.style.color = '#fff';
-      smsBtn.style.borderRadius = '6px';
-      smsBtn.style.textDecoration = 'none';
-      smsBtn.style.fontWeight = '600';
-      smsBtn.style.fontSize = '14px';
-      cta.appendChild(smsBtn);
-` : ""}${fbPageId ? `
-      var msgBtn = document.createElement('a');
-      msgBtn.href = '${messengerHref}';
-      msgBtn.target = '_blank';
-      msgBtn.textContent = 'Message on Messenger';
-      msgBtn.style.display = 'inline-block';
-      msgBtn.style.padding = '10px 24px';
-      msgBtn.style.backgroundColor = '#fff';
-      msgBtn.style.color = '#4f46e5';
-      msgBtn.style.border = '2px solid #4f46e5';
-      msgBtn.style.borderRadius = '6px';
-      msgBtn.style.textDecoration = 'none';
-      msgBtn.style.fontWeight = '600';
-      msgBtn.style.fontSize = '14px';
-      cta.appendChild(msgBtn);
-` : ""}
-      wrapper.appendChild(cta);
-` : ""}
+
+      /* --- Dynamic CTA buttons --- */
+      var pref = dealer.ctaPreference;
+      var dPhone = dealer.phone;
+      var fb = dealer.fbPageId;
+      var ctaMap = {
+        sms:       { ok: !!dPhone, href: 'sms:' + (dPhone||'') + '?body=' + encodeURIComponent("Hi, I'm interested in your inventory"), label: 'Text Us' },
+        whatsapp:  { ok: !!dPhone, href: 'https://wa.me/' + (dPhone||'').replace(/\\D/g,'') + '?text=' + encodeURIComponent("Hi, I'm interested in your inventory"), label: 'WhatsApp Us' },
+        messenger: { ok: !!fb, href: 'https://m.me/' + (fb||''), label: 'Message on Messenger', target: '_blank' }
+      };
+
+      var buttons = [];
+      if (pref && ctaMap[pref] && ctaMap[pref].ok) {
+        buttons.push(ctaMap[pref]);
+      } else {
+        ['sms','whatsapp','messenger'].forEach(function(k){ if(ctaMap[k].ok) buttons.push(ctaMap[k]); });
+      }
+
+      if (buttons.length) {
+        var cta = document.createElement('div');
+        cta.style.display = 'flex';
+        cta.style.gap = '12px';
+        cta.style.marginTop = '20px';
+        cta.style.justifyContent = 'center';
+        cta.style.flexWrap = 'wrap';
+
+        buttons.forEach(function(b, i){
+          var a = document.createElement('a');
+          a.href = b.href;
+          a.textContent = b.label;
+          if (b.target) a.target = b.target;
+          a.style.display = 'inline-block';
+          a.style.padding = '10px 24px';
+          a.style.borderRadius = '6px';
+          a.style.textDecoration = 'none';
+          a.style.fontWeight = '600';
+          a.style.fontSize = '14px';
+          if (i === 0) {
+            a.style.backgroundColor = '#4f46e5';
+            a.style.color = '#fff';
+          } else {
+            a.style.backgroundColor = '#fff';
+            a.style.color = '#4f46e5';
+            a.style.border = '2px solid #4f46e5';
+          }
+          cta.appendChild(a);
+        });
+
+        wrapper.appendChild(cta);
+      }
+
       container.appendChild(wrapper);
     })
     .catch(function(){
@@ -230,7 +238,21 @@ ${phone ? `
         Widget auto-updates when your catalog changes.
       </p>
 
-      {!hasContact && (
+      {(ctaPreference === "whatsapp" || ctaPreference === "sms") && !phone && (
+        <div className="mt-4 rounded-md bg-amber-50 border border-amber-200 px-4 py-3">
+          <p className="text-sm text-amber-800">
+            Your CTA preference is set to {ctaPreference === "sms" ? "Text Us" : "WhatsApp"}, but no phone number is on file. Add one in Profile &amp; Settings.
+          </p>
+        </div>
+      )}
+      {ctaPreference === "messenger" && !fbPageId && (
+        <div className="mt-4 rounded-md bg-amber-50 border border-amber-200 px-4 py-3">
+          <p className="text-sm text-amber-800">
+            Your CTA preference is set to Messenger, but no Facebook Page is connected. Connect one in Profile &amp; Settings.
+          </p>
+        </div>
+      )}
+      {!hasContact && !ctaPreference && (
         <div className="mt-4 rounded-md bg-amber-50 border border-amber-200 px-4 py-3">
           <p className="text-sm text-amber-800">
             Add a phone number or connect Meta in Profile &amp; Settings to
