@@ -263,7 +263,7 @@ export function mapVehicleToRow(v: VehicleForCSV): Record<string, unknown> {
     title: `${v.make ?? ""} ${v.model ?? ""}`.trim(),
     vehicle_id: v.id,
     "mileage.unit": "MI",
-    ...parseAddressFields(v.address ?? v.dealer?.address ?? ""),
+    ...parseAddressFields(v.address || v.dealer?.address || ""),
     "image[0].url": imgs[0] ?? "",
     "image[1].url": imgs[1] ?? "",
     fb_page_id: v.dealer?.fbPageId ?? "",

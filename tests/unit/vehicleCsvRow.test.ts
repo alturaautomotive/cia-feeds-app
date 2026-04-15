@@ -52,6 +52,19 @@ describe("mapVehicleToRow() — address resolution", () => {
     expect(row.country).toBe("US");
   });
 
+  it("falls back to dealer address when vehicle address is empty string", () => {
+    const row = mapVehicleToRow({
+      ...baseVehicle,
+      address: "",
+      dealer: { ...baseVehicle.dealer, address: "1875 Buford Highway, Cumming, GA 30041" },
+    });
+    expect(row.street_address).toBe("1875 Buford Highway");
+    expect(row.city).toBe("Cumming");
+    expect(row.region).toBe("GA");
+    expect(row.postal_code).toBe("30041");
+    expect(row.country).toBe("US");
+  });
+
   it("does not emit the literal 'null' for null address when serialized", () => {
     const row = mapVehicleToRow({
       ...baseVehicle,

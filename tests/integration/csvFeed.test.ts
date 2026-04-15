@@ -67,7 +67,7 @@ function makeVehicle(overrides: Partial<{
     url: "https://dealer.com/corolla",
     imageUrl: "https://img.test/default.jpg",
     images: ["https://img.test/default.jpg"],
-    address: null,
+    address: "100 Test Blvd, Test City, TX 75001",
     latitude: null,
     longitude: null,
     dealer: { name: dealer.name, fbPageId: "fb-page-int-123" },
@@ -374,14 +374,37 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     expect(cols1[postalIdx]).toBe("62701");
     expect(cols1[countryIdx]).toBe("US");
 
-    // Row 2: null address → all flat columns are empty strings
-    const cols2 = lines[2].split(",");
-    expect(cols2[streetIdx]).toBe("");
-    expect(cols2[cityIdx]).toBe("");
-    expect(cols2[regionIdx]).toBe("");
-    expect(cols2[postalIdx]).toBe("");
-    expect(cols2[countryIdx]).toBe("US");
-    expect(lines[2]).not.toContain("null");
+    // v-geo-2 has null address → filtered out by csv_missing_address guard
+    expect(lines.length).toBe(2); // header + v-geo-1 only
+  });
+
+  it("vehicle with null address and no dealer address is excluded by csv_missing_address guard", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.mocked(prisma.dealer.findUnique).mockResolvedValue(dealer as never);
+    vi.mocked(prisma.vehicle.findMany).mockResolvedValue([
+      makeVehicle({
+        id: "v-no-addr",
+        make: "Kia",
+        model: "Sorento",
+        address: null,
+        dealer: { name: dealer.name },
+      }),
+    ] as never);
+
+    const req = new Request("http://localhost:3000/feeds/int-dealer.csv");
+    const res = await GET(req, { params: Promise.resolve({ slug: "int-dealer.csv" }) });
+    const text = await res.text();
+    const lines = text.split("\r\n").filter(Boolean);
+
+    // Only the header row — vehicle with no address is skipped
+    expect(lines.length).toBe(1);
+
+    // Verify the csv_missing_address log event was emitted
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "csv_missing_address", vehicleId: "v-no-addr" })
+    );
+
+    logSpy.mockRestore();
   });
 
   it("automotive feed normalizes compound body_style values", async () => {

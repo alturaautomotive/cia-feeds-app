@@ -88,6 +88,11 @@ function streamAutomotiveCSV(
             skippedCount++;
             continue;
           }
+          if (row.street_address === "" && row.city === "" && row.region === "") {
+            console.log({ event: 'csv_missing_address', vehicleId: v.id });
+            skippedCount++;
+            continue;
+          }
           controller.enqueue(encoder.encode(serializeCSVRow(row, VEHICLE_CSV_HEADERS)));
           vehicleCount++;
         }
