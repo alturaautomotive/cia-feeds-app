@@ -378,6 +378,14 @@ describe("normalizeBodyStyle()", () => {
     expect(normalizeBodyStyle(undefined)).toBe("");
     expect(normalizeBodyStyle("")).toBe("");
   });
+
+  it("splits compound slash-separated values and returns the first recognized style", () => {
+    expect(normalizeBodyStyle("Minivan/Van")).toBe("MINIVAN");
+    expect(normalizeBodyStyle("SUV/Crossover")).toBe("SUV");
+    expect(normalizeBodyStyle("Truck/Pickup")).toBe("TRUCK");
+    expect(normalizeBodyStyle("Sedan/Coupe")).toBe("SEDAN");
+    expect(normalizeBodyStyle("Unknown/Weird")).toBe("");
+  });
 });
 
 describe("parsePrice()", () => {

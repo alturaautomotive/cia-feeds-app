@@ -133,6 +133,12 @@ const BODY_STYLE_MAP: Record<string, string> = {
   gt: "GRANDTOURER",
   "small car": "SMALL_CAR",
   small_car: "SMALL_CAR",
+  "minivan/van": "MINIVAN",
+  "suv/crossover": "SUV",
+  "truck/pickup": "TRUCK",
+  "pickup/truck": "TRUCK",
+  "van/minivan": "MINIVAN",
+  "crossover/suv": "SUV",
 };
 
 const VALID_BODY_STYLES = new Set(Object.values(BODY_STYLE_MAP));
@@ -149,6 +155,14 @@ export function normalizeBodyStyle(raw: string | null | undefined): string {
   if (mapped) return mapped;
   const upper = raw.toUpperCase().trim();
   if (VALID_BODY_STYLES.has(upper)) return upper;
+  // Slash-split fallback: try each segment of compound values like "Sedan/Coupe"
+  if (lower.includes("/")) {
+    for (const seg of lower.split("/")) {
+      const trimmed = seg.trim();
+      const segMapped = BODY_STYLE_MAP[trimmed];
+      if (segMapped) return segMapped;
+    }
+  }
   return "";
 }
 

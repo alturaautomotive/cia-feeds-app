@@ -380,8 +380,25 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     expect(cols2[cityIdx]).toBe("");
     expect(cols2[regionIdx]).toBe("");
     expect(cols2[postalIdx]).toBe("");
-    expect(cols2[countryIdx]).toBe("");
+    expect(cols2[countryIdx]).toBe("US");
     expect(lines[2]).not.toContain("null");
+  });
+
+  it("automotive feed normalizes compound body_style values", async () => {
+    vi.mocked(prisma.dealer.findUnique).mockResolvedValue(dealer as never);
+    vi.mocked(prisma.vehicle.findMany).mockResolvedValue([
+      makeVehicle({ id: "v-compound-body", bodyStyle: "Minivan/Van" }),
+    ] as never);
+
+    const req = new Request("http://localhost:3000/feeds/int-dealer.csv");
+    const res = await GET(req, { params: Promise.resolve({ slug: "int-dealer.csv" }) });
+    const text = await res.text();
+    const lines = text.split("\r\n").filter(Boolean);
+    const headers = lines[0].split(",");
+    const bodyIdx = headers.indexOf("body_style");
+    const cols = lines[1].split(",");
+
+    expect(cols[bodyIdx]).toBe("MINIVAN");
   });
 
   // ── Ecommerce vertical CSV contract ──────────────────────────────────────

@@ -49,7 +49,7 @@ describe("mapVehicleToRow() — address resolution", () => {
     expect(row.city).toBe("");
     expect(row.region).toBe("");
     expect(row.postal_code).toBe("");
-    expect(row.country).toBe("");
+    expect(row.country).toBe("US");
   });
 
   it("does not emit the literal 'null' for null address when serialized", () => {
@@ -143,6 +143,14 @@ describe("mapVehicleToRow() — Meta-spec fields", () => {
     expect(normalizeBodyStyle("suv")).toBe("SUV");
     expect(normalizeBodyStyle("unknown style")).toBe("");
     expect(normalizeBodyStyle(null)).toBe("");
+  });
+
+  it("body_style normalizes compound slash-separated values", () => {
+    expect(normalizeBodyStyle("Minivan/Van")).toBe("MINIVAN");
+    expect(normalizeBodyStyle("SUV/Crossover")).toBe("SUV");
+    expect(normalizeBodyStyle("Truck/Pickup")).toBe("TRUCK");
+    expect(normalizeBodyStyle("Sedan/Coupe")).toBe("SEDAN");
+    expect(normalizeBodyStyle("Unknown/Weird")).toBe("");
   });
 
   it("fuel_type, transmission, drivetrain, trim appear in CSV row", () => {

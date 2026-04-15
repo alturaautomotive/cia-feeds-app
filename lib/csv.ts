@@ -207,7 +207,7 @@ function parseStateZip(segment: string): { region?: string; postal_code?: string
 }
 
 function parseAddressFields(raw: string): { street_address: string; city: string; region: string; postal_code: string; country: string } {
-  if (!raw) return { street_address: "", city: "", region: "", postal_code: "", country: "" };
+  if (!raw) return { street_address: "", city: "", region: "", postal_code: "", country: "US" };
   const parts = raw.split(",").map((p) => p.trim());
 
   if (parts.length >= 3) {
