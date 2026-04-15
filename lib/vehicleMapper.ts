@@ -139,7 +139,7 @@ const VALID_BODY_STYLES = new Set(Object.values(BODY_STYLE_MAP));
 
 /**
  * Normalize body_style to Meta's uppercase enum values.
- * Returns "" for null/undefined/empty, "OTHER" for unrecognized non-empty values.
+ * Returns "" for null/undefined/empty or unrecognized values.
  */
 export function normalizeBodyStyle(raw: string | null | undefined): string {
   if (!raw) return "";
@@ -149,7 +149,7 @@ export function normalizeBodyStyle(raw: string | null | undefined): string {
   if (mapped) return mapped;
   const upper = raw.toUpperCase().trim();
   if (VALID_BODY_STYLES.has(upper)) return upper;
-  return "OTHER";
+  return "";
 }
 
 // ── Fuel Type normalization ──────────────────────────────────────────
@@ -180,7 +180,7 @@ export function normalizeFuelType(raw: string | null | undefined): string {
   if (!lower) return "";
   const mapped = FUEL_TYPE_MAP[lower];
   if (mapped) return mapped;
-  return "OTHER";
+  return "";
 }
 
 // ── Transmission normalization ──────────────────────────────────────
@@ -206,7 +206,7 @@ export function normalizeTransmission(raw: string | null | undefined): string {
   if (!lower) return "";
   const mapped = TRANSMISSION_MAP[lower];
   if (mapped) return mapped;
-  return "OTHER";
+  return "";
 }
 
 // ── Drivetrain normalization ────────────────────────────────────────
@@ -239,7 +239,7 @@ export function normalizeDrivetrain(raw: string | null | undefined): string {
   if (mapped) return mapped;
   const upper = raw.toUpperCase().trim();
   if (VALID_DRIVETRAINS.has(upper)) return upper;
-  return "OTHER";
+  return "";
 }
 
 /**

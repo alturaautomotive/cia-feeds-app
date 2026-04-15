@@ -109,29 +109,31 @@ export function serializeRealEstateRow(listing: {
 }
 
 export const VEHICLE_CSV_HEADERS = [
-  "id",
-  "title",
-  "description",
-  "link",
-  "image_link",
-  "availability",
-  "condition",
-  "vehicle_id",
   "vin",
+  "state_of_vehicle",
+  "year",
   "make",
   "model",
-  "year",
-  "state_of_vehicle",
-  "mileage.value",
-  "mileage.unit",
-  "body_style",
-  "fuel_type",
-  "transmission",
-  "drivetrain",
   "trim",
-  "address",
+  "drivetrain",
+  "transmission",
+  "exterior_color",
   "price",
   "msrp",
+  "mileage.value",
+  "fuel_type",
+  "latitude",
+  "longitude",
+  "body_style",
+  "url",
+  "title",
+  "vehicle_id",
+  "mileage.unit",
+  "address",
+  "image[0].url",
+  "image[1].url",
+  "fb_page_id",
+  "description",
 ];
 
 export type VehicleForCSV = {
@@ -166,58 +168,101 @@ export type VehicleForCSV = {
   } | null;
 };
 
-function selectBestImage(imageUrl: string | null, images: string[]): string {
+function normalizeImageUrl(img: string): string {
+  if (img.startsWith("https://") || img.startsWith("http://")) return img;
+  if (img.startsWith("//")) return `https:${img}`;
+  if (img.startsWith("/")) return `https://www.ciafeed.com${img}`;
+  return `https://www.ciafeed.com/${img}`;
+}
+
+function selectBestImages(imageUrl: string | null, images: string[]): string[] {
   const candidates = [...new Set([imageUrl, ...images].filter((u): u is string => !!u))];
   const validExtensions = ['.jpg', '.jpeg', '.png', '.webp'];
+
+  const withExt: string[] = [];
+  const withoutExt: string[] = [];
 
   for (const candidate of candidates) {
     const pathname = candidate.split('?')[0].toLowerCase();
     if (validExtensions.some((ext) => pathname.endsWith(ext))) {
-      return candidate;
+      withExt.push(candidate);
+    } else {
+      withoutExt.push(candidate);
     }
   }
 
-  return candidates[0] ?? "";
+  return [...withExt, ...withoutExt].map(normalizeImageUrl);
+}
+
+function parseStateZip(segment: string): { region?: string; postal_code?: string } {
+  const tokens = segment.split(/\s+/);
+  const out: { region?: string; postal_code?: string } = {};
+  if (tokens[0]) out.region = tokens[0];
+  if (tokens[1] && /^\d{5}(-\d{4})?$/.test(tokens[1])) out.postal_code = tokens[1];
+  return out;
+}
+
+function formatAddressAsJSON(raw: string): string {
+  if (!raw) return "";
+  const parts = raw.split(",").map((p) => p.trim());
+  const result: Record<string, string> = {};
+
+  if (parts.length >= 3) {
+    result.addr1 = parts.slice(0, parts.length - 2).join(", ");
+    result.city = parts[parts.length - 2];
+    Object.assign(result, parseStateZip(parts[parts.length - 1]));
+  } else if (parts.length === 2) {
+    result.city = parts[0];
+    Object.assign(result, parseStateZip(parts[1]));
+  } else {
+    result.addr1 = raw;
+  }
+
+  result.country = "US";
+
+  // Remove empty keys
+  for (const key of Object.keys(result)) {
+    if (!result[key]) delete result[key];
+  }
+
+  return JSON.stringify(result);
 }
 
 export function mapVehicleToRow(v: VehicleForCSV): Record<string, unknown> {
-  const resolvedAddress = v.address ?? v.dealer?.address ?? "";
+  const imgs = selectBestImages(v.imageUrl, v.images);
+
+  const stateRaw = normalizeStateOfVehicle(v.stateOfVehicle);
+  let stateOfVehicle = "";
+  if (stateRaw === "NEW") stateOfVehicle = "New";
+  else if (stateRaw === "USED") stateOfVehicle = "Used";
+  else if (stateRaw === "CPO") stateOfVehicle = "CPO";
+
   return {
-    id: v.id,
-    title: `${v.make ?? ""} ${v.model ?? ""}`.trim(),
-    description: v.description ?? "",
-    link: v.url || "",
-    image_link: (() => {
-      const img = selectBestImage(v.imageUrl, v.images);
-      if (!img) return "";
-      if (img.startsWith("https://") || img.startsWith("http://")) return img;
-      if (img.startsWith("//")) return `https:${img}`;
-      if (img.startsWith("/")) return `https://www.ciafeed.com${img}`;
-      return `https://www.ciafeed.com/${img}`;
-    })(),
-    availability: "AVAILABLE",
-    condition: (() => {
-      const state = normalizeStateOfVehicle(v.stateOfVehicle);
-      if (state === "NEW") return "EXCELLENT";
-      if (state === "CPO") return "VERY_GOOD";
-      return "GOOD";
-    })(),
-    vehicle_id: v.id,
     vin: (v.vin ?? "").toUpperCase(),
+    state_of_vehicle: stateOfVehicle,
+    year: v.year ?? "",
     make: v.make ?? "",
     model: v.model ?? "",
-    year: v.year ?? "",
-    state_of_vehicle: normalizeStateOfVehicle(v.stateOfVehicle) ?? "",
-    "mileage.value": String(v.mileageValue ?? ""),
-    "mileage.unit": "MI",
-    body_style: normalizeBodyStyle(v.bodyStyle),
-    fuel_type: normalizeFuelType(v.fuelType),
-    transmission: normalizeTransmission(v.transmission),
-    drivetrain: normalizeDrivetrain(v.drivetrain),
     trim: v.trim ?? "",
-    address: resolvedAddress,
-    price: String(v.price ?? ""),
-    msrp: v.msrp != null ? String(v.msrp) : "",
+    drivetrain: normalizeDrivetrain(v.drivetrain),
+    transmission: normalizeTransmission(v.transmission),
+    exterior_color: v.exteriorColor ?? "",
+    price: v.price != null ? `${v.price} USD` : "",
+    msrp: v.msrp != null ? `${v.msrp} USD` : "",
+    "mileage.value": String(v.mileageValue ?? ""),
+    fuel_type: normalizeFuelType(v.fuelType),
+    latitude: String(v.latitude ?? v.dealer?.latitude ?? ""),
+    longitude: String(v.longitude ?? v.dealer?.longitude ?? ""),
+    body_style: normalizeBodyStyle(v.bodyStyle),
+    url: v.url || "",
+    title: `${v.make ?? ""} ${v.model ?? ""}`.trim(),
+    vehicle_id: v.id,
+    "mileage.unit": "MI",
+    address: formatAddressAsJSON(v.address ?? v.dealer?.address ?? ""),
+    "image[0].url": imgs[0] ?? "",
+    "image[1].url": imgs[1] ?? "",
+    fb_page_id: v.dealer?.fbPageId ?? "",
+    description: v.description ?? "",
   };
 }
 

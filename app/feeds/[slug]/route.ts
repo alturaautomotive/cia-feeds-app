@@ -61,6 +61,9 @@ function streamAutomotiveCSV(
               select: {
                 name: true,
                 address: true,
+                fbPageId: true,
+                latitude: true,
+                longitude: true,
               },
             },
           },
@@ -76,11 +79,11 @@ function streamAutomotiveCSV(
             continue;
           }
           const row = mapVehicleToRow(v);
-          if (!row.link) {
+          if (!row.url) {
             skippedCount++;
             continue;
           }
-          if (row.image_link === "") {
+          if (row["image[0].url"] === "") {
             console.log({ event: 'csv_missing_image', vehicleId: v.id });
             skippedCount++;
             continue;
