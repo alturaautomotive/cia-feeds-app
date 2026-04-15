@@ -79,10 +79,11 @@ export function getFieldsForVertical(vertical: string): VerticalFieldDef[] {
 }
 
 /** Required image field key per vertical (automotive handles images separately). */
-export const VERTICAL_REQUIRED_IMAGE: Record<string, string | null> = {
+export const VERTICAL_REQUIRED_IMAGE: Record<Vertical, string | null> = {
   automotive: null,
   services: null,
   realestate: "image_url",
+  ecommerce: "image_url",
 };
 
 export function getRequiredFields(vertical: string): string[] {

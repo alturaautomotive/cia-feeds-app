@@ -31,6 +31,7 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
     automotive: { title: "Add New Vehicle", submit: "Add Vehicle" },
     services: { title: "Add New Service", submit: "Add Service" },
     realestate: { title: "Add New Listing", submit: "Add Listing" },
+    ecommerce: { title: "Add New Product", submit: "Add Product" },
   };
   const actionLabels = VERTICAL_ACTION_LABELS[vertical];
 
