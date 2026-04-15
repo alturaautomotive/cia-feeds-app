@@ -11,6 +11,12 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+enum CtaPreference {
+  sms
+  whatsapp
+  messenger
+}
+
 model Dealer {
   id                   String    @id @default(uuid())
   name                 String
@@ -33,6 +39,7 @@ model Dealer {
   metaFeedId           String?
   address              String?
   phone                String?
+  ctaPreference        CtaPreference?
   latitude             Float?
   longitude            Float?
   vehicles             Vehicle[]

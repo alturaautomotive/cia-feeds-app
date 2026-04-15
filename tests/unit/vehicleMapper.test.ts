@@ -4,6 +4,7 @@ import {
   parsePrice,
   parseMileage,
   normalizeStateOfVehicle,
+  normalizeBodyStyle,
 } from "@/lib/vehicleMapper";
 
 const TEST_DEALER_ID = "test-dealer-id";
@@ -336,6 +337,43 @@ describe("mapFirecrawlToVehicle()", () => {
 
     const r3 = mapFirecrawlToVehicle({}, TEST_DEALER_ID, TEST_URL);
     expect(r3.address).toBeNull();
+  });
+});
+
+describe("normalizeBodyStyle()", () => {
+  it("maps common body styles to uppercase Meta enums", () => {
+    expect(normalizeBodyStyle("sedan")).toBe("SEDAN");
+    expect(normalizeBodyStyle("suv")).toBe("SUV");
+    expect(normalizeBodyStyle("truck")).toBe("TRUCK");
+    expect(normalizeBodyStyle("pickup")).toBe("PICKUP");
+    expect(normalizeBodyStyle("coupe")).toBe("COUPE");
+    expect(normalizeBodyStyle("convertible")).toBe("CONVERTIBLE");
+    expect(normalizeBodyStyle("hatchback")).toBe("HATCHBACK");
+    expect(normalizeBodyStyle("van")).toBe("VAN");
+    expect(normalizeBodyStyle("minivan")).toBe("MINIVAN");
+    expect(normalizeBodyStyle("wagon")).toBe("WAGON");
+  });
+
+  it("maps alias body styles correctly", () => {
+    expect(normalizeBodyStyle("sport utility")).toBe("SUV");
+    expect(normalizeBodyStyle("station wagon")).toBe("WAGON");
+    expect(normalizeBodyStyle("sports car")).toBe("SPORTSCAR");
+    expect(normalizeBodyStyle("grand tourer")).toBe("GRANDTOURER");
+  });
+
+  it("is case-insensitive", () => {
+    expect(normalizeBodyStyle("SEDAN")).toBe("SEDAN");
+    expect(normalizeBodyStyle("Sedan")).toBe("SEDAN");
+  });
+
+  it("returns OTHER for unrecognized non-empty values", () => {
+    expect(normalizeBodyStyle("unknown style")).toBe("OTHER");
+  });
+
+  it("returns empty string for null, undefined, and empty string", () => {
+    expect(normalizeBodyStyle(null)).toBe("");
+    expect(normalizeBodyStyle(undefined)).toBe("");
+    expect(normalizeBodyStyle("")).toBe("");
   });
 });
 

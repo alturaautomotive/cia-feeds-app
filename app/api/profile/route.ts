@@ -23,6 +23,7 @@ const SAFE_SELECT = {
   autoCrawlEnabled: true,
   address: true,
   phone: true,
+  ctaPreference: true,
   latitude: true,
   longitude: true,
 } as const;
