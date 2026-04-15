@@ -76,8 +76,9 @@ function streamAutomotiveCSV(
             continue;
           }
           const row = mapVehicleToRow(v);
-          if (row.link !== v.url) {
-            console.log({ event: 'csv_link_fallback', vehicleId: v.id, originalUrl: v.url });
+          if (!row.link) {
+            skippedCount++;
+            continue;
           }
           if (row.image_link === "") {
             console.log({ event: 'csv_missing_image', vehicleId: v.id });

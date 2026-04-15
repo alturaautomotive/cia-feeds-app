@@ -503,9 +503,10 @@ describe("normalizeDrivetrain()", () => {
     expect(normalizeDrivetrain("fwd")).toBe("FWD");
     expect(normalizeDrivetrain("rwd")).toBe("RWD");
     expect(normalizeDrivetrain("awd")).toBe("AWD");
-    expect(normalizeDrivetrain("4wd")).toBe("4WD");
-    expect(normalizeDrivetrain("4x4")).toBe("4WD");
+    expect(normalizeDrivetrain("4wd")).toBe("4X4");
+    expect(normalizeDrivetrain("4x4")).toBe("4X4");
     expect(normalizeDrivetrain("4x2")).toBe("4X2");
+    expect(normalizeDrivetrain("2wd")).toBe("4X2");
     expect(normalizeDrivetrain("front wheel drive")).toBe("FWD");
   });
 

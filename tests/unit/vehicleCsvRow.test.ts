@@ -90,6 +90,39 @@ describe("mapVehicleToRow() — Meta-spec fields", () => {
     expect(row.image_link).toBe("");
   });
 
+  it("image_link returns CDN URL without file extension when it is the only candidate", () => {
+    const row = mapVehicleToRow({
+      ...baseVehicle,
+      imageUrl: "https://cdn.example.com/vehicle/img?w=800&fmt=jpg",
+      images: [],
+    });
+    expect(row.image_link).toBe("https://cdn.example.com/vehicle/img?w=800&fmt=jpg");
+  });
+
+  it("image_link returns first CDN URL when imageUrl is null and images have no extensions", () => {
+    const row = mapVehicleToRow({
+      ...baseVehicle,
+      imageUrl: null,
+      images: [
+        "https://cdn.example.com/a/img?w=800",
+        "https://cdn.example.com/b/img?w=800",
+      ],
+    });
+    expect(row.image_link).toBe("https://cdn.example.com/a/img?w=800");
+  });
+
+  it("image_link prefers .jpg URL over extension-less CDN URL", () => {
+    const row = mapVehicleToRow({
+      ...baseVehicle,
+      imageUrl: null,
+      images: [
+        "https://cdn.example.com/vehicle/img?w=800",
+        "https://img.com/photo.jpg",
+      ],
+    });
+    expect(row.image_link).toBe("https://img.com/photo.jpg");
+  });
+
   it("availability always equals 'AVAILABLE'", () => {
     const row = mapVehicleToRow(baseVehicle);
     expect(row.availability).toBe("AVAILABLE");
@@ -171,6 +204,11 @@ describe("mapVehicleToRow() — Meta-spec fields", () => {
   it("title equals make + model", () => {
     const row = mapVehicleToRow(baseVehicle);
     expect(row.title).toBe("Toyota Camry");
+  });
+
+  it("link is empty string when url is empty (vehicle will be skipped by route guard)", () => {
+    const row = mapVehicleToRow({ ...baseVehicle, url: "" });
+    expect(row.link).toBe("");
   });
 });
 

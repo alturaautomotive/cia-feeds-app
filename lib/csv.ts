@@ -166,21 +166,18 @@ export type VehicleForCSV = {
   } | null;
 };
 
-function selectBestImage(imageUrl: string | null, images: string[], vehicleId?: string): string {
+function selectBestImage(imageUrl: string | null, images: string[]): string {
   const candidates = [...new Set([imageUrl, ...images].filter((u): u is string => !!u))];
   const validExtensions = ['.jpg', '.jpeg', '.png', '.webp'];
 
   for (const candidate of candidates) {
     const pathname = candidate.split('?')[0].toLowerCase();
     if (validExtensions.some((ext) => pathname.endsWith(ext))) {
-      console.log({ event: 'image_selected', vehicleId, selected: candidate, source: 'extension_match', candidateCount: candidates.length });
       return candidate;
     }
   }
 
-  const fallback = imageUrl ?? images[0] ?? "";
-  console.log({ event: 'image_selected', vehicleId, selected: fallback, source: 'fallback', candidateCount: candidates.length });
-  return fallback;
+  return candidates[0] ?? "";
 }
 
 export function mapVehicleToRow(v: VehicleForCSV): Record<string, unknown> {
@@ -189,11 +186,9 @@ export function mapVehicleToRow(v: VehicleForCSV): Record<string, unknown> {
     id: v.id,
     title: `${v.make ?? ""} ${v.model ?? ""}`.trim(),
     description: v.description ?? "",
-    link: v.url && v.url.startsWith("https://")
-      ? v.url
-      : `https://www.ciafeed.com/vehicles/${v.id}`,
+    link: v.url || "",
     image_link: (() => {
-      const img = selectBestImage(v.imageUrl, v.images, v.id);
+      const img = selectBestImage(v.imageUrl, v.images);
       if (!img) return "";
       if (img.startsWith("https://") || img.startsWith("http://")) return img;
       if (img.startsWith("//")) return `https:${img}`;

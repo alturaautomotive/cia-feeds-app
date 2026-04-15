@@ -512,6 +512,20 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     expect(cols[msrpIdx]).toBe("250000");
   });
 
+  it("vehicle with empty url is excluded from feed (header-only response)", async () => {
+    vi.mocked(prisma.dealer.findUnique).mockResolvedValue(dealer as never);
+    vi.mocked(prisma.vehicle.findMany).mockResolvedValue([
+      makeVehicle({ id: "v-empty-url", url: "", imageUrl: "https://img.test/photo.jpg", images: ["https://img.test/photo.jpg"] }),
+    ] as never);
+
+    const req = new Request("http://localhost:3000/feeds/int-dealer.csv");
+    const res = await GET(req, { params: Promise.resolve({ slug: "int-dealer.csv" }) });
+    const text = await res.text();
+    const lines = text.split("\r\n").filter(Boolean);
+
+    expect(lines.length).toBe(1); // header only — vehicle with empty url is skipped
+  });
+
   it("pagination: >100 vehicles yields all rows", async () => {
     const batch1 = Array.from({ length: 100 }, (_, i) =>
       makeVehicle({ id: `v-batch1-${i}` })
