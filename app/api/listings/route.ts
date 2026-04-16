@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { checkSubscription } from "@/lib/checkSubscription";
 import { getRequiredFields } from "@/lib/verticals";
 import { getEffectiveDealerId } from "@/lib/impersonation";
+import { canonicalizeUrl, isDuplicateCanonicalUrl } from "@/lib/serviceUrlValidator";
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -92,6 +93,23 @@ export async function POST(request: NextRequest) {
   const rawUrl = typeof data.url === "string" ? data.url.trim() : "";
   const url = rawUrl ? (/^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`) : null;
 
+  // Services: require URL, canonicalize, and reject duplicates
+  let canonicalUrl: string | null = null;
+  if (vertical === "services") {
+    if (!url) {
+      return NextResponse.json({ error: "url_required_for_services" }, { status: 400 });
+    }
+    try {
+      canonicalUrl = canonicalizeUrl(url);
+    } catch {
+      return NextResponse.json({ error: "invalid_url" }, { status: 400 });
+    }
+    const isDuplicate = await isDuplicateCanonicalUrl(dealerId, canonicalUrl);
+    if (isDuplicate) {
+      return NextResponse.json({ error: "duplicate_canonical_url" }, { status: 409 });
+    }
+  }
+
   // Validate image requirement for non-automotive verticals
   if (requiredFields.includes("image_url") && imageUrls.length === 0) {
     missingFields.push("image_url");
@@ -115,6 +133,9 @@ export async function POST(request: NextRequest) {
       isComplete: missingFields.length === 0,
       missingFields,
       data: data as Record<string, string>,
+      ...(vertical === "services"
+        ? { publishStatus: "draft", canonicalUrl }
+        : {}),
     },
   });
 

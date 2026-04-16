@@ -6,7 +6,12 @@ import { checkSubscription } from "@/lib/checkSubscription";
 import { rateLimit } from "@/lib/rateLimit";
 import { getEffectiveDealerId } from "@/lib/impersonation";
 import { firecrawlClient } from "@/lib/firecrawl";
-import { ECOMMERCE_EXTRACTION_SCHEMA } from "@/lib/extractionSchema";
+import {
+  ECOMMERCE_EXTRACTION_SCHEMA,
+  SERVICES_EXTRACTION_SCHEMA,
+  SERVICES_EXTRACTION_PROMPT,
+} from "@/lib/extractionSchema";
+import { canonicalizeUrl, isDuplicateCanonicalUrl } from "@/lib/serviceUrlValidator";
 import { getRequiredFields } from "@/lib/verticals";
 import type { Prisma } from "@prisma/client";
 
@@ -56,12 +61,14 @@ export async function POST(request: NextRequest) {
     select: { vertical: true },
   });
 
-  if (!dealer || dealer.vertical !== "ecommerce") {
+  if (!dealer || (dealer.vertical !== "ecommerce" && dealer.vertical !== "services")) {
     return NextResponse.json(
-      { error: "URL scraping is only available for the E-commerce vertical" },
+      { error: "URL scraping is only available for the E-commerce and Services verticals" },
       { status: 400 }
     );
   }
+
+  const vertical = dealer.vertical;
 
   const rl = rateLimit(`scrape-listing:${dealerId}`, 10, 60_000);
   if (!rl.allowed) {
@@ -81,16 +88,33 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "invalid_url" }, { status: 400 });
   }
 
+  // Canonicalize + dedupe for services vertical
+  let canonicalUrl: string | null = null;
+  if (vertical === "services") {
+    try {
+      canonicalUrl = canonicalizeUrl(url);
+    } catch {
+      return NextResponse.json({ error: "invalid_url" }, { status: 400 });
+    }
+    const isDuplicate = await isDuplicateCanonicalUrl(dealerId, canonicalUrl);
+    if (isDuplicate) {
+      return NextResponse.json({ error: "duplicate_canonical_url" }, { status: 409 });
+    }
+  }
+
   // Create a stub listing row with pending status in data
   const listing = await prisma.listing.create({
     data: {
       dealerId,
-      vertical: "ecommerce",
+      vertical,
       title: url,
       url,
       isComplete: false,
       missingFields: [],
       data: { scrapeStatus: "pending", url },
+      ...(vertical === "services"
+        ? { publishStatus: "draft", canonicalUrl }
+        : {}),
     },
   });
 
@@ -103,7 +127,7 @@ export async function POST(request: NextRequest) {
         "Content-Type": "application/json",
         "x-sync-secret": process.env.SYNC_SECRET,
       },
-      body: JSON.stringify({ listingId: listing.id, url, dealerId }),
+      body: JSON.stringify({ listingId: listing.id, url, dealerId, vertical }),
     }).catch((err) => {
       console.error({
         event: "listing_scrape_dispatch_error",
@@ -115,8 +139,10 @@ export async function POST(request: NextRequest) {
   } else {
     console.warn({ event: "sync_secret_missing", hint: "Falling back to inline listing scrape" });
     try {
+      const schema = vertical === "services" ? SERVICES_EXTRACTION_SCHEMA : ECOMMERCE_EXTRACTION_SCHEMA;
+      const prompt = vertical === "services" ? SERVICES_EXTRACTION_PROMPT : EXTRACTION_PROMPT;
       const response = await firecrawlClient.scrape(url, {
-        formats: [{ type: "json", prompt: EXTRACTION_PROMPT, schema: ECOMMERCE_EXTRACTION_SCHEMA }],
+        formats: [{ type: "json", prompt, schema }],
       });
 
       const extractionPayload = (response as { json?: unknown })?.json;
@@ -128,17 +154,36 @@ export async function POST(request: NextRequest) {
         ? rawData.title
         : url;
 
+      let price: number | null = null;
       const priceRaw = rawData.price;
-      const price = priceRaw != null
-        ? parseFloat(String(priceRaw).replace(/[^0-9.]/g, ""))
-        : null;
+      if (priceRaw != null) {
+        if (vertical === "services") {
+          const numericOnly = String(priceRaw).trim().replace(/^\$/, "").replace(/,/g, "");
+          if (/^\d+(\.\d+)?$/.test(numericOnly)) {
+            price = parseFloat(numericOnly);
+          }
+        } else {
+          const parsed = parseFloat(String(priceRaw).replace(/[^0-9.]/g, ""));
+          price = Number.isFinite(parsed) ? parsed : null;
+        }
+      }
 
       const imageUrls: string[] = [];
-      if (typeof rawData.image_url === "string" && rawData.image_url) {
-        imageUrls.push(rawData.image_url);
-      }
-      if (typeof rawData.image_url_2 === "string" && rawData.image_url_2) {
-        imageUrls.push(rawData.image_url_2);
+      if (vertical === "services") {
+        if (Array.isArray(rawData.images)) {
+          for (const img of rawData.images) {
+            if (typeof img === "string" && img.trim().length > 0) {
+              imageUrls.push(img);
+            }
+          }
+        }
+      } else {
+        if (typeof rawData.image_url === "string" && rawData.image_url) {
+          imageUrls.push(rawData.image_url);
+        }
+        if (typeof rawData.image_url_2 === "string" && rawData.image_url_2) {
+          imageUrls.push(rawData.image_url_2);
+        }
       }
 
       const data: Record<string, unknown> = {
@@ -147,11 +192,18 @@ export async function POST(request: NextRequest) {
         url,
       };
 
-      const requiredFields = getRequiredFields("ecommerce");
+      const requiredFields = getRequiredFields(vertical);
       const missingFields = requiredFields.filter((f) => {
+        if (f === "image_url") return false;
+        if (f === "title" || f === "name") {
+          return !title || title.trim() === "";
+        }
         const val = data[f];
         return val === undefined || val === null || val === "";
       });
+      if (requiredFields.includes("image_url") && imageUrls.length === 0) {
+        missingFields.push("image_url");
+      }
 
       await prisma.listing.update({
         where: { id: listing.id },
@@ -163,6 +215,9 @@ export async function POST(request: NextRequest) {
           isComplete: missingFields.length === 0,
           missingFields,
           data: data as Prisma.InputJsonValue,
+          ...(vertical === "services"
+            ? { publishStatus: "draft", canonicalUrl }
+            : {}),
         },
       });
     } catch (err) {

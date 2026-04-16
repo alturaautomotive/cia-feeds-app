@@ -4,7 +4,12 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { firecrawlClient } from "@/lib/firecrawl";
-import { ECOMMERCE_EXTRACTION_SCHEMA } from "@/lib/extractionSchema";
+import {
+  ECOMMERCE_EXTRACTION_SCHEMA,
+  SERVICES_EXTRACTION_SCHEMA,
+  SERVICES_EXTRACTION_PROMPT,
+} from "@/lib/extractionSchema";
+import { canonicalizeUrl } from "@/lib/serviceUrlValidator";
 import { getRequiredFields } from "@/lib/verticals";
 import type { Prisma } from "@prisma/client";
 
@@ -37,7 +42,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
 
-  const { listingId, url, dealerId } = body as Record<string, unknown>;
+  const { listingId, url, dealerId, vertical: verticalRaw } = body as Record<string, unknown>;
 
   if (
     !listingId || typeof listingId !== "string" ||
@@ -47,9 +52,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "missing_fields" }, { status: 400 });
   }
 
+  const vertical = typeof verticalRaw === "string" && verticalRaw.length > 0
+    ? verticalRaw
+    : "ecommerce";
+
   try {
+    const schema = vertical === "services" ? SERVICES_EXTRACTION_SCHEMA : ECOMMERCE_EXTRACTION_SCHEMA;
+    const prompt = vertical === "services" ? SERVICES_EXTRACTION_PROMPT : EXTRACTION_PROMPT;
     const response = await firecrawlClient.scrape(url, {
-      formats: [{ type: "json", prompt: EXTRACTION_PROMPT, schema: ECOMMERCE_EXTRACTION_SCHEMA }],
+      formats: [{ type: "json", prompt, schema }],
     });
 
     const extractionPayload = (response as { json?: unknown })?.json;
@@ -61,17 +72,36 @@ export async function POST(request: NextRequest) {
       ? rawData.title
       : url;
 
+    let price: number | null = null;
     const priceRaw = rawData.price;
-    const price = priceRaw != null
-      ? parseFloat(String(priceRaw).replace(/[^0-9.]/g, ""))
-      : null;
+    if (priceRaw != null) {
+      if (vertical === "services") {
+        const numericOnly = String(priceRaw).trim().replace(/^\$/, "").replace(/,/g, "");
+        if (/^\d+(\.\d+)?$/.test(numericOnly)) {
+          price = parseFloat(numericOnly);
+        }
+      } else {
+        const parsed = parseFloat(String(priceRaw).replace(/[^0-9.]/g, ""));
+        price = Number.isFinite(parsed) ? parsed : null;
+      }
+    }
 
     const imageUrls: string[] = [];
-    if (typeof rawData.image_url === "string" && rawData.image_url) {
-      imageUrls.push(rawData.image_url);
-    }
-    if (typeof rawData.image_url_2 === "string" && rawData.image_url_2) {
-      imageUrls.push(rawData.image_url_2);
+    if (vertical === "services") {
+      if (Array.isArray(rawData.images)) {
+        for (const img of rawData.images) {
+          if (typeof img === "string" && img.trim().length > 0) {
+            imageUrls.push(img);
+          }
+        }
+      }
+    } else {
+      if (typeof rawData.image_url === "string" && rawData.image_url) {
+        imageUrls.push(rawData.image_url);
+      }
+      if (typeof rawData.image_url_2 === "string" && rawData.image_url_2) {
+        imageUrls.push(rawData.image_url_2);
+      }
     }
 
     // Build data payload for CSV generation
@@ -81,11 +111,27 @@ export async function POST(request: NextRequest) {
       url,
     };
 
-    const requiredFields = getRequiredFields("ecommerce");
+    const requiredFields = getRequiredFields(vertical);
     const missingFields = requiredFields.filter((f) => {
+      if (f === "image_url") return false;
+      if (f === "title" || f === "name") {
+        return !title || title.trim() === "";
+      }
       const val = data[f];
       return val === undefined || val === null || val === "";
     });
+    if (requiredFields.includes("image_url") && imageUrls.length === 0) {
+      missingFields.push("image_url");
+    }
+
+    let canonicalUrl: string | null = null;
+    if (vertical === "services") {
+      try {
+        canonicalUrl = canonicalizeUrl(url);
+      } catch {
+        canonicalUrl = null;
+      }
+    }
 
     await prisma.listing.update({
       where: { id: listingId },
@@ -97,6 +143,9 @@ export async function POST(request: NextRequest) {
         isComplete: missingFields.length === 0,
         missingFields,
         data: data as Prisma.InputJsonValue,
+        ...(vertical === "services"
+          ? { publishStatus: "draft", canonicalUrl }
+          : {}),
       },
     });
 

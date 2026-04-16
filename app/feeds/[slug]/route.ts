@@ -139,7 +139,12 @@ function streamListingsCSV(
 
       while (true) {
         const batch = await prisma.listing.findMany({
-          where: { dealerId, vertical, archivedAt: null },
+          where: {
+            dealerId,
+            vertical,
+            archivedAt: null,
+            ...(vertical === "services" ? { publishStatus: "published" } : {}),
+          },
           orderBy: { createdAt: "asc" },
           take: BATCH_SIZE,
           ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
