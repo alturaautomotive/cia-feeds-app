@@ -35,3 +35,30 @@ export const ECOMMERCE_EXTRACTION_SCHEMA = z.object({
   image_url_2: z.string().nullable().optional(),
   google_product_category: z.string().nullable().optional(),
 });
+
+export const SERVICES_EXTRACTION_SCHEMA = z.object({
+  title: z.string().nullable().optional(),
+  description: z.string().nullable().optional(),
+  price: z.union([z.string(), z.number()]).nullable().optional(),
+  images: z.array(z.string()).nullable().optional(),
+  booking_url: z.string().nullable().optional(),
+  cta_text: z.string().nullable().optional(),
+  brand: z.string().nullable().optional(),
+  category: z.string().nullable().optional(),
+  address: z.string().nullable().optional(),
+});
+
+export const SERVICES_EXTRACTION_PROMPT = `
+Extract the following service information from this page:
+- title: the service name
+- description: a brief description of the service
+- price: the listed price or price range as a string (e.g., "$49" or "$49 - $99")
+- images: an array of all image URLs on the page
+- booking_url: the link to book, schedule, or reserve the service
+- cta_text: the text of the main call-to-action button (e.g., "Book Now", "Schedule Appointment")
+- brand: the business or brand name
+- category: the type or category of service
+- address: the location or service area
+
+Return null for any field you cannot find.
+`;

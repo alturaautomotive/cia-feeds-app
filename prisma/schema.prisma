@@ -87,23 +87,27 @@ model Vehicle {
 }
 
 model Listing {
-  id            String    @id @default(uuid())
-  dealerId      String
-  dealer        Dealer    @relation(fields: [dealerId], references: [id])
-  vertical      String
-  title         String
-  price         Float?
-  imageUrls     String[]  @default([])
-  url           String?
-  isComplete    Boolean   @default(false)
-  missingFields String[]
-  archivedAt    DateTime?
-  data          Json
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id                  String    @id @default(uuid())
+  dealerId            String
+  dealer              Dealer    @relation(fields: [dealerId], references: [id])
+  vertical            String
+  title               String
+  price               Float?
+  imageUrls           String[]  @default([])
+  url                 String?
+  publishStatus       String    @default("draft")
+  urlValidationScore  Float?
+  canonicalUrl        String?
+  isComplete          Boolean   @default(false)
+  missingFields       String[]
+  archivedAt          DateTime?
+  data                Json
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   @@index([dealerId, vertical])
   @@index([dealerId, archivedAt])
+  @@unique([dealerId, canonicalUrl])
 }
 
 model CrawlJob {
