@@ -28,10 +28,17 @@ function labelFor(fieldKey: string): string {
 }
 
 const FIELD_SOURCE_COLORS: Record<string, string> = {
-  scraped: "bg-blue-50 text-blue-700",
-  user_entered: "bg-green-50 text-green-700",
-  fallback: "bg-amber-50 text-amber-700",
-  missing: "bg-red-50 text-red-700",
+  scraped: "bg-green-50 text-green-700",
+  user_entered: "bg-blue-50 text-blue-700",
+  fallback: "bg-gray-100 text-gray-600",
+  fallback_low_confidence: "bg-amber-50 text-amber-700",
+};
+
+const FIELD_SOURCE_LABELS: Record<string, string> = {
+  scraped: "Scraped",
+  user_entered: "Entered",
+  fallback: "Auto-filled",
+  fallback_low_confidence: "Auto-filled ⚠️",
 };
 
 interface ListingRow {
@@ -114,6 +121,19 @@ export function ListingsTable({ listings, vertical, onDelete }: Props) {
   async function handlePublish(id: string) {
     setPublishingId(id);
     setActionError(null);
+
+    const target = listings.find((l) => l.id === id);
+    if (target?.data?.isHighQuality === false) {
+      if (
+        !confirm(
+          "Some fields (description, price, or image) are auto-filled with placeholder values.\nYour listing will be published but these fields should be updated for best results.\n\nPublish anyway?"
+        )
+      ) {
+        setPublishingId(null);
+        return;
+      }
+    }
+
     try {
       const res = await fetch(`/api/listings/${id}`, {
         method: "PATCH",
@@ -252,6 +272,11 @@ export function ListingsTable({ listings, vertical, onDelete }: Props) {
                             ))}
                           </ul>
                         )}
+                        {listing.data?.isHighQuality === false && (
+                          <p className="text-xs text-amber-600 mt-1">
+                            ⚠️ Some fields are auto-filled and should be reviewed before publishing.
+                          </p>
+                        )}
                         {hasFieldSources && (
                           <>
                             <button
@@ -274,7 +299,7 @@ export function ListingsTable({ listings, vertical, onDelete }: Props) {
                                         "bg-gray-50 text-gray-700"
                                       }`}
                                     >
-                                      {labelFor(field)}: {source}
+                                      {labelFor(field)}: {FIELD_SOURCE_LABELS[source] ?? source}
                                     </span>
                                   )
                                 )}
@@ -362,21 +387,25 @@ export function ListingsTable({ listings, vertical, onDelete }: Props) {
                           onClick={() => handlePublish(listing.id)}
                           disabled={
                             listing.publishStatus !== "ready_to_publish" ||
-                            !listing.isComplete ||
                             publishingId === listing.id
                           }
                           title={
                             listing.publishStatus !== "ready_to_publish"
-                              ? "Validate your URL and fill all required fields to publish"
-                              : !listing.isComplete
-                                ? "Complete all required fields to publish"
-                                : undefined
+                              ? "Validate the URL first to enable publishing"
+                              : undefined
                           }
                           className="text-xs text-green-600 hover:text-green-800 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {publishingId === listing.id
                             ? "Publishing\u2026"
-                            : "Publish"}
+                            : (
+                              <>
+                                {listing.data?.isHighQuality === false && listing.publishStatus === "ready_to_publish" && (
+                                  <span className="text-amber-500 mr-0.5">⚠</span>
+                                )}
+                                Publish
+                              </>
+                            )}
                         </button>
                       )}
                       {listing.url && (

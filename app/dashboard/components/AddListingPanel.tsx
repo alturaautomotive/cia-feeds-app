@@ -275,6 +275,23 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
         }
       }
 
+      // Track user-edited fields in fieldSources
+      const existingFieldSources =
+        (scrapedListing.data.fieldSources as Record<string, string> | undefined) ?? {};
+      const updatedFieldSources = { ...existingFieldSources };
+      for (const field of fields) {
+        const editValue = editData[field.key];
+        if (editValue === undefined) continue;
+        const originalValue =
+          scrapedListing.data[field.key] != null
+            ? String(scrapedListing.data[field.key])
+            : "";
+        if (editValue !== originalValue && editValue.trim() !== "") {
+          updatedFieldSources[field.key] = "user_entered";
+        }
+      }
+      dataPayload.fieldSources = updatedFieldSources;
+
       const body: Record<string, unknown> = { data: dataPayload };
       if (nextTitle !== undefined) body.title = nextTitle;
       if (nextPrice !== undefined) body.price = nextPrice;
@@ -580,12 +597,30 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
                     field.type === "textarea" ||
                     field.key === "name" ||
                     field.key === "title";
-                  const isMissing = scrapedListing.missingFields.includes(
-                    field.key
-                  );
+                  const isMissing =
+                    scrapedListing.missingFields.includes(field.key) &&
+                    !editData[field.key]?.trim();
+                  const fieldSources = scrapedListing.data.fieldSources as
+                    | Record<string, string>
+                    | undefined;
+                  const source = fieldSources?.[field.key];
                   const borderClass = isMissing
                     ? "border-red-400"
-                    : "border-gray-400 bg-white";
+                    : source === "fallback_low_confidence"
+                      ? "border-amber-400 bg-amber-50/30"
+                      : source === "fallback"
+                        ? "border-gray-300 bg-gray-50/30"
+                        : source === "scraped"
+                          ? "border-green-400 bg-green-50/30"
+                          : "border-gray-400 bg-white";
+                  const sourceHint =
+                    source === "fallback_low_confidence"
+                      ? { className: "text-[10px] text-amber-600 mt-0.5", text: "Auto-filled — please review" }
+                      : source === "fallback"
+                        ? { className: "text-[10px] text-gray-500 mt-0.5", text: "Auto-filled from profile" }
+                        : source === "scraped"
+                          ? { className: "text-[10px] text-green-600 mt-0.5", text: "Scraped from page" }
+                          : null;
                   return (
                     <div
                       key={field.key}
@@ -634,6 +669,9 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
                           placeholder={field.placeholder}
                           className={`w-full border rounded-md px-2.5 py-1.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 ${borderClass}`}
                         />
+                      )}
+                      {sourceHint && (
+                        <p className={sourceHint.className}>{sourceHint.text}</p>
                       )}
                     </div>
                   );
