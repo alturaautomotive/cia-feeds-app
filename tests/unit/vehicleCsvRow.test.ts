@@ -144,9 +144,9 @@ describe("mapVehicleToRow() — Meta-spec fields", () => {
     expect(row["image[0].url"]).toBe("https://img.com/photo.jpg");
   });
 
-  it("state_of_vehicle outputs title-case: New, Used, CPO", () => {
-    expect(mapVehicleToRow({ ...baseVehicle, stateOfVehicle: "New" }).state_of_vehicle).toBe("New");
-    expect(mapVehicleToRow({ ...baseVehicle, stateOfVehicle: "Used" }).state_of_vehicle).toBe("Used");
+  it("state_of_vehicle outputs uppercase enums: NEW, USED, CPO", () => {
+    expect(mapVehicleToRow({ ...baseVehicle, stateOfVehicle: "New" }).state_of_vehicle).toBe("NEW");
+    expect(mapVehicleToRow({ ...baseVehicle, stateOfVehicle: "Used" }).state_of_vehicle).toBe("USED");
     expect(mapVehicleToRow({ ...baseVehicle, stateOfVehicle: "Certified Used" }).state_of_vehicle).toBe("CPO");
     expect(mapVehicleToRow({ ...baseVehicle, stateOfVehicle: null }).state_of_vehicle).toBe("");
   });

@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { scrapeVehicleUrl } from "@/lib/scrape";
 
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL ?? "").toLowerCase();
+
 const RESCRAPE_BATCH_SIZE = 5;
 const RESCRAPE_BATCH_DELAY_MS = 500;
 
@@ -20,14 +21,11 @@ async function rescrapeInBackground(
 ): Promise<void> {
   for (let i = 0; i < vehicles.length; i += RESCRAPE_BATCH_SIZE) {
     const batch = vehicles.slice(i, i + RESCRAPE_BATCH_SIZE);
-
     await Promise.all(
       batch.map(async (vehicle) => {
         try {
-          const { vehicle: scraped, fieldsExtracted } = await scrapeVehicleUrl(
-            vehicle.url,
-            vehicle.dealerId
-          );
+          const scrapeResult = await scrapeVehicleUrl(vehicle.url, vehicle.dealerId);
+          const { vehicle: scraped } = scrapeResult;
 
           await prisma.vehicle.update({
             where: { id: vehicle.id },
@@ -55,31 +53,22 @@ async function rescrapeInBackground(
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           console.error({
-            event: "rescrape_error",
+            event: "feed_rescrape_error",
             vehicleId: vehicle.id,
             url: vehicle.url,
             message,
           });
-
           try {
             await prisma.vehicle.update({
               where: { id: vehicle.id },
               data: { scrapeStatus: "failed" },
             });
-          } catch (fallbackErr) {
-            console.error({
-              event: "rescrape_fallback_status_error",
-              vehicleId: vehicle.id,
-              message:
-                fallbackErr instanceof Error
-                  ? fallbackErr.message
-                  : String(fallbackErr),
-            });
+          } catch {
+            // best-effort status update
           }
         }
       })
     );
-
     if (i + RESCRAPE_BATCH_SIZE < vehicles.length) {
       await sleep(RESCRAPE_BATCH_DELAY_MS);
     }
@@ -88,24 +77,18 @@ async function rescrapeInBackground(
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (
-    !session?.user?.email ||
-    session.user.email.toLowerCase() !== ADMIN_EMAIL
-  ) {
+  if (!session?.user?.email || session.user.email.toLowerCase() !== ADMIN_EMAIL) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
-  let body: { dealerId?: string; vertical?: string };
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
-  }
+  const { dealerId, vertical } = (await request.json()) as {
+    dealerId?: string;
+    vertical?: string;
+  };
+  const effectiveVertical = vertical ?? "automotive";
 
-  const { dealerId, vertical } = body;
-  const resolvedVertical = vertical ?? "automotive";
+  let dealerIds: string[];
 
-  let dealers: { id: string }[];
   if (dealerId) {
     const dealer = await prisma.dealer.findUnique({
       where: { id: dealerId },
@@ -114,42 +97,31 @@ export async function POST(request: NextRequest) {
     if (!dealer) {
       return NextResponse.json({ error: "dealer not found" }, { status: 404 });
     }
-    dealers = [dealer];
+    dealerIds = [dealerId];
   } else {
-    dealers = await prisma.dealer.findMany({
-      where: { vertical: resolvedVertical, active: true },
+    const dealers = await prisma.dealer.findMany({
+      where: { vertical: effectiveVertical, active: true },
       select: { id: true },
     });
+    dealerIds = dealers.map((d) => d.id);
   }
 
-  const dealerIds = dealers.map((d) => d.id);
-
   const vehicles = await prisma.vehicle.findMany({
-    where: {
-      dealerId: { in: dealerIds },
-      archivedAt: null,
-    },
+    where: { dealerId: { in: dealerIds }, archivedAt: null },
     select: { id: true, url: true, dealerId: true },
   });
 
-  if (vehicles.length === 0) {
-    return NextResponse.json(
-      { dealerCount: dealers.length, vehicleCount: 0, status: "no_vehicles" },
-      { status: 200 }
-    );
+  if (vehicles.length > 0) {
+    await prisma.vehicle.updateMany({
+      where: { id: { in: vehicles.map((v) => v.id) } },
+      data: { scrapeStatus: "pending" },
+    });
+
+    after(() => rescrapeInBackground(vehicles));
   }
 
-  await prisma.vehicle.updateMany({
-    where: {
-      id: { in: vehicles.map((v) => v.id) },
-    },
-    data: { scrapeStatus: "pending" },
-  });
-
-  after(() => rescrapeInBackground(vehicles));
-
   return NextResponse.json({
-    dealerCount: dealers.length,
+    dealerCount: dealerIds.length,
     vehicleCount: vehicles.length,
     status: "rescraping",
   });
@@ -157,10 +129,7 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (
-    !session?.user?.email ||
-    session.user.email.toLowerCase() !== ADMIN_EMAIL
-  ) {
+  if (!session?.user?.email || session.user.email.toLowerCase() !== ADMIN_EMAIL) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
@@ -168,8 +137,9 @@ export async function GET(request: NextRequest) {
 
   const pendingCount = await prisma.vehicle.count({
     where: {
-      ...(dealerId ? { dealerId } : {}),
       scrapeStatus: "pending",
+      archivedAt: null,
+      ...(dealerId ? { dealerId } : {}),
     },
   });
 

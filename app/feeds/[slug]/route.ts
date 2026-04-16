@@ -79,21 +79,23 @@ function streamAutomotiveCSV(
         for (const v of batch) {
           const hasImage = !!(v.imageUrl || (v.images && (v.images as string[]).length > 0));
           if (!hasImage) {
+            console.log({ event: 'csv_missing_image', vehicleId: v.id, rawAddress: v.address, dealerAddress: v.dealer?.address, imageUrl: v.imageUrl, images: v.images });
             skippedCount++;
             continue;
           }
           const row = mapVehicleToRow(v);
           if (!row.url) {
+            console.log({ event: 'csv_missing_url', vehicleId: v.id, rawAddress: v.address, dealerAddress: v.dealer?.address, street_address: row.street_address, city: row.city, region: row.region, url: row.url, "image[0].url": row["image[0].url"], state_of_vehicle: row.state_of_vehicle, body_style: row.body_style });
             skippedCount++;
             continue;
           }
           if (row["image[0].url"] === "") {
-            console.log({ event: 'csv_missing_image', vehicleId: v.id });
+            console.log({ event: 'csv_image_filtered_out', vehicleId: v.id, rawAddress: v.address, dealerAddress: v.dealer?.address, street_address: row.street_address, city: row.city, region: row.region, url: row.url, "image[0].url": row["image[0].url"], state_of_vehicle: row.state_of_vehicle, body_style: row.body_style });
             skippedCount++;
             continue;
           }
           if (row.street_address === "" && row.city === "" && row.region === "") {
-            console.log({ event: 'csv_missing_address', vehicleId: v.id });
+            console.log({ event: 'csv_missing_address', vehicleId: v.id, rawAddress: v.address, dealerAddress: v.dealer?.address, street_address: row.street_address, city: row.city, region: row.region, url: row.url, "image[0].url": row["image[0].url"], state_of_vehicle: row.state_of_vehicle, body_style: row.body_style });
             skippedCount++;
             continue;
           }

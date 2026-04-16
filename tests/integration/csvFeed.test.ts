@@ -318,13 +318,13 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     // Row 1: New Honda
     const cols1 = lines[1].split(",");
     expect(cols1[urlIdx]).toBe("https://dealer.com/civic");
-    expect(cols1[stateIdx]).toBe("New");
+    expect(cols1[stateIdx]).toBe("NEW");
     expect(cols1[makeIdx]).toBe("Honda");
 
     // Row 2: Used Ford
     const cols2 = lines[2].split(",");
     expect(cols2[urlIdx]).toBe("https://dealer.com/f150");
-    expect(cols2[stateIdx]).toBe("Used");
+    expect(cols2[stateIdx]).toBe("USED");
     expect(cols2[makeIdx]).toBe("Ford");
 
     // Row 3: Certified Used BMW → state_of_vehicle = "CPO"

@@ -237,10 +237,7 @@ export function mapVehicleToRow(v: VehicleForCSV): Record<string, unknown> {
   const imgs = selectBestImages(v.imageUrl, v.images);
 
   const stateRaw = normalizeStateOfVehicle(v.stateOfVehicle);
-  let stateOfVehicle = "";
-  if (stateRaw === "NEW") stateOfVehicle = "New";
-  else if (stateRaw === "USED") stateOfVehicle = "Used";
-  else if (stateRaw === "CPO") stateOfVehicle = "CPO";
+  const stateOfVehicle = stateRaw ?? "";
 
   return {
     vin: (v.vin ?? "").toUpperCase(),
