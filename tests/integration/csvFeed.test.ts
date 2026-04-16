@@ -14,6 +14,38 @@ import { VEHICLE_CSV_HEADERS } from "@/lib/csv";
 // @ts-ignore — dynamic route path contains brackets; resolved correctly at runtime
 import { GET } from "@/app/feeds/[slug]/route";
 
+/**
+ * RFC 4180-aware CSV row splitter. Handles fields wrapped in double-quotes
+ * that may themselves contain commas (e.g. the address JSON column).
+ */
+function parseCsvRow(line: string): string[] {
+  const fields: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (inQuotes) {
+      if (c === '"' && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else if (c === '"') {
+        inQuotes = false;
+      } else {
+        current += c;
+      }
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === ",") {
+      fields.push(current);
+      current = "";
+    } else {
+      current += c;
+    }
+  }
+  fields.push(current);
+  return fields;
+}
+
 const dealer = {
   id: "dealer-int-uuid",
   name: "Integration Dealer",
@@ -279,7 +311,7 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
 
     expect(lines2[1]).toContain("https://cdn.com/fallback.jpg");
 
-    // Sub-case C — vehicle with no images is filtered from the feed
+    // Sub-case C — vehicle with no images but valid url is still emitted (image column empty)
     vi.mocked(prisma.dealer.findUnique).mockResolvedValue(dealer as never);
     vi.mocked(prisma.vehicle.findMany).mockResolvedValue([
       makeVehicle({
@@ -294,7 +326,12 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     const text3 = await res3.text();
     const lines3 = text3.split("\r\n").filter(Boolean);
 
-    expect(lines3.length).toBe(1); // header only, no data row
+    // hasUrl=true, hasImage=false → row is no longer skipped; image column is empty
+    expect(lines3.length).toBe(2); // header + 1 data row
+    const headers3 = parseCsvRow(lines3[0]);
+    const imageIdx = headers3.indexOf("image[0].url");
+    const cols3 = parseCsvRow(lines3[1]);
+    expect(cols3[imageIdx]).toBe("");
   });
 
   it("automotive feed populates url, make, and state_of_vehicle columns", async () => {
@@ -332,9 +369,9 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     expect(cols3[stateIdx]).toBe("CPO");
     expect(cols3[makeIdx]).toBe("BMW");
 
-    // Row 4: null stateOfVehicle → state_of_vehicle = ""
+    // Row 4: null stateOfVehicle → state_of_vehicle = "USED" (fallback)
     const cols4 = lines[4].split(",");
-    expect(cols4[stateIdx]).toBe("");
+    expect(cols4[stateIdx]).toBe("USED");
     expect(cols4[makeIdx]).toBe("Tesla");
   });
 
@@ -375,12 +412,18 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     expect(cols1[postalIdx]).toBe("62701");
     expect(cols1[countryIdx]).toBe("US");
 
-    // v-geo-2 has null address → filtered out by csv_missing_address guard
-    expect(lines.length).toBe(2); // header + v-geo-1 only
+    // v-geo-2 has null address and no dealer address → row is still emitted with empty address columns except country
+    expect(lines.length).toBe(3); // header + v-geo-1 + v-geo-2
+    const cols2 = lines[2].split(",");
+    expect(cols2[streetIdx]).toBe("");
+    expect(cols2[cityIdx]).toBe("");
+    expect(cols2[regionIdx]).toBe("");
+    expect(cols2[postalIdx]).toBe("");
+    expect(cols2[countryIdx]).toBe("US");
   });
 
-  it("vehicle with null address and no dealer address is excluded by csv_missing_address guard", async () => {
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+  it("vehicle with null address and no dealer address is emitted with empty address cells and warning", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.mocked(prisma.dealer.findUnique).mockResolvedValue(dealer as never);
     vi.mocked(prisma.vehicle.findMany).mockResolvedValue([
       makeVehicle({
@@ -397,15 +440,25 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     const text = await res.text();
     const lines = text.split("\r\n").filter(Boolean);
 
-    // Only the header row — vehicle with no address is skipped
-    expect(lines.length).toBe(1);
+    // Row is emitted (header + 1 data row) — the no-address case is no longer skipped
+    expect(lines.length).toBe(2);
 
-    // Verify the csv_missing_address log event was emitted
-    expect(logSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ event: "csv_missing_address", vehicleId: "v-no-addr" })
+    // Address columns are empty (except country which is hardcoded "US")
+    const headers = lines[0].split(",");
+    const streetIdx = headers.indexOf("street_address");
+    const cityIdx = headers.indexOf("city");
+    const regionIdx = headers.indexOf("region");
+    const cols = lines[1].split(",");
+    expect(cols[streetIdx]).toBe("");
+    expect(cols[cityIdx]).toBe("");
+    expect(cols[regionIdx]).toBe("");
+
+    // Verify the csv_empty_cells_warning event was emitted (route uses console.warn)
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "csv_empty_cells_warning", vehicleId: "v-no-addr" })
     );
 
-    logSpy.mockRestore();
+    warnSpy.mockRestore();
   });
 
   it("automotive feed normalizes compound body_style values", async () => {
@@ -563,7 +616,7 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     expect(cols[msrpIdx]).toBe("250000 USD");
   });
 
-  it("vehicle with empty url is excluded from feed (header-only response)", async () => {
+  it("vehicle with empty url but valid image is still emitted", async () => {
     vi.mocked(prisma.dealer.findUnique).mockResolvedValue(dealer as never);
     vi.mocked(prisma.vehicle.findMany).mockResolvedValue([
       makeVehicle({ id: "v-empty-url", url: "", imageUrl: "https://img.test/photo.jpg", images: ["https://img.test/photo.jpg"] }),
@@ -574,7 +627,13 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     const text = await res.text();
     const lines = text.split("\r\n").filter(Boolean);
 
-    expect(lines.length).toBe(1); // header only — vehicle with empty url is skipped
+    // hasUrl=false, hasImage=true → row is NOT skipped
+    expect(lines.length).toBe(2); // header + 1 data row
+
+    const headers = lines[0].split(",");
+    const urlIdx = headers.indexOf("url");
+    const cols = lines[1].split(",");
+    expect(cols[urlIdx]).toBe("");
   });
 
   it("returns 422 when dealer has no address (null)", async () => {
@@ -642,5 +701,52 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
 
     expect(lines.length).toBe(151); // 1 header + 150 data rows
     expect(lines.some((l) => l.includes("Batch2Make"))).toBe(true);
+  });
+
+  it("vehicle missing all optional fields has no empty cells in exported CSV", async () => {
+    vi.mocked(prisma.dealer.findUnique).mockResolvedValue(dealer as never);
+    vi.mocked(prisma.vehicle.findMany).mockResolvedValue([
+      makeVehicle({
+        id: "v-all-defaults",
+        vin: "TESTVIN123",
+        url: "https://dealer.com/test",
+        imageUrl: "https://img.test/photo.jpg",
+        images: ["https://img.test/photo.jpg"],
+        trim: null,
+        drivetrain: null,
+        transmission: null,
+        fuelType: null,
+        bodyStyle: null,
+        msrp: null,
+        exteriorColor: null,
+        mileageValue: null,
+        description: null,
+        latitude: null,
+        longitude: null,
+        address: null,
+        dealer: {
+          name: dealer.name,
+          address: "100 Test Blvd, Test City, TX 75001",
+          fbPageId: "fb-page-123",
+          latitude: 34.0522,
+          longitude: -118.2437,
+        },
+      }),
+    ] as never);
+
+    const req = new Request("http://localhost:3000/feeds/int-dealer.csv");
+    const res = await GET(req, { params: Promise.resolve({ slug: "int-dealer.csv" }) });
+    const text = await res.text();
+    const lines = text.split("\r\n").filter(Boolean);
+
+    expect(lines.length).toBe(2); // header + 1 data row
+
+    // Naive comma-split: some cells (address JSON, description with comma) may
+    // fragment into multiple chunks, but every chunk within the header-length
+    // window must be non-empty to prove zero blank cells were emitted.
+    const cols = lines[1].split(",");
+    for (let i = 0; i < VEHICLE_CSV_HEADERS.length; i++) {
+      expect(cols[i], `column index ${i} (${VEHICLE_CSV_HEADERS[i]}) should be non-empty`).not.toBe("");
+    }
   });
 });

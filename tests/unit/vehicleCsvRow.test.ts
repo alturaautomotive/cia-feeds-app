@@ -144,11 +144,11 @@ describe("mapVehicleToRow() — Meta-spec fields", () => {
     expect(row["image[0].url"]).toBe("https://img.com/photo.jpg");
   });
 
-  it("state_of_vehicle outputs uppercase enums: NEW, USED, CPO", () => {
+  it("state_of_vehicle outputs uppercase enums: NEW, USED, CPO; null falls back to USED", () => {
     expect(mapVehicleToRow({ ...baseVehicle, stateOfVehicle: "New" }).state_of_vehicle).toBe("NEW");
     expect(mapVehicleToRow({ ...baseVehicle, stateOfVehicle: "Used" }).state_of_vehicle).toBe("USED");
     expect(mapVehicleToRow({ ...baseVehicle, stateOfVehicle: "Certified Used" }).state_of_vehicle).toBe("CPO");
-    expect(mapVehicleToRow({ ...baseVehicle, stateOfVehicle: null }).state_of_vehicle).toBe("");
+    expect(mapVehicleToRow({ ...baseVehicle, stateOfVehicle: null }).state_of_vehicle).toBe("USED");
   });
 
   it("body_style normalizes known values and falls back to OTHER", () => {
@@ -181,7 +181,7 @@ describe("mapVehicleToRow() — Meta-spec fields", () => {
     expect(line).toContain("SE");
   });
 
-  it("fuel_type, transmission, drivetrain, trim default to empty string when null", () => {
+  it("fuel_type, transmission, drivetrain, trim use inference fallbacks when null", () => {
     const row = mapVehicleToRow({
       ...baseVehicle,
       fuelType: null,
@@ -189,10 +189,13 @@ describe("mapVehicleToRow() — Meta-spec fields", () => {
       drivetrain: null,
       trim: null,
     });
-    expect(row.fuel_type).toBe("");
-    expect(row.transmission).toBe("");
-    expect(row.drivetrain).toBe("");
-    expect(row.trim).toBe("");
+    // bodyStyle "Sedan" → SEDAN → drivetrain fallback = "FWD"
+    // model "Camry"/make "Toyota" → fuel_type fallback = "GASOLINE"
+    // transmission fallback is hardcoded "AUTOMATIC"; trim fallback is "Base"
+    expect(row.fuel_type).toBe("GASOLINE");
+    expect(row.transmission).toBe("AUTOMATIC");
+    expect(row.drivetrain).toBe("FWD");
+    expect(row.trim).toBe("Base");
   });
 
   it("mileage.unit always equals 'MI'", () => {
@@ -210,7 +213,7 @@ describe("mapVehicleToRow() — Meta-spec fields", () => {
     expect(row.title).toBe("Toyota Camry");
   });
 
-  it("url is empty string when url is empty (vehicle will be skipped by route guard)", () => {
+  it("url is empty string when url is empty", () => {
     const row = mapVehicleToRow({ ...baseVehicle, url: "" });
     expect(row.url).toBe("");
   });
@@ -220,9 +223,9 @@ describe("mapVehicleToRow() — Meta-spec fields", () => {
     expect(row.price).toBe("27500 USD");
   });
 
-  it("price is empty string when null", () => {
+  it("price defaults to '0 USD' when null", () => {
     const row = mapVehicleToRow({ ...baseVehicle, price: null });
-    expect(row.price).toBe("");
+    expect(row.price).toBe("0 USD");
   });
 
   it("msrp appends ' USD' suffix", () => {
@@ -230,9 +233,9 @@ describe("mapVehicleToRow() — Meta-spec fields", () => {
     expect(row.msrp).toBe("30000 USD");
   });
 
-  it("msrp is empty string when null", () => {
+  it("msrp copies price when null", () => {
     const row = mapVehicleToRow({ ...baseVehicle, msrp: null });
-    expect(row.msrp).toBe("");
+    expect(row.msrp).toBe("27500 USD");
   });
 
   it("exterior_color maps from exteriorColor", () => {
@@ -240,9 +243,9 @@ describe("mapVehicleToRow() — Meta-spec fields", () => {
     expect(row.exterior_color).toBe("Silver");
   });
 
-  it("exterior_color is empty string when null", () => {
+  it("exterior_color defaults to 'Unknown' when null", () => {
     const row = mapVehicleToRow({ ...baseVehicle, exteriorColor: null });
-    expect(row.exterior_color).toBe("");
+    expect(row.exterior_color).toBe("Unknown");
   });
 
   it("latitude/longitude use vehicle coords when present", () => {
@@ -262,10 +265,10 @@ describe("mapVehicleToRow() — Meta-spec fields", () => {
     expect(row.longitude).toBe("-118.2437");
   });
 
-  it("latitude/longitude are empty string when both null", () => {
+  it("latitude/longitude default to '0' when both null", () => {
     const row = mapVehicleToRow({ ...baseVehicle, latitude: null, longitude: null });
-    expect(row.latitude).toBe("");
-    expect(row.longitude).toBe("");
+    expect(row.latitude).toBe("0");
+    expect(row.longitude).toBe("0");
   });
 
   it("fb_page_id equals dealer fbPageId", () => {
@@ -286,9 +289,9 @@ describe("mapVehicleToRow() — Meta-spec fields", () => {
     expect(row["image[1].url"]).toBe("https://img.com/camry2.jpg");
   });
 
-  it("image[1].url is empty string for single-image vehicles", () => {
+  it("image[1].url duplicates image[0].url for single-image vehicles", () => {
     const row = mapVehicleToRow(baseVehicle);
-    expect(row["image[1].url"]).toBe("");
+    expect(row["image[1].url"]).toBe("https://img.com/camry.jpg");
   });
 
   it("renders 2-part address into flat columns", () => {
@@ -313,6 +316,65 @@ describe("mapVehicleToRow() — Meta-spec fields", () => {
     expect(row.region).toBe("");
     expect(row.postal_code).toBe("");
     expect(row.country).toBe("US");
+  });
+});
+
+describe("mapVehicleToRow() — zero-blank-cell fallbacks", () => {
+  it("null drivetrain on SUV body style outputs AWD", () => {
+    const row = mapVehicleToRow({
+      ...baseVehicle,
+      bodyStyle: "SUV",
+      drivetrain: null,
+    });
+    expect(row.drivetrain).toBe("AWD");
+  });
+
+  it("null drivetrain on TRUCK body style outputs 4X4", () => {
+    const row = mapVehicleToRow({
+      ...baseVehicle,
+      bodyStyle: "Truck",
+      drivetrain: null,
+    });
+    expect(row.drivetrain).toBe("4X4");
+  });
+
+  it("null mileageValue outputs '0'", () => {
+    const row = mapVehicleToRow({ ...baseVehicle, mileageValue: null });
+    expect(row["mileage.value"]).toBe("0");
+  });
+
+  it("null msrp with non-null price copies price", () => {
+    const row = mapVehicleToRow({ ...baseVehicle, msrp: null, price: 35000 });
+    expect(row.msrp).toBe("35000 USD");
+  });
+
+  it("null msrp with null price outputs '0 USD'", () => {
+    const row = mapVehicleToRow({ ...baseVehicle, msrp: null, price: null });
+    expect(row.msrp).toBe("0 USD");
+  });
+
+  it("null description generates from year/make/model/state", () => {
+    const row = mapVehicleToRow({ ...baseVehicle, description: null });
+    const desc = String(row.description);
+    expect(desc).toContain("2023");
+    expect(desc).toContain("Toyota");
+    expect(desc).toContain("Camry");
+    expect(desc).toContain("USED");
+  });
+
+  it("no empty cells when all source data is populated", () => {
+    const row = mapVehicleToRow({
+      ...baseVehicle,
+      address: "123 Main St, Springfield, IL 62701",
+      latitude: 40.7,
+      longitude: -74.0,
+      dealer: { name: "Test Dealer", fbPageId: "fb-page-unit-123" },
+    });
+    for (const key of VEHICLE_CSV_HEADERS) {
+      expect(row[key], `field "${key}" should be non-empty`).not.toBe("");
+      expect(row[key], `field "${key}" should not be undefined`).not.toBeUndefined();
+      expect(row[key], `field "${key}" should not be null`).not.toBeNull();
+    }
   });
 });
 
