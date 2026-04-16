@@ -6,6 +6,7 @@ import {
   computeCompletenessFromMerged,
   checkServicesCompleteness,
   revalidatePublishStatus,
+  computeIsHighQuality,
   SERVICES_COMPLETENESS_FIELDS,
   type FieldSource,
   type FieldSourcesMap,
@@ -191,7 +192,7 @@ export async function PATCH(
           !(typeof val === "string" && val.trim() === "");
         nextSources[field] = nonEmpty
           ? "user_entered"
-          : (existingSources[field] as FieldSource | undefined) ?? "missing";
+          : (existingSources[field] as FieldSource | undefined) ?? "fallback_low_confidence";
       } else if (!nextSources[field]) {
         // Seed any unseen fields based on the merged value.
         const val = mergedData[field];
@@ -199,10 +200,15 @@ export async function PATCH(
           val !== null &&
           val !== undefined &&
           !(typeof val === "string" && val.trim() === "");
-        nextSources[field] = nonEmpty ? "scraped" : "missing";
+        nextSources[field] = nonEmpty ? "scraped" : "fallback_low_confidence";
       }
     }
+    // Bridge imageUrls array → image_url field source
+    if (Array.isArray(updateData.imageUrls) && (updateData.imageUrls as string[]).length > 0) {
+      nextSources["image_url"] = "user_entered";
+    }
     mergedData.fieldSources = nextSources;
+    mergedData.isHighQuality = computeIsHighQuality(nextSources);
     updateData.data = mergedData as Prisma.InputJsonValue;
 
     // Gate explicit `ready_to_publish` transitions on completeness.

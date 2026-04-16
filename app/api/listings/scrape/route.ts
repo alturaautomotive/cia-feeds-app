@@ -14,6 +14,7 @@ import {
   applyServicesFallbacks,
   buildFieldSources,
   checkServicesCompleteness,
+  computeIsHighQuality,
 } from "@/lib/serviceUrlValidator";
 import { getRequiredFields } from "@/lib/verticals";
 import type { Prisma } from "@prisma/client";
@@ -150,8 +151,17 @@ export async function POST(request: NextRequest) {
         name: dealerName ?? "",
         address: dealerAddress,
       });
+      // Bridge images → image_url so buildFieldSources sees scraped images
+      if (imageUrls.length > 0) {
+        data.image_url = imageUrls[0];
+      }
+      if (imageUrls.length === 0) {
+        imageUrls.push("https://placehold.co/600x400?text=No+Image");
+        fallbackKeys.add("image_url");
+      }
       const fieldSources = buildFieldSources(data, fallbackKeys);
       data.fieldSources = fieldSources;
+      data.isHighQuality = computeIsHighQuality(fieldSources);
       const completeness = checkServicesCompleteness(data, imageUrls, title);
       isComplete = completeness.isComplete;
       missingFields = completeness.missingFields;

@@ -311,8 +311,18 @@ export const SERVICES_COMPLETENESS_FIELDS = [
   "fb_product_category",
 ] as const;
 
-export type FieldSource = "scraped" | "user_entered" | "fallback" | "missing";
+export type FieldSource = "scraped" | "user_entered" | "fallback" | "fallback_low_confidence";
 export type FieldSourcesMap = Record<string, FieldSource>;
+
+const LOW_CONFIDENCE_FIELDS = new Set(["description", "price", "image_url"]);
+
+export const HIGH_QUALITY_KEY_FIELDS = ["description", "price", "image_url"] as const;
+
+export function computeIsHighQuality(fieldSources: FieldSourcesMap): boolean {
+  return HIGH_QUALITY_KEY_FIELDS.every(
+    (f) => fieldSources[f] !== "fallback_low_confidence"
+  );
+}
 
 function isNonEmpty(value: unknown): boolean {
   if (value === null || value === undefined) return false;
@@ -370,14 +380,14 @@ export function buildFieldSources(
       continue;
     }
     if (fallbackKeys.has(field)) {
-      sources[field] = "fallback";
+      sources[field] = LOW_CONFIDENCE_FIELDS.has(field) ? "fallback_low_confidence" : "fallback";
       continue;
     }
     if (isNonEmpty(rawData[field])) {
       sources[field] = "scraped";
       continue;
     }
-    sources[field] = "missing";
+    sources[field] = "fallback_low_confidence";
   }
   return sources;
 }
@@ -412,6 +422,22 @@ export function applyServicesFallbacks(
   if (!isNonEmpty(data.fb_product_category)) {
     data.fb_product_category = "Professional Services";
     fallbackKeys.add("fb_product_category");
+  }
+  if (!isNonEmpty(data.category)) {
+    data.category = "Service";
+    fallbackKeys.add("category");
+  }
+
+  if (!isNonEmpty(data.description)) {
+    const parts = [data.name, data.category, data.brand ?? dealer.name].filter(
+      (p) => typeof p === "string" && p.trim().length > 0
+    );
+    data.description = parts.length > 0 ? parts.join(" — ") : "Professional service";
+    fallbackKeys.add("description");
+  }
+  if (!isNonEmpty(data.price)) {
+    data.price = "0";
+    fallbackKeys.add("price");
   }
 
   return { data, fallbackKeys };
