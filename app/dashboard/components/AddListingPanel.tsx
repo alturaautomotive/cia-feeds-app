@@ -11,6 +11,14 @@ interface Props {
 
 type Tab = "manual" | "url" | "csv" | "voice";
 
+interface ScrapedListing {
+  id: string;
+  data: Record<string, unknown>;
+  missingFields: string[];
+  imageUrls: string[];
+  title?: string;
+}
+
 export function AddListingPanel({ vertical, onListingAdded }: Props) {
   const [tab, setTab] = useState<Tab>(vertical === "services" ? "url" : "manual");
   const [formData, setFormData] = useState<Record<string, string>>({});
@@ -21,6 +29,9 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
   const [success, setSuccess] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [uploadingImages, setUploadingImages] = useState(false);
+  const [scrapedListing, setScrapedListing] = useState<ScrapedListing | null>(null);
+  const [editData, setEditData] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
@@ -179,6 +190,53 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
         return;
       }
 
+      const result = await res.json().catch(() => ({} as Record<string, unknown>));
+      const returned = (result?.listing ?? {}) as {
+        id?: string;
+        scrapeStatus?: string;
+        data?: Record<string, unknown>;
+        title?: string;
+        price?: unknown;
+        imageUrls?: string[];
+        missingFields?: string[];
+      };
+
+      // Only show the inline edit form when the scrape has actually completed
+      // and we have data to pre-fill. In the async dispatch path the response
+      // is a minimal stub (scrapeStatus: 'pending') with no data — surface the
+      // scrape-in-progress message instead of an empty edit form.
+      if (
+        returned.id &&
+        returned.data &&
+        Object.keys(returned.data).length > 0
+      ) {
+        const data = returned.data as Record<string, unknown>;
+        const prefill: Record<string, string> = {};
+        for (const field of fields) {
+          const raw = data[field.key];
+          if (raw !== undefined && raw !== null) {
+            prefill[field.key] = String(raw);
+          }
+        }
+        // Also populate name/title from the returned top-level title when
+        // the vertical's form uses those keys.
+        if (returned.title && !prefill.name && !prefill.title) {
+          const nameField = fields.find((f) => f.key === "name");
+          const titleField = fields.find((f) => f.key === "title");
+          if (nameField) prefill.name = returned.title;
+          else if (titleField) prefill.title = returned.title;
+        }
+
+        setEditData(prefill);
+        setScrapedListing({
+          id: returned.id,
+          data,
+          missingFields: returned.missingFields ?? [],
+          imageUrls: returned.imageUrls ?? [],
+          title: returned.title,
+        });
+      }
+
       setUrlInput("");
       setSuccess("URL submitted for scraping!");
       onListingAdded();
@@ -187,6 +245,66 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
     } finally {
       setLoading(false);
     }
+  }
+
+  function setEditField(key: string, value: string) {
+    setEditData((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function handleSaveScrapedEdits() {
+    if (!scrapedListing) return;
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const dataPayload: Record<string, unknown> = {};
+      let nextTitle: string | undefined;
+      let nextPrice: string | undefined;
+      for (const field of fields) {
+        const value = editData[field.key];
+        if (value === undefined) continue;
+        if (field.key === "name" || field.key === "title") {
+          nextTitle = value;
+          dataPayload[field.key] = value;
+        } else if (field.key === "price") {
+          nextPrice = value;
+          dataPayload[field.key] = value;
+        } else {
+          dataPayload[field.key] = value;
+        }
+      }
+
+      const body: Record<string, unknown> = { data: dataPayload };
+      if (nextTitle !== undefined) body.title = nextTitle;
+      if (nextPrice !== undefined) body.price = nextPrice;
+
+      const res = await fetch(`/api/listings/${scrapedListing.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || "Failed to save changes.");
+        return;
+      }
+
+      setScrapedListing(null);
+      setEditData({});
+      setSuccess("Changes saved.");
+      onListingAdded();
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function dismissScrapedEdit() {
+    setScrapedListing(null);
+    setEditData({});
   }
 
   async function handleCsvUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -249,7 +367,7 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
               key={t.id}
               type="button"
               data-element-id={`tab-${t.id}`}
-              onClick={() => { setTab(t.id); setError(null); setSuccess(null); setFieldErrors({}); }}
+              onClick={() => { setTab(t.id); setError(null); setSuccess(null); setFieldErrors({}); setScrapedListing(null); setEditData({}); }}
               className={`text-xs px-2.5 py-1 rounded-md ${
                 tab === t.id
                   ? "bg-indigo-600 text-white"
@@ -426,6 +544,121 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
               {loading ? "Scraping\u2026" : "Scrape URL"}
             </button>
           </form>
+
+          {scrapedListing && (
+            <div className="mt-5 border border-gray-200 rounded-lg p-4 bg-gray-50">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-900">
+                  Review scraped data — edit any field before validating
+                </h3>
+                <button
+                  type="button"
+                  onClick={dismissScrapedEdit}
+                  className="text-xs text-gray-500 hover:text-gray-700"
+                >
+                  Dismiss
+                </button>
+              </div>
+
+              {scrapedListing.imageUrls.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {scrapedListing.imageUrls.slice(0, 10).map((url, i) => (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img
+                      key={i}
+                      src={url}
+                      alt=""
+                      className="w-16 h-16 rounded object-cover border border-gray-200"
+                    />
+                  ))}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                {fields.map((field) => {
+                  const isFullWidth =
+                    field.type === "textarea" ||
+                    field.key === "name" ||
+                    field.key === "title";
+                  const isMissing = scrapedListing.missingFields.includes(
+                    field.key
+                  );
+                  const borderClass = isMissing
+                    ? "border-red-400"
+                    : "border-gray-400 bg-white";
+                  return (
+                    <div
+                      key={field.key}
+                      className={isFullWidth ? "col-span-2" : ""}
+                    >
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        {field.label}
+                        {isMissing && (
+                          <span className="text-red-500 ml-1">
+                            (Required)
+                          </span>
+                        )}
+                      </label>
+                      {field.type === "textarea" ? (
+                        <textarea
+                          value={editData[field.key] ?? ""}
+                          onChange={(e) =>
+                            setEditField(field.key, e.target.value)
+                          }
+                          placeholder={field.placeholder}
+                          rows={3}
+                          className={`w-full border rounded-md px-2.5 py-1.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-vertical ${borderClass}`}
+                        />
+                      ) : field.type === "select" ? (
+                        <select
+                          value={editData[field.key] ?? ""}
+                          onChange={(e) =>
+                            setEditField(field.key, e.target.value)
+                          }
+                          className={`w-full border rounded-md px-2.5 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 ${borderClass}`}
+                        >
+                          <option value="">Select...</option>
+                          {field.options?.map((opt) => (
+                            <option key={opt} value={opt}>
+                              {opt}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type={field.type === "number" ? "number" : "text"}
+                          value={editData[field.key] ?? ""}
+                          onChange={(e) =>
+                            setEditField(field.key, e.target.value)
+                          }
+                          placeholder={field.placeholder}
+                          className={`w-full border rounded-md px-2.5 py-1.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 ${borderClass}`}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex justify-end mt-4 gap-2">
+                <button
+                  type="button"
+                  onClick={dismissScrapedEdit}
+                  className="px-4 py-2 rounded-md text-sm font-semibold text-gray-600 hover:bg-gray-100"
+                >
+                  Dismiss
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveScrapedEdits}
+                  disabled={saving}
+                  className="bg-indigo-600 text-white px-5 py-2 rounded-md text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {saving ? "Saving\u2026" : "Save Changes"}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

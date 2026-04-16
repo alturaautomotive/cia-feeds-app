@@ -124,6 +124,13 @@ export async function POST(request: NextRequest) {
     },
   });
 
+  // Track inline scrape completion so we can return the full payload to the client.
+  let inlineScrapeCompleted = false;
+  let inlineTitle: string = url;
+  let inlineData: Record<string, unknown> = {};
+  let inlineImageUrls: string[] = [];
+  let inlineMissingFields: string[] = [];
+
   // Dispatch scraping: use fire-and-forget if SYNC_SECRET is set, otherwise inline fallback
   if (process.env.SYNC_SECRET) {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
@@ -253,6 +260,12 @@ export async function POST(request: NextRequest) {
             : {}),
         },
       });
+
+      inlineScrapeCompleted = true;
+      inlineTitle = title;
+      inlineData = data;
+      inlineImageUrls = imageUrls;
+      inlineMissingFields = missingFields;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error({ event: "inline_listing_scrape_error", listingId: listing.id, url, dealerId, message });
@@ -286,6 +299,23 @@ export async function POST(request: NextRequest) {
       url,
       message: err instanceof Error ? err.message : String(err),
     });
+  }
+
+  if (inlineScrapeCompleted) {
+    return NextResponse.json(
+      {
+        listing: {
+          id: listing.id,
+          scrapeStatus: "complete",
+          url,
+          title: inlineTitle,
+          data: inlineData,
+          imageUrls: inlineImageUrls,
+          missingFields: inlineMissingFields,
+        },
+      },
+      { status: 200 }
+    );
   }
 
   return NextResponse.json(
