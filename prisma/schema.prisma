@@ -95,6 +95,8 @@ model Listing {
   price               Float?
   imageUrls           String[]  @default([])
   url                 String?
+  // Allowed values: "draft", "validated", "ready_to_publish", "published", "blocked"
+  // Enforced at the DB layer via a CHECK constraint (see migration 20260416_expand_listing_publish_statuses).
   publishStatus       String    @default("draft")
   urlValidationScore  Float?
   canonicalUrl        String?

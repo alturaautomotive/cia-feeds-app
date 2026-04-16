@@ -12,9 +12,11 @@ import {
 } from "@/lib/extractionSchema";
 import {
   scoreServiceUrlMatch,
+  derivePublishStatus,
   type ScrapedServiceData,
   type DraftServiceData,
 } from "@/lib/serviceUrlValidator";
+import { getRequiredFields } from "@/lib/verticals";
 
 export async function POST(
   _request: NextRequest,
@@ -99,24 +101,44 @@ export async function POST(
 
     const { score, verdict } = scoreServiceUrlMatch(scraped, draft);
 
-    let publishStatus: "published" | "draft" | "blocked";
-    if (verdict === "strong") {
-      publishStatus = "published";
-    } else if (verdict === "weak") {
-      publishStatus = "draft";
-    } else {
-      publishStatus = "blocked";
+    // Compute isComplete inline using the same logic as the PATCH handler.
+    const requiredFields = getRequiredFields(listing.vertical);
+    const listingDataForCheck = (listing.data ?? {}) as Record<string, unknown>;
+    const missingFields = requiredFields.filter((f) => {
+      if (f === "image_url") return false;
+      if (f === "title" || f === "name") {
+        return !listing.title || listing.title.trim() === "";
+      }
+      if (f === "price") {
+        if (listing.price != null) return false;
+        const val = listingDataForCheck[f];
+        if (val === undefined || val === null) return true;
+        if (typeof val === "string" && val.trim() === "") return true;
+        return false;
+      }
+      const val = listingDataForCheck[f];
+      if (val === undefined || val === null) return true;
+      if (typeof val === "string" && val.trim() === "") return true;
+      return false;
+    });
+    if (requiredFields.includes("image_url") && listing.imageUrls.length === 0) {
+      missingFields.push("image_url");
     }
+    const isComplete = missingFields.length === 0;
+
+    const publishStatus = derivePublishStatus(verdict, isComplete);
 
     await prisma.listing.update({
       where: { id: listing.id },
       data: {
         urlValidationScore: score,
         publishStatus,
+        isComplete,
+        missingFields,
       },
     });
 
-    return NextResponse.json({ score, verdict, publishStatus });
+    return NextResponse.json({ score, verdict, publishStatus, isComplete });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error({

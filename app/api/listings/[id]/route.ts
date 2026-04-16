@@ -5,7 +5,13 @@ import { getEffectiveDealerId } from "@/lib/impersonation";
 import { getRequiredFields } from "@/lib/verticals";
 import type { Prisma } from "@prisma/client";
 
-const ALLOWED_PUBLISH_STATUSES = ["draft", "published", "blocked"] as const;
+const ALLOWED_PUBLISH_STATUSES = [
+  "draft",
+  "validated",
+  "ready_to_publish",
+  "published",
+  "blocked",
+] as const;
 
 export async function DELETE(
   _request: NextRequest,

@@ -19,6 +19,13 @@ export interface DraftServiceData {
 
 export type UrlMatchVerdict = "strong" | "weak" | "unrelated";
 
+export type PublishStatus =
+  | "draft"
+  | "validated"
+  | "ready_to_publish"
+  | "published"
+  | "blocked";
+
 const TRACKING_PARAMS = [
   "utm_source",
   "utm_medium",
@@ -192,4 +199,14 @@ export function scoreServiceUrlMatch(
   }
 
   return { score, verdict };
+}
+
+export function derivePublishStatus(
+  verdict: UrlMatchVerdict,
+  isComplete: boolean
+): PublishStatus {
+  if (verdict === "unrelated") return "draft";
+  if (verdict === "weak") return "validated";
+  // verdict === "strong"
+  return isComplete ? "ready_to_publish" : "validated";
 }
