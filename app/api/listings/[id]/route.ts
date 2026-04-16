@@ -7,6 +7,7 @@ import {
   checkServicesCompleteness,
   revalidatePublishStatus,
   computeIsHighQuality,
+  HIGH_QUALITY_KEY_FIELDS,
   SERVICES_COMPLETENESS_FIELDS,
   type FieldSource,
   type FieldSourcesMap,
@@ -260,6 +261,21 @@ export async function PATCH(
 
   updateData.missingFields = missingFields;
   updateData.isComplete = isComplete;
+
+  if (listing.vertical === "services" && b.publishStatus === "published") {
+    const fieldSources = (mergedData.fieldSources ?? {}) as FieldSourcesMap;
+    const isHighQuality = mergedData.isHighQuality as boolean | undefined;
+    if (!isHighQuality) {
+      const lowConfidenceFields = HIGH_QUALITY_KEY_FIELDS.filter(
+        (f) => fieldSources[f] === "fallback_low_confidence"
+      );
+      console.log({
+        event: "listing_published_with_low_confidence_fields",
+        listingId: id,
+        lowConfidenceFields,
+      });
+    }
+  }
 
   const updated = await prisma.listing.update({
     where: { id },

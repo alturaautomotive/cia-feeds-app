@@ -202,9 +202,11 @@ export function scoreServiceUrlMatch(
   return { score, verdict };
 }
 
+// isHighQuality is tracked separately and does not gate publish status.
 export function derivePublishStatus(
   verdict: UrlMatchVerdict,
-  isComplete: boolean
+  isComplete: boolean,
+  isHighQuality: boolean
 ): PublishStatus {
   if (verdict === "unrelated") return "draft";
   if (verdict === "weak") return "validated";
@@ -456,6 +458,8 @@ export function revalidatePublishStatus(
   currentStatus: string,
   isComplete: boolean
 ): { publishStatus: string; downgraded: boolean } {
+  // With hybrid fallbacks, isComplete should rarely be false. Downgrade only
+  // occurs if a user explicitly clears a field that has no fallback.
   if (!isComplete && (currentStatus === "published" || currentStatus === "ready_to_publish")) {
     return { publishStatus: "validated", downgraded: true };
   }

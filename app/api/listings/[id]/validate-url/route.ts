@@ -14,9 +14,12 @@ import {
   scoreServiceUrlMatch,
   derivePublishStatus,
   checkServicesCompleteness,
+  computeIsHighQuality,
   type ScrapedServiceData,
   type DraftServiceData,
+  type FieldSourcesMap,
 } from "@/lib/serviceUrlValidator";
+import type { Prisma } from "@prisma/client";
 
 export async function POST(
   _request: NextRequest,
@@ -108,7 +111,10 @@ export async function POST(
       listing.title
     );
 
-    const derivedStatus = derivePublishStatus(verdict, isComplete);
+    const fieldSources = (listingDataForCheck.fieldSources ?? {}) as FieldSourcesMap;
+    const isHighQuality = computeIsHighQuality(fieldSources);
+
+    const derivedStatus = derivePublishStatus(verdict, isComplete, isHighQuality);
     // Preserve an existing `published` status when re-validation still yields a
     // non-downgrade result. `derivePublishStatus` never returns `published`, so
     // without this guard, re-running validation on a published listing would
@@ -126,10 +132,14 @@ export async function POST(
         publishStatus,
         isComplete,
         missingFields,
+        data: {
+          ...((listing.data as object) ?? {}),
+          isHighQuality,
+        } as Prisma.InputJsonValue,
       },
     });
 
-    return NextResponse.json({ score, verdict, publishStatus, isComplete });
+    return NextResponse.json({ score, verdict, publishStatus, isComplete, isHighQuality });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error({
