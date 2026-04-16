@@ -1,4 +1,13 @@
-import { normalizeBodyStyle, normalizeStateOfVehicle, normalizeFuelType, normalizeTransmission, normalizeDrivetrain } from "@/lib/vehicleMapper";
+import {
+  normalizeBodyStyle,
+  normalizeStateOfVehicle,
+  normalizeFuelType,
+  normalizeTransmission,
+  normalizeDrivetrain,
+  inferBodyStyleFromModel,
+  inferDrivetrainFromContext,
+  inferFuelTypeFromContext,
+} from "@/lib/vehicleMapper";
 
 function escapeField(value: unknown): string {
   if (value === null || value === undefined) return "";
@@ -134,6 +143,7 @@ export const VEHICLE_CSV_HEADERS = [
   "region",
   "postal_code",
   "country",
+  "address",
   "image[0].url",
   "image[1].url",
   "fb_page_id",
@@ -233,38 +243,94 @@ function parseAddressFields(raw: string): { street_address: string; city: string
   }
 }
 
+function formatAddressAsJSON(fields: {
+  street_address: string;
+  city: string;
+  region: string;
+  postal_code: string;
+  country: string;
+}): string {
+  return JSON.stringify({
+    addr1: fields.street_address,
+    city: fields.city,
+    region: fields.region,
+    country: fields.country,
+    postal_code: fields.postal_code,
+  });
+}
+
 export function mapVehicleToRow(v: VehicleForCSV): Record<string, unknown> {
   const imgs = selectBestImages(v.imageUrl, v.images);
 
-  const stateRaw = normalizeStateOfVehicle(v.stateOfVehicle);
-  const stateOfVehicle = stateRaw ?? "";
+  // 1. Resolve stateOfVehicle (always non-empty thanks to USED fallback)
+  const stateOfVehicle = normalizeStateOfVehicle(v.stateOfVehicle);
+
+  // 2. Resolve bodyStyle with inference fallback
+  const bodyStyle =
+    normalizeBodyStyle(v.bodyStyle) ||
+    inferBodyStyleFromModel(v.model, v.make);
+
+  // 3. Resolve drivetrain using the resolved bodyStyle
+  const drivetrain =
+    normalizeDrivetrain(v.drivetrain) ||
+    inferDrivetrainFromContext(bodyStyle, v.model);
+
+  // 4. Resolve fuelType with inference fallback
+  const fuelType =
+    normalizeFuelType(v.fuelType) ||
+    inferFuelTypeFromContext(v.model, v.make);
+
+  // 5. Resolve transmission with hardcoded fallback
+  const transmission = normalizeTransmission(v.transmission) || "AUTOMATIC";
+
+  // 6. Resolve basic string fields with fallbacks
+  const year = v.year ?? "0";
+  const make = v.make ?? "Unknown";
+  const model = v.model ?? "Unknown";
+  const exteriorColor = v.exteriorColor ?? "Unknown";
+  const mileageValue = v.mileageValue ?? 0;
+  const priceValue = v.price ?? 0;
+  const msrpValue = v.msrp ?? v.price ?? 0;
+
+  // 7. Resolve trim with hardcoded fallback
+  const trim = v.trim ?? "Base";
+
+  // 8. Parse address and build JSON column
+  const addressFields = parseAddressFields(v.address || v.dealer?.address || "");
+  const addressJson = formatAddressAsJSON(addressFields);
+
+  // 9. Build description with generated fallback
+  const description =
+    v.description ||
+    `${year} ${make} ${model} — ${stateOfVehicle}, ${mileageValue} miles`;
 
   return {
     vin: (v.vin ?? "").toUpperCase(),
     state_of_vehicle: stateOfVehicle,
-    year: v.year ?? "",
-    make: v.make ?? "",
-    model: v.model ?? "",
-    trim: v.trim ?? "",
-    drivetrain: normalizeDrivetrain(v.drivetrain),
-    transmission: normalizeTransmission(v.transmission),
-    exterior_color: v.exteriorColor ?? "",
-    price: v.price != null ? `${v.price} USD` : "",
-    msrp: v.msrp != null ? `${v.msrp} USD` : "",
-    "mileage.value": String(v.mileageValue ?? ""),
-    fuel_type: normalizeFuelType(v.fuelType),
-    latitude: String(v.latitude ?? v.dealer?.latitude ?? ""),
-    longitude: String(v.longitude ?? v.dealer?.longitude ?? ""),
-    body_style: normalizeBodyStyle(v.bodyStyle),
+    year,
+    make,
+    model,
+    trim,
+    drivetrain,
+    transmission,
+    exterior_color: exteriorColor,
+    price: `${priceValue} USD`,
+    msrp: `${msrpValue} USD`,
+    "mileage.value": String(mileageValue),
+    fuel_type: fuelType,
+    latitude: String(v.latitude ?? v.dealer?.latitude ?? 0),
+    longitude: String(v.longitude ?? v.dealer?.longitude ?? 0),
+    body_style: bodyStyle,
     url: v.url || "",
-    title: `${v.make ?? ""} ${v.model ?? ""}`.trim(),
+    title: `${make} ${model}`.trim(),
     vehicle_id: v.id,
     "mileage.unit": "MI",
-    ...parseAddressFields(v.address || v.dealer?.address || ""),
+    ...addressFields,
+    address: addressJson,
     "image[0].url": imgs[0] ?? "",
-    "image[1].url": imgs[1] ?? "",
+    "image[1].url": imgs[1] ?? imgs[0] ?? "",
     fb_page_id: v.dealer?.fbPageId ?? "",
-    description: v.description ?? "",
+    description,
   };
 }
 

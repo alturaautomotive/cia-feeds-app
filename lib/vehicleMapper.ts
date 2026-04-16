@@ -76,12 +76,13 @@ export function parseMileage(
 
 /**
  * Normalize state_of_vehicle to "NEW" | "USED" | "CPO".
- * Returns "USED" as fallback for unrecognized values; null for empty/null.
+ * Returns "USED" as fallback for unrecognized, empty, or null values so every
+ * row always carries a valid state_of_vehicle.
  */
 export function normalizeStateOfVehicle(
   raw: string | null | undefined
-): string | null {
-  if (!raw) return null;
+): string {
+  if (!raw) return "USED";
   const lower = raw.toLowerCase().trim();
   if (lower === "new" || lower === "brand new") return "NEW";
   if (lower === "used" || lower === "pre-owned" || lower === "pre owned" || lower === "pre-driven" || lower === "preowned" || lower === "like new")
@@ -164,6 +165,123 @@ export function normalizeBodyStyle(raw: string | null | undefined): string {
     }
   }
   return "";
+}
+
+// ── Body Style inference from model/title keywords ──────────────────
+const BODY_STYLE_KEYWORDS: Array<{ keywords: string[]; value: string }> = [
+  {
+    keywords: [
+      "rav4", "highlander", "4runner", "tucson", "cx-5", "explorer", "tahoe",
+      "pilot", "equinox", "escape", "suburban", "pathfinder", "murano", "rogue",
+      "sorento", "telluride", "blazer", "trailblazer", "bronco", "wrangler",
+      "cherokee",
+    ],
+    value: "SUV",
+  },
+  {
+    keywords: [
+      "camry", "corolla", "civic", "accord", "altima", "sentra", "malibu",
+      "fusion", "sonata", "elantra", "jetta", "passat", "charger", "impreza",
+    ],
+    value: "SEDAN",
+  },
+  {
+    keywords: [
+      "f-150", "f150", "silverado", "sierra", "tundra", "tacoma", "ranger",
+      "frontier", "colorado", "gladiator", "ram", "titan",
+    ],
+    value: "TRUCK",
+  },
+  {
+    keywords: ["sienna", "odyssey", "pacifica", "carnival", "grand caravan"],
+    value: "MINIVAN",
+  },
+  {
+    keywords: ["mustang", "camaro", "supra", "brz", "86", "challenger"],
+    value: "COUPE",
+  },
+  {
+    keywords: ["prius", "fit", "yaris", "versa", "spark", "bolt", "leaf"],
+    value: "HATCHBACK",
+  },
+  {
+    keywords: ["outback", "v60", "v90"],
+    value: "WAGON",
+  },
+];
+
+/**
+ * Infer a Meta-compatible body_style enum from model/title keywords.
+ * Returns "OTHER" when no keyword matches so the field is never blank.
+ */
+export function inferBodyStyleFromModel(
+  model: string | null,
+  title: string | null
+): string {
+  const haystack = `${model ?? ""} ${title ?? ""}`.toLowerCase();
+  if (!haystack.trim()) return "OTHER";
+  for (const entry of BODY_STYLE_KEYWORDS) {
+    for (const kw of entry.keywords) {
+      if (haystack.includes(kw)) return entry.value;
+    }
+  }
+  return "OTHER";
+}
+
+/**
+ * Infer drivetrain from explicit keywords in the model string, then fall back
+ * to a body-style-based heuristic. Always returns a non-empty value.
+ */
+export function inferDrivetrainFromContext(
+  bodyStyle: string,
+  model: string | null
+): string {
+  const modelLower = (model ?? "").toLowerCase();
+  if (
+    modelLower.includes("awd") ||
+    modelLower.includes("4wd") ||
+    modelLower.includes("4x4") ||
+    modelLower.includes("all-wheel")
+  ) {
+    return "AWD";
+  }
+  if (bodyStyle === "SUV" || bodyStyle === "CROSSOVER") return "AWD";
+  if (bodyStyle === "TRUCK" || bodyStyle === "PICKUP") return "4X4";
+  return "FWD";
+}
+
+/**
+ * Infer fuel_type from model/title keywords. Defaults to GASOLINE so the field
+ * is never blank.
+ */
+export function inferFuelTypeFromContext(
+  model: string | null,
+  title: string | null
+): string {
+  const haystack = `${model ?? ""} ${title ?? ""}`.toLowerCase();
+  if (haystack.includes("plug-in hybrid") || haystack.includes("phev")) {
+    return "PLUGIN_HYBRID";
+  }
+  if (haystack.includes("hybrid")) return "HYBRID";
+  if (
+    haystack.includes("electric") ||
+    haystack.includes(" ev ") ||
+    haystack.includes(" bev") ||
+    haystack.includes("bolt ev") ||
+    haystack.includes("leaf")
+  ) {
+    return "ELECTRIC";
+  }
+  if (
+    haystack.includes("diesel") ||
+    haystack.includes("tdi") ||
+    haystack.includes("duramax") ||
+    haystack.includes("powerstroke") ||
+    haystack.includes("cummins")
+  ) {
+    return "DIESEL";
+  }
+  return "GASOLINE";
 }
 
 // ── Fuel Type normalization ──────────────────────────────────────────
