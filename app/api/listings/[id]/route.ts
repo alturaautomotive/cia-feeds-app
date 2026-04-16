@@ -5,6 +5,7 @@ import { getEffectiveDealerId } from "@/lib/impersonation";
 import {
   computeCompletenessFromMerged,
   checkServicesCompleteness,
+  revalidatePublishStatus,
   SERVICES_COMPLETENESS_FIELDS,
   type FieldSource,
   type FieldSourcesMap,
@@ -81,8 +82,13 @@ export async function PATCH(
 
   const b = body as Record<string, unknown>;
 
-  // Publish gate for services vertical
+  // Publish gate for services vertical — only `ready_to_publish` → `published`
+  // transitions are allowed. urlValidationScore and blocked status are
+  // additional guards.
   if (listing.vertical === "services" && b.publishStatus === "published") {
+    if (listing.publishStatus !== "ready_to_publish") {
+      return NextResponse.json({ error: "must_be_ready_to_publish" }, { status: 403 });
+    }
     if (listing.urlValidationScore == null) {
       return NextResponse.json({ error: "url_validation_required" }, { status: 403 });
     }
@@ -199,6 +205,14 @@ export async function PATCH(
     mergedData.fieldSources = nextSources;
     updateData.data = mergedData as Prisma.InputJsonValue;
 
+    // Gate explicit `ready_to_publish` transitions on completeness.
+    if (b.publishStatus === "ready_to_publish" && !isComplete) {
+      return NextResponse.json(
+        { error: "listing_incomplete", missingFields },
+        { status: 403 }
+      );
+    }
+
     // Auto-promote `validated` → `ready_to_publish` once all fields are filled.
     const nextPublishStatus =
       typeof updateData.publishStatus === "string"
@@ -206,6 +220,25 @@ export async function PATCH(
         : listing.publishStatus;
     if (nextPublishStatus === "validated" && isComplete) {
       updateData.publishStatus = "ready_to_publish";
+    }
+
+    // Auto-downgrade on incompleteness: when the user is editing fields (no
+    // explicit `b.publishStatus` in the request), a listing that was
+    // `published` or `ready_to_publish` drops back to `validated` if required
+    // fields are no longer filled.
+    if (typeof b.publishStatus !== "string") {
+      const { publishStatus: downgradedStatus, downgraded } =
+        revalidatePublishStatus(listing.publishStatus, isComplete);
+      if (downgraded) {
+        updateData.publishStatus = downgradedStatus;
+        console.log({
+          event: "listing_publish_downgraded",
+          listingId: id,
+          from: listing.publishStatus,
+          to: downgradedStatus,
+          missingFields,
+        });
+      }
     }
   } else {
     const result = computeCompletenessFromMerged({

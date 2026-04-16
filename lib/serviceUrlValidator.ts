@@ -416,3 +416,22 @@ export function applyServicesFallbacks(
 
   return { data, fallbackKeys };
 }
+
+/**
+ * Decides whether a listing's current publishStatus should be downgraded
+ * because required fields are no longer complete. Pure function — performs
+ * no DB access.
+ *
+ * - `published` + incomplete → `validated` (downgraded)
+ * - `ready_to_publish` + incomplete → `validated` (downgraded)
+ * - otherwise → unchanged
+ */
+export function revalidatePublishStatus(
+  currentStatus: string,
+  isComplete: boolean
+): { publishStatus: string; downgraded: boolean } {
+  if (!isComplete && (currentStatus === "published" || currentStatus === "ready_to_publish")) {
+    return { publishStatus: "validated", downgraded: true };
+  }
+  return { publishStatus: currentStatus, downgraded: false };
+}

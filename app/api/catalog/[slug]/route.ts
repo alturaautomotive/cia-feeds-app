@@ -110,7 +110,12 @@ export async function GET(
     });
   } else {
     const listings = await prisma.listing.findMany({
-      where: { dealerId: dealer.id, vertical: dealer.vertical, archivedAt: null },
+      where: {
+        dealerId: dealer.id,
+        vertical: dealer.vertical,
+        archivedAt: null,
+        ...(dealer.vertical === "services" ? { publishStatus: "published" } : {}),
+      },
       orderBy: { createdAt: "desc" },
       take: 12,
       select: {
