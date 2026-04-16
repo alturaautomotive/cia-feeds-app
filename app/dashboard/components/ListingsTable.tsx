@@ -32,6 +32,7 @@ interface Props {
 export function ListingsTable({ listings, vertical, onDelete }: Props) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [validatingId, setValidatingId] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   if (listings.length === 0) {
     return null;
@@ -54,13 +55,28 @@ export function ListingsTable({ listings, vertical, onDelete }: Props) {
 
   async function handleValidateUrl(id: string) {
     setValidatingId(id);
+    setValidationError(null);
     try {
       const res = await fetch(`/api/listings/${id}/validate-url`, { method: "POST" });
       if (res.ok) {
         onDelete?.();
+      } else {
+        let errorMessage = `Validation failed (${res.status})`;
+        try {
+          const body = (await res.json()) as { error?: string; message?: string };
+          if (body?.error || body?.message) {
+            errorMessage = body.error ?? body.message ?? errorMessage;
+          }
+        } catch {
+          // response body was not JSON — fall through with status-based message
+        }
+        setValidationError(errorMessage);
+        setTimeout(() => setValidationError(null), 6000);
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Network error while validating URL";
+      setValidationError(message);
+      setTimeout(() => setValidationError(null), 6000);
     } finally {
       setValidatingId(null);
     }
@@ -68,6 +84,21 @@ export function ListingsTable({ listings, vertical, onDelete }: Props) {
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+      {validationError && (
+        <div
+          role="alert"
+          className="flex items-start justify-between gap-3 border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-800"
+        >
+          <span>URL validation failed: {validationError}</span>
+          <button
+            type="button"
+            onClick={() => setValidationError(null)}
+            className="text-red-700 hover:text-red-900 font-semibold"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       <table className="w-full text-sm">
         <thead>
           <tr className="bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -154,7 +185,7 @@ export function ListingsTable({ listings, vertical, onDelete }: Props) {
                     {(() => {
                       const scoreTitle =
                         listing.urlValidationScore != null
-                          ? `Match score: ${(listing.urlValidationScore * 100).toFixed(0)}%`
+                          ? `Match score: ${listing.urlValidationScore.toFixed(0)}%`
                           : undefined;
                       if (listing.publishStatus === "published") {
                         return (
