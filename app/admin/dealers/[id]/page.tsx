@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ImpersonateButton } from "@/app/admin/ImpersonateButton";
+import { FeedRescrapeButton } from "@/app/admin/FeedRescrapeButton";
 
 
 function getSubscriptionBadge(status: string | null): {
@@ -162,6 +163,11 @@ export default async function DealerDetailPage({
             <ImpersonateButton
               dealerId={dealer.id}
               className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-semibold text-center hover:bg-indigo-700"
+            />
+            <FeedRescrapeButton
+              dealerId={dealer.id}
+              vertical={dealer.vertical}
+              className="bg-white text-emerald-700 border border-emerald-300 px-4 py-2 rounded-md text-sm font-semibold text-center hover:bg-emerald-50"
             />
             <a
               href={feedUrl}

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import { ImpersonateButton } from "./ImpersonateButton";
+import { FeedRescrapeButton } from "./FeedRescrapeButton";
 
 export default async function AdminPage() {
   const dealers = await prisma.dealer.findMany({
@@ -94,6 +95,13 @@ export default async function AdminPage() {
               <p className="text-xs text-gray-400 mt-1">{card.sub}</p>
             </div>
           ))}
+        </div>
+
+        <div className="mb-8 flex justify-end">
+          <FeedRescrapeButton
+            vertical="automotive"
+            className="border border-emerald-300 text-emerald-700 bg-white rounded-md text-sm font-semibold px-4 py-2 hover:bg-emerald-50"
+          />
         </div>
 
         {/* Dealer table */}
