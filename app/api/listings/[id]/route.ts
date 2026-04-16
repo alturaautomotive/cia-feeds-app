@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { checkSubscription } from "@/lib/checkSubscription";
 import { getEffectiveDealerId } from "@/lib/impersonation";
-import { getRequiredFields } from "@/lib/verticals";
+import {
+  computeCompletenessFromMerged,
+  checkServicesCompleteness,
+  SERVICES_COMPLETENESS_FIELDS,
+  type FieldSource,
+  type FieldSourcesMap,
+} from "@/lib/serviceUrlValidator";
 import type { Prisma } from "@prisma/client";
 
 const ALLOWED_PUBLISH_STATUSES = [
@@ -129,33 +135,92 @@ export async function PATCH(
     updateData.publishStatus = b.publishStatus;
   }
 
-  // Recalculate isComplete and missingFields based on merged data
+  // Recalculate isComplete and missingFields based on merged data.
+  // `hasTopLevelPrice` mirrors the top-level `Listing.price` column so that
+  // completeness matches the validate-url route's view, regardless of whether
+  // `price` also lives inside `data`.
+  const existingData = (listing.data as Record<string, unknown>) ?? {};
+  const patchData =
+    typeof b.data === "object" && b.data !== null
+      ? (b.data as Record<string, unknown>)
+      : {};
   const mergedData: Record<string, unknown> = {
-    ...((listing.data as Record<string, unknown>) ?? {}),
-    ...(typeof b.data === "object" && b.data !== null ? (b.data as Record<string, unknown>) : {}),
+    ...existingData,
+    ...patchData,
   };
   const nextTitle = typeof updateData.title === "string" ? updateData.title : listing.title;
   const nextImageUrls = Array.isArray(updateData.imageUrls)
     ? (updateData.imageUrls as string[])
     : listing.imageUrls;
 
-  const requiredFields = getRequiredFields(listing.vertical);
-  const missingFields = requiredFields.filter((f) => {
-    if (f === "image_url") return false;
-    if (f === "title" || f === "name") {
-      return !nextTitle || nextTitle.trim() === "";
+  let missingFields: string[];
+  let isComplete: boolean;
+
+  if (listing.vertical === "services") {
+    // For services, use the dedicated 11-field completeness check.
+    const completeness = checkServicesCompleteness(
+      mergedData,
+      nextImageUrls,
+      nextTitle
+    );
+    missingFields = completeness.missingFields;
+    isComplete = completeness.isComplete;
+
+    // Update fieldSources: any field that the user just edited via `b.data`
+    // gets tagged as `user_entered`. Existing tags are preserved otherwise.
+    const existingSources =
+      (existingData.fieldSources as FieldSourcesMap | undefined) ?? {};
+    const patchSources = patchData.fieldSources as FieldSourcesMap | undefined;
+    const nextSources: FieldSourcesMap = { ...existingSources };
+    for (const field of SERVICES_COMPLETENESS_FIELDS) {
+      if (patchSources && patchSources[field]) {
+        nextSources[field] = patchSources[field];
+        continue;
+      }
+      if (Object.prototype.hasOwnProperty.call(patchData, field)) {
+        const val = patchData[field];
+        const nonEmpty =
+          val !== null &&
+          val !== undefined &&
+          !(typeof val === "string" && val.trim() === "");
+        nextSources[field] = nonEmpty
+          ? "user_entered"
+          : (existingSources[field] as FieldSource | undefined) ?? "missing";
+      } else if (!nextSources[field]) {
+        // Seed any unseen fields based on the merged value.
+        const val = mergedData[field];
+        const nonEmpty =
+          val !== null &&
+          val !== undefined &&
+          !(typeof val === "string" && val.trim() === "");
+        nextSources[field] = nonEmpty ? "scraped" : "missing";
+      }
     }
-    const val = mergedData[f];
-    if (val === undefined || val === null) return true;
-    if (typeof val === "string" && val.trim() === "") return true;
-    return false;
-  });
-  if (requiredFields.includes("image_url") && nextImageUrls.length === 0) {
-    missingFields.push("image_url");
+    mergedData.fieldSources = nextSources;
+    updateData.data = mergedData as Prisma.InputJsonValue;
+
+    // Auto-promote `validated` → `ready_to_publish` once all fields are filled.
+    const nextPublishStatus =
+      typeof updateData.publishStatus === "string"
+        ? (updateData.publishStatus as string)
+        : listing.publishStatus;
+    if (nextPublishStatus === "validated" && isComplete) {
+      updateData.publishStatus = "ready_to_publish";
+    }
+  } else {
+    const result = computeCompletenessFromMerged({
+      vertical: listing.vertical,
+      title: nextTitle,
+      hasTopLevelPrice: updateData.price != null || listing.price != null,
+      data: mergedData,
+      imageUrls: nextImageUrls,
+    });
+    missingFields = result.missingFields;
+    isComplete = result.isComplete;
   }
 
   updateData.missingFields = missingFields;
-  updateData.isComplete = missingFields.length === 0;
+  updateData.isComplete = isComplete;
 
   const updated = await prisma.listing.update({
     where: { id },

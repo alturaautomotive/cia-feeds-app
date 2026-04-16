@@ -9,7 +9,12 @@ import {
   SERVICES_EXTRACTION_SCHEMA,
   SERVICES_EXTRACTION_PROMPT,
 } from "@/lib/extractionSchema";
-import { canonicalizeUrl } from "@/lib/serviceUrlValidator";
+import {
+  canonicalizeUrl,
+  applyServicesFallbacks,
+  buildFieldSources,
+  checkServicesCompleteness,
+} from "@/lib/serviceUrlValidator";
 import { getRequiredFields } from "@/lib/verticals";
 import type { Prisma } from "@prisma/client";
 
@@ -42,7 +47,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
 
-  const { listingId, url, dealerId, vertical: verticalRaw } = body as Record<string, unknown>;
+  const {
+    listingId,
+    url,
+    dealerId,
+    vertical: verticalRaw,
+    dealerName: dealerNameRaw,
+    dealerAddress: dealerAddressRaw,
+  } = body as Record<string, unknown>;
 
   if (
     !listingId || typeof listingId !== "string" ||
@@ -55,6 +67,22 @@ export async function POST(request: NextRequest) {
   const vertical = typeof verticalRaw === "string" && verticalRaw.length > 0
     ? verticalRaw
     : "ecommerce";
+
+  let dealerName: string | null =
+    typeof dealerNameRaw === "string" ? dealerNameRaw : null;
+  let dealerAddress: string | null =
+    typeof dealerAddressRaw === "string" ? dealerAddressRaw : null;
+
+  if (vertical === "services" && (dealerName === null || dealerAddress === null)) {
+    const dealerRow = await prisma.dealer.findUnique({
+      where: { id: dealerId },
+      select: { name: true, address: true },
+    });
+    if (dealerRow) {
+      if (dealerName === null) dealerName = dealerRow.name;
+      if (dealerAddress === null) dealerAddress = dealerRow.address;
+    }
+  }
 
   try {
     const schema = vertical === "services" ? SERVICES_EXTRACTION_SCHEMA : ECOMMERCE_EXTRACTION_SCHEMA;
@@ -111,17 +139,36 @@ export async function POST(request: NextRequest) {
       url,
     };
 
-    const requiredFields = getRequiredFields(vertical);
-    const missingFields = requiredFields.filter((f) => {
-      if (f === "image_url") return false;
-      if (f === "title" || f === "name") {
-        return !title || title.trim() === "";
+    let isComplete: boolean;
+    let missingFields: string[];
+
+    if (vertical === "services") {
+      if (!data.name && typeof rawData.title === "string") {
+        data.name = rawData.title;
       }
-      const val = data[f];
-      return val === undefined || val === null || val === "";
-    });
-    if (requiredFields.includes("image_url") && imageUrls.length === 0) {
-      missingFields.push("image_url");
+      const { fallbackKeys } = applyServicesFallbacks(data, {
+        name: dealerName ?? "",
+        address: dealerAddress,
+      });
+      const fieldSources = buildFieldSources(data, fallbackKeys);
+      data.fieldSources = fieldSources;
+      const completeness = checkServicesCompleteness(data, imageUrls, title);
+      isComplete = completeness.isComplete;
+      missingFields = completeness.missingFields;
+    } else {
+      const requiredFields = getRequiredFields(vertical);
+      missingFields = requiredFields.filter((f) => {
+        if (f === "image_url") return false;
+        if (f === "title" || f === "name") {
+          return !title || title.trim() === "";
+        }
+        const val = data[f];
+        return val === undefined || val === null || val === "";
+      });
+      if (requiredFields.includes("image_url") && imageUrls.length === 0) {
+        missingFields.push("image_url");
+      }
+      isComplete = missingFields.length === 0;
     }
 
     let canonicalUrl: string | null = null;
@@ -140,7 +187,7 @@ export async function POST(request: NextRequest) {
         price: price != null && Number.isFinite(price) ? price : null,
         imageUrls,
         url,
-        isComplete: missingFields.length === 0,
+        isComplete,
         missingFields,
         data: data as Prisma.InputJsonValue,
         ...(vertical === "services"

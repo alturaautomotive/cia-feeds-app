@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getRequiredFields } from "@/lib/verticals";
 
 export interface ScrapedServiceData {
   title?: string | null;
@@ -209,4 +210,209 @@ export function derivePublishStatus(
   if (verdict === "weak") return "validated";
   // verdict === "strong"
   return isComplete ? "ready_to_publish" : "validated";
+}
+
+/**
+ * Core completeness computation shared between the validate-url route and the
+ * listing PATCH handler. The `price` field is treated as present when the
+ * top-level `Listing.price` column is set, regardless of whether `data.price`
+ * is present — this matches the DB shape where `price` is a first-class column.
+ */
+function computeCompletenessCore(
+  vertical: string,
+  title: string | null | undefined,
+  hasTopLevelPrice: boolean,
+  data: Record<string, unknown>,
+  imageUrls: readonly string[]
+): { missingFields: string[]; isComplete: boolean } {
+  const requiredFields = getRequiredFields(vertical);
+  const missingFields = requiredFields.filter((f) => {
+    if (f === "image_url") return false;
+    if (f === "title" || f === "name") {
+      return !title || title.trim() === "";
+    }
+    if (f === "price") {
+      if (hasTopLevelPrice) return false;
+      const val = data[f];
+      if (val === undefined || val === null) return true;
+      if (typeof val === "string" && val.trim() === "") return true;
+      return false;
+    }
+    const val = data[f];
+    if (val === undefined || val === null) return true;
+    if (typeof val === "string" && val.trim() === "") return true;
+    return false;
+  });
+  if (requiredFields.includes("image_url") && imageUrls.length === 0) {
+    missingFields.push("image_url");
+  }
+  return { missingFields, isComplete: missingFields.length === 0 };
+}
+
+/**
+ * Compute completeness directly from a persisted Listing row (used by the
+ * validate-url route, which has no pending updates to merge in).
+ */
+export function computeCompletenessFromListing(listing: {
+  vertical: string;
+  title: string;
+  price: number | null;
+  data: unknown;
+  imageUrls: string[];
+}): { missingFields: string[]; isComplete: boolean } {
+  const data = (listing.data ?? {}) as Record<string, unknown>;
+  return computeCompletenessCore(
+    listing.vertical,
+    listing.title,
+    listing.price != null,
+    data,
+    listing.imageUrls
+  );
+}
+
+/**
+ * Compute completeness from the merged/pending values used by the listing
+ * PATCH handler. `hasTopLevelPrice` should reflect both the pending update and
+ * the existing top-level `Listing.price` value (e.g.
+ * `updateData.price != null || listing.price != null`).
+ */
+export function computeCompletenessFromMerged(input: {
+  vertical: string;
+  title: string | null | undefined;
+  hasTopLevelPrice: boolean;
+  data: Record<string, unknown>;
+  imageUrls: readonly string[];
+}): { missingFields: string[]; isComplete: boolean } {
+  return computeCompletenessCore(
+    input.vertical,
+    input.title,
+    input.hasTopLevelPrice,
+    input.data,
+    input.imageUrls
+  );
+}
+
+/**
+ * The full set of required fields for a Services listing to be considered
+ * complete for publication. Includes fields that may be filled by scrape,
+ * by the user, or by dealer-derived fallbacks.
+ */
+export const SERVICES_COMPLETENESS_FIELDS = [
+  "name",
+  "description",
+  "price",
+  "category",
+  "address",
+  "url",
+  "image_url",
+  "availability",
+  "brand",
+  "condition",
+  "fb_product_category",
+] as const;
+
+export type FieldSource = "scraped" | "user_entered" | "fallback" | "missing";
+export type FieldSourcesMap = Record<string, FieldSource>;
+
+function isNonEmpty(value: unknown): boolean {
+  if (value === null || value === undefined) return false;
+  if (typeof value === "number") return !Number.isNaN(value);
+  if (typeof value === "string") return value.trim().length > 0;
+  return true;
+}
+
+/**
+ * Checks whether a Services listing has all required fields filled.
+ *
+ * - `name` is sourced from the `title` param.
+ * - `image_url` is sourced from the `imageUrls` array (at least one entry).
+ * - `url` and all other fields are read from `data`.
+ */
+export function checkServicesCompleteness(
+  data: Record<string, unknown>,
+  imageUrls: string[],
+  title: string | null | undefined
+): { isComplete: boolean; missingFields: string[] } {
+  const missingFields: string[] = [];
+
+  for (const field of SERVICES_COMPLETENESS_FIELDS) {
+    if (field === "name") {
+      if (!title || title.trim().length === 0) missingFields.push(field);
+      continue;
+    }
+    if (field === "image_url") {
+      if (!Array.isArray(imageUrls) || imageUrls.length === 0) {
+        missingFields.push(field);
+      }
+      continue;
+    }
+    if (!isNonEmpty(data[field])) {
+      missingFields.push(field);
+    }
+  }
+
+  return { isComplete: missingFields.length === 0, missingFields };
+}
+
+/**
+ * Builds a FieldSourcesMap tagging each required Services field with its
+ * origin: user-entered, fallback-applied, scraped, or missing.
+ */
+export function buildFieldSources(
+  rawData: Record<string, unknown>,
+  fallbackKeys: Set<string>,
+  userKeys?: Set<string>
+): FieldSourcesMap {
+  const sources: FieldSourcesMap = {};
+  for (const field of SERVICES_COMPLETENESS_FIELDS) {
+    if (userKeys && userKeys.has(field)) {
+      sources[field] = "user_entered";
+      continue;
+    }
+    if (fallbackKeys.has(field)) {
+      sources[field] = "fallback";
+      continue;
+    }
+    if (isNonEmpty(rawData[field])) {
+      sources[field] = "scraped";
+      continue;
+    }
+    sources[field] = "missing";
+  }
+  return sources;
+}
+
+/**
+ * Applies dealer-derived fallback values for missing Services fields.
+ * Mutates and returns the provided `data` object, along with the set of
+ * keys where a fallback was applied.
+ */
+export function applyServicesFallbacks(
+  data: Record<string, unknown>,
+  dealer: { name: string; address: string | null }
+): { data: Record<string, unknown>; fallbackKeys: Set<string> } {
+  const fallbackKeys = new Set<string>();
+
+  if (!isNonEmpty(data.condition)) {
+    data.condition = "new";
+    fallbackKeys.add("condition");
+  }
+  if (!isNonEmpty(data.availability)) {
+    data.availability = "available for order";
+    fallbackKeys.add("availability");
+  }
+  if (!isNonEmpty(data.brand) && isNonEmpty(dealer.name)) {
+    data.brand = dealer.name;
+    fallbackKeys.add("brand");
+  }
+  if (!isNonEmpty(data.address) && isNonEmpty(dealer.address)) {
+    data.address = dealer.address;
+    fallbackKeys.add("address");
+  }
+  if (!isNonEmpty(data.fb_product_category)) {
+    data.fb_product_category = "Professional Services";
+    fallbackKeys.add("fb_product_category");
+  }
+
+  return { data, fallbackKeys };
 }

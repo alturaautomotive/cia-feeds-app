@@ -13,10 +13,10 @@ import {
 import {
   scoreServiceUrlMatch,
   derivePublishStatus,
+  checkServicesCompleteness,
   type ScrapedServiceData,
   type DraftServiceData,
 } from "@/lib/serviceUrlValidator";
-import { getRequiredFields } from "@/lib/verticals";
 
 export async function POST(
   _request: NextRequest,
@@ -101,32 +101,23 @@ export async function POST(
 
     const { score, verdict } = scoreServiceUrlMatch(scraped, draft);
 
-    // Compute isComplete inline using the same logic as the PATCH handler.
-    const requiredFields = getRequiredFields(listing.vertical);
     const listingDataForCheck = (listing.data ?? {}) as Record<string, unknown>;
-    const missingFields = requiredFields.filter((f) => {
-      if (f === "image_url") return false;
-      if (f === "title" || f === "name") {
-        return !listing.title || listing.title.trim() === "";
-      }
-      if (f === "price") {
-        if (listing.price != null) return false;
-        const val = listingDataForCheck[f];
-        if (val === undefined || val === null) return true;
-        if (typeof val === "string" && val.trim() === "") return true;
-        return false;
-      }
-      const val = listingDataForCheck[f];
-      if (val === undefined || val === null) return true;
-      if (typeof val === "string" && val.trim() === "") return true;
-      return false;
-    });
-    if (requiredFields.includes("image_url") && listing.imageUrls.length === 0) {
-      missingFields.push("image_url");
-    }
-    const isComplete = missingFields.length === 0;
+    const { missingFields, isComplete } = checkServicesCompleteness(
+      listingDataForCheck,
+      listing.imageUrls,
+      listing.title
+    );
 
-    const publishStatus = derivePublishStatus(verdict, isComplete);
+    const derivedStatus = derivePublishStatus(verdict, isComplete);
+    // Preserve an existing `published` status when re-validation still yields a
+    // non-downgrade result. `derivePublishStatus` never returns `published`, so
+    // without this guard, re-running validation on a published listing would
+    // silently drop it back to `ready_to_publish` / `validated` and remove it
+    // from the feed export.
+    const publishStatus =
+      listing.publishStatus === "published" && derivedStatus === "ready_to_publish"
+        ? "published"
+        : derivedStatus;
 
     await prisma.listing.update({
       where: { id: listing.id },

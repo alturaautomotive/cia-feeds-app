@@ -5,7 +5,13 @@ import { prisma } from "@/lib/prisma";
 import { checkSubscription } from "@/lib/checkSubscription";
 import { getRequiredFields } from "@/lib/verticals";
 import { getEffectiveDealerId } from "@/lib/impersonation";
-import { canonicalizeUrl, isDuplicateCanonicalUrl } from "@/lib/serviceUrlValidator";
+import {
+  canonicalizeUrl,
+  isDuplicateCanonicalUrl,
+  applyServicesFallbacks,
+  buildFieldSources,
+  checkServicesCompleteness,
+} from "@/lib/serviceUrlValidator";
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -34,7 +40,7 @@ export async function POST(request: NextRequest) {
 
   const dealer = await prisma.dealer.findUnique({
     where: { id: dealerId },
-    select: { vertical: true },
+    select: { vertical: true, name: true, address: true },
   });
 
   if (!dealer) {
@@ -64,15 +70,28 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Check required fields
+  // Collect the keys the user actually provided with a non-empty value (used
+  // by services to tag field sources as `user_entered`).
+  const userProvidedKeys = new Set<string>();
+  for (const [k, v] of Object.entries(b)) {
+    if (k === "imageUrls") continue;
+    if (v === null || v === undefined) continue;
+    if (typeof v === "string" && v.trim() === "") continue;
+    userProvidedKeys.add(k);
+  }
+
+  // Check required fields (non-services verticals keep the old behavior).
   const requiredFields = getRequiredFields(vertical);
-  const missingFields = requiredFields.filter((f) => {
-    if (f === "image_url") return false; // handled separately below
-    const val = data[f];
-    if (val === undefined || val === null) return true;
-    if (typeof val === "string" && val.trim() === "") return true;
-    return false;
-  });
+  let missingFields: string[] = [];
+  if (vertical !== "services") {
+    missingFields = requiredFields.filter((f) => {
+      if (f === "image_url") return false; // handled separately below
+      const val = data[f];
+      if (val === undefined || val === null) return true;
+      if (typeof val === "string" && val.trim() === "") return true;
+      return false;
+    });
+  }
 
   let price: number | null = null;
   if (data.price != null) {
@@ -111,15 +130,37 @@ export async function POST(request: NextRequest) {
   }
 
   // Validate image requirement for non-automotive verticals
-  if (requiredFields.includes("image_url") && imageUrls.length === 0) {
+  if (vertical !== "services" && requiredFields.includes("image_url") && imageUrls.length === 0) {
     missingFields.push("image_url");
   }
 
-  if (missingFields.length > 0) {
-    return NextResponse.json(
-      { error: "missing_required_fields", missingFields },
-      { status: 400 }
-    );
+  let isComplete: boolean;
+
+  if (vertical === "services") {
+    // Ensure `name` is present in data so completeness/fallback logic can read it.
+    if (!data.name) {
+      data.name = title;
+      userProvidedKeys.add("name");
+    }
+    const { fallbackKeys } = applyServicesFallbacks(data, {
+      name: dealer.name,
+      address: dealer.address,
+    });
+    const fieldSources = buildFieldSources(data, fallbackKeys, userProvidedKeys);
+    data.fieldSources = fieldSources;
+    const completeness = checkServicesCompleteness(data, imageUrls, title);
+    isComplete = completeness.isComplete;
+    missingFields = completeness.missingFields;
+    // Note: services listings are allowed to be created with missing fields —
+    // they remain in `draft` status and the UI surfaces what's still needed.
+  } else {
+    if (missingFields.length > 0) {
+      return NextResponse.json(
+        { error: "missing_required_fields", missingFields },
+        { status: 400 }
+      );
+    }
+    isComplete = missingFields.length === 0;
   }
 
   const listing = await prisma.listing.create({
@@ -130,7 +171,7 @@ export async function POST(request: NextRequest) {
       price: Number.isFinite(price) ? price : null,
       imageUrls,
       url,
-      isComplete: missingFields.length === 0,
+      isComplete,
       missingFields,
       data: data as Record<string, string>,
       ...(vertical === "services"

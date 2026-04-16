@@ -11,7 +11,13 @@ import {
   SERVICES_EXTRACTION_SCHEMA,
   SERVICES_EXTRACTION_PROMPT,
 } from "@/lib/extractionSchema";
-import { canonicalizeUrl, isDuplicateCanonicalUrl } from "@/lib/serviceUrlValidator";
+import {
+  canonicalizeUrl,
+  isDuplicateCanonicalUrl,
+  applyServicesFallbacks,
+  buildFieldSources,
+  checkServicesCompleteness,
+} from "@/lib/serviceUrlValidator";
 import { getRequiredFields } from "@/lib/verticals";
 import type { Prisma } from "@prisma/client";
 
@@ -58,7 +64,7 @@ export async function POST(request: NextRequest) {
 
   const dealer = await prisma.dealer.findUnique({
     where: { id: dealerId },
-    select: { vertical: true },
+    select: { vertical: true, name: true, address: true },
   });
 
   if (!dealer || (dealer.vertical !== "ecommerce" && dealer.vertical !== "services")) {
@@ -127,7 +133,14 @@ export async function POST(request: NextRequest) {
         "Content-Type": "application/json",
         "x-sync-secret": process.env.SYNC_SECRET,
       },
-      body: JSON.stringify({ listingId: listing.id, url, dealerId, vertical }),
+      body: JSON.stringify({
+        listingId: listing.id,
+        url,
+        dealerId,
+        vertical,
+        dealerName: dealer.name,
+        dealerAddress: dealer.address,
+      }),
     }).catch((err) => {
       console.error({
         event: "listing_scrape_dispatch_error",
@@ -192,17 +205,37 @@ export async function POST(request: NextRequest) {
         url,
       };
 
-      const requiredFields = getRequiredFields(vertical);
-      const missingFields = requiredFields.filter((f) => {
-        if (f === "image_url") return false;
-        if (f === "title" || f === "name") {
-          return !title || title.trim() === "";
+      let isComplete: boolean;
+      let missingFields: string[];
+
+      if (vertical === "services") {
+        // Mirror `name` into `data` so completeness/fallback logic can read it.
+        if (!data.name && typeof rawData.title === "string") {
+          data.name = rawData.title;
         }
-        const val = data[f];
-        return val === undefined || val === null || val === "";
-      });
-      if (requiredFields.includes("image_url") && imageUrls.length === 0) {
-        missingFields.push("image_url");
+        const { fallbackKeys } = applyServicesFallbacks(data, {
+          name: dealer.name,
+          address: dealer.address,
+        });
+        const fieldSources = buildFieldSources(data, fallbackKeys);
+        data.fieldSources = fieldSources;
+        const completeness = checkServicesCompleteness(data, imageUrls, title);
+        isComplete = completeness.isComplete;
+        missingFields = completeness.missingFields;
+      } else {
+        const requiredFields = getRequiredFields(vertical);
+        missingFields = requiredFields.filter((f) => {
+          if (f === "image_url") return false;
+          if (f === "title" || f === "name") {
+            return !title || title.trim() === "";
+          }
+          const val = data[f];
+          return val === undefined || val === null || val === "";
+        });
+        if (requiredFields.includes("image_url") && imageUrls.length === 0) {
+          missingFields.push("image_url");
+        }
+        isComplete = missingFields.length === 0;
       }
 
       await prisma.listing.update({
@@ -212,7 +245,7 @@ export async function POST(request: NextRequest) {
           price: price != null && Number.isFinite(price) ? price : null,
           imageUrls,
           url,
-          isComplete: missingFields.length === 0,
+          isComplete,
           missingFields,
           data: data as Prisma.InputJsonValue,
           ...(vertical === "services"
