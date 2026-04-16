@@ -19,6 +19,8 @@ interface ListingRow {
   missingFields: string[];
   data: Record<string, unknown>;
   createdAt: string;
+  publishStatus: string;
+  urlValidationScore: number | null;
 }
 
 interface Props {
@@ -29,6 +31,7 @@ interface Props {
 
 export function ListingsTable({ listings, vertical, onDelete }: Props) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [validatingId, setValidatingId] = useState<string | null>(null);
 
   if (listings.length === 0) {
     return null;
@@ -46,6 +49,20 @@ export function ListingsTable({ listings, vertical, onDelete }: Props) {
       // ignore
     } finally {
       setDeletingId(null);
+    }
+  }
+
+  async function handleValidateUrl(id: string) {
+    setValidatingId(id);
+    try {
+      const res = await fetch(`/api/listings/${id}/validate-url`, { method: "POST" });
+      if (res.ok) {
+        onDelete?.();
+      }
+    } catch {
+      // ignore
+    } finally {
+      setValidatingId(null);
     }
   }
 
@@ -134,15 +151,40 @@ export function ListingsTable({ listings, vertical, onDelete }: Props) {
                     {location || "\u2014"}
                   </td>
                   <td className="px-4 py-3">
-                    {listing.isComplete ? (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                        Complete
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                        Incomplete
-                      </span>
-                    )}
+                    {(() => {
+                      const scoreTitle =
+                        listing.urlValidationScore != null
+                          ? `Match score: ${(listing.urlValidationScore * 100).toFixed(0)}%`
+                          : undefined;
+                      if (listing.publishStatus === "published") {
+                        return (
+                          <span
+                            title={scoreTitle}
+                            className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800"
+                          >
+                            Published
+                          </span>
+                        );
+                      }
+                      if (listing.publishStatus === "blocked") {
+                        return (
+                          <span
+                            title={scoreTitle}
+                            className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800"
+                          >
+                            Blocked
+                          </span>
+                        );
+                      }
+                      return (
+                        <span
+                          title={scoreTitle}
+                          className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800"
+                        >
+                          Draft
+                        </span>
+                      );
+                    })()}
                   </td>
                   <td className="px-4 py-3 flex items-center gap-2">
                     {(() => {
@@ -158,6 +200,16 @@ export function ListingsTable({ listings, vertical, onDelete }: Props) {
                         </a>
                       ) : null;
                     })()}
+                    {listing.url && (
+                      <button
+                        type="button"
+                        onClick={() => handleValidateUrl(listing.id)}
+                        disabled={validatingId === listing.id}
+                        className="text-xs text-indigo-600 hover:text-indigo-800 disabled:opacity-50"
+                      >
+                        {validatingId === listing.id ? "Validating\u2026" : "Validate"}
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => handleDelete(listing.id)}

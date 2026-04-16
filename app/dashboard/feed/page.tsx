@@ -56,6 +56,18 @@ export default async function FeedPage() {
 
   const userName = session.user.name ?? "";
 
+  const publishedServicesCount =
+    dealerVertical === "services"
+      ? await prisma.listing.count({
+          where: {
+            dealerId: effectiveDealerId,
+            vertical: "services",
+            publishStatus: "published",
+            archivedAt: null,
+          },
+        })
+      : 0;
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Top bar */}
@@ -97,6 +109,12 @@ export default async function FeedPage() {
                 Profile
               </Link>{" "}
               before your feed can be used.
+            </p>
+          </div>
+        ) : dealerVertical === "services" && publishedServicesCount === 0 ? (
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-md p-4">
+            <p>
+              You don&apos;t have any published services yet. Validate your service URLs to publish them and enable your feed.
             </p>
           </div>
         ) : (

@@ -12,7 +12,7 @@ interface Props {
 type Tab = "manual" | "url" | "csv" | "voice";
 
 export function AddListingPanel({ vertical, onListingAdded }: Props) {
-  const [tab, setTab] = useState<Tab>("manual");
+  const [tab, setTab] = useState<Tab>(vertical === "services" ? "url" : "manual");
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [urlInput, setUrlInput] = useState("");
@@ -222,6 +222,9 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
   const availableTabs: { id: Tab; label: string }[] = [
     { id: "manual", label: "Manual Entry" },
   ];
+  if (vertical === "services") {
+    availableTabs.push({ id: "url", label: "From URL" });
+  }
   if (vertical !== "services") {
     availableTabs.push({ id: "csv", label: "Upload CSV" });
   }
@@ -273,6 +276,11 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
       {/* Manual entry form */}
       {tab === "manual" && (
         <form onSubmit={handleManualSubmit}>
+          {vertical === "services" && (
+            <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-md p-3 mb-4 text-sm">
+              This item is saved as a draft. Add a service URL to validate and publish it.
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             {fields.map((field) => {
               const isFullWidth = field.type === "textarea" || field.key === "name" || field.key === "title";
@@ -396,24 +404,29 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
 
       {/* URL scrape tab */}
       {tab === "url" && (
-        <form onSubmit={handleUrlSubmit} className="flex gap-2.5">
-          <input
-            data-element-id="url-input"
-            type="text"
-            value={urlInput}
-            onChange={(e) => setUrlInput(e.target.value)}
-            placeholder="Paste product URL to scrape\u2026"
-            disabled={loading}
-            className="flex-1 border border-gray-400 bg-white rounded-md px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:opacity-50"
-          />
-          <button
-            type="submit"
-            disabled={loading || !urlInput.trim()}
-            className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-          >
-            {loading ? "Scraping\u2026" : "Scrape URL"}
-          </button>
-        </form>
+        <div>
+          <p className="text-xs text-gray-500 mb-3">
+            Enter the exact page for this service — not your homepage or a generic services page.
+          </p>
+          <form onSubmit={handleUrlSubmit} className="flex gap-2.5">
+            <input
+              data-element-id="url-input"
+              type="text"
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              placeholder="Paste product URL to scrape\u2026"
+              disabled={loading}
+              className="flex-1 border border-gray-400 bg-white rounded-md px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:opacity-50"
+            />
+            <button
+              type="submit"
+              disabled={loading || !urlInput.trim()}
+              className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+            >
+              {loading ? "Scraping\u2026" : "Scrape URL"}
+            </button>
+          </form>
+        </div>
       )}
 
       {/* CSV upload tab */}
@@ -442,7 +455,14 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
 
       {/* Voice tab */}
       {tab === "voice" && (
-        <VoiceAddService onListingAdded={onListingAdded} />
+        <>
+          {vertical === "services" && (
+            <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-md p-3 mb-4 text-sm">
+              This item is saved as a draft. Add a service URL to validate and publish it.
+            </div>
+          )}
+          <VoiceAddService onListingAdded={onListingAdded} />
+        </>
       )}
     </div>
   );

@@ -24,6 +24,8 @@ interface ListingRow {
   missingFields: string[];
   data: Record<string, unknown>;
   createdAt: string;
+  publishStatus: string;
+  urlValidationScore: number | null;
 }
 
 // Vehicle data fields (excludes system/metadata fields) used to detect auto-filled values
