@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Fragment } from "react";
 
 function normalizeUrl(url: string | null): string | null {
   if (!url || url.trim() === "") return null;
@@ -41,6 +41,39 @@ const FIELD_SOURCE_LABELS: Record<string, string> = {
   fallback_low_confidence: "Auto-filled ⚠️",
 };
 
+const EDIT_FIELDS = [
+  { key: "name", label: "Name", type: "text" },
+  { key: "description", label: "Description", type: "textarea" },
+  { key: "price", label: "Price", type: "text" },
+  { key: "category", label: "Category", type: "text" },
+  { key: "address", label: "Location", type: "text" },
+  { key: "url", label: "URL", type: "url" },
+  { key: "image_url", label: "Image URL", type: "url" },
+  { key: "availability", label: "Availability", type: "text" },
+  { key: "brand", label: "Brand", type: "text" },
+  { key: "condition", label: "Condition", type: "text" },
+  { key: "fb_product_category", label: "Meta Category", type: "text" },
+];
+
+function getFieldBorderClass(
+  fieldKey: string,
+  fieldSources: Record<string, string> | undefined
+): { borderClass: string; hint: string | null } {
+  const source = fieldSources?.[fieldKey];
+  switch (source) {
+    case "scraped":
+      return { borderClass: "border-green-400", hint: null };
+    case "user_entered":
+      return { borderClass: "border-blue-400", hint: null };
+    case "fallback":
+      return { borderClass: "border-gray-300", hint: null };
+    case "fallback_low_confidence":
+      return { borderClass: "border-amber-400", hint: "Auto-filled — please review" };
+    default:
+      return { borderClass: "border-gray-200", hint: null };
+  }
+}
+
 interface ListingRow {
   id: string;
   title: string;
@@ -69,6 +102,113 @@ export function ListingsTable({ listings, vertical, onDelete }: Props) {
     { source: "validate" | "publish"; message: string } | null
   >(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<Record<string, string>>({});
+  const [editOriginal, setEditOriginal] = useState<Record<string, string>>({});
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
+
+  function handleEditOpen(listing: ListingRow) {
+    setSaveError(null);
+    setSaveSuccess(null);
+    const form: Record<string, string> = {
+      name: String(listing.data?.name ?? listing.title ?? ""),
+      description: String(listing.data?.description ?? ""),
+      price: String(listing.data?.price ?? (listing.price != null ? String(listing.price) : "")),
+      category: String(listing.data?.category ?? ""),
+      address: String(listing.data?.address ?? ""),
+      url: String(listing.url ?? ""),
+      image_url: String(listing.imageUrls[0] ?? ""),
+      availability: String(listing.data?.availability ?? ""),
+      brand: String(listing.data?.brand ?? ""),
+      condition: String(listing.data?.condition ?? ""),
+      fb_product_category: String(listing.data?.fb_product_category ?? ""),
+    };
+    setEditForm(form);
+    setEditOriginal({ ...form });
+    setEditingId(listing.id);
+  }
+
+  function handleEditCancel() {
+    setEditingId(null);
+    setEditForm({});
+    setEditOriginal({});
+    setSaveError(null);
+  }
+
+  async function handleEditSave(id: string) {
+    setSavingId(id);
+    setSaveError(null);
+    try {
+      const listing = listings.find((l) => l.id === id);
+      const existingFieldSources =
+        listing?.data && typeof listing.data === "object"
+          ? ((listing.data as Record<string, unknown>).fieldSources as Record<string, string> | undefined) ?? {}
+          : {};
+
+      const changedFields = new Set<string>();
+      for (const key of Object.keys(editForm)) {
+        if (editForm[key] !== editOriginal[key]) {
+          changedFields.add(key);
+        }
+      }
+
+      const updatedFieldSources: Record<string, string> = { ...existingFieldSources };
+      changedFields.forEach((field) => {
+        updatedFieldSources[field] = "user_entered";
+      });
+
+      const body = {
+        title: editForm.name,
+        price: editForm.price.trim() !== "" ? editForm.price : undefined,
+        url: editForm.url,
+        imageUrls: [editForm.image_url].filter(Boolean),
+        data: {
+          name: editForm.name,
+          description: editForm.description,
+          price: editForm.price,
+          category: editForm.category,
+          address: editForm.address,
+          availability: editForm.availability,
+          brand: editForm.brand,
+          condition: editForm.condition,
+          fb_product_category: editForm.fb_product_category,
+          fieldSources: updatedFieldSources,
+        },
+      };
+
+      const res = await fetch(`/api/listings/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (res.ok) {
+        setEditingId(null);
+        setEditForm({});
+        setEditOriginal({});
+        setSaveSuccess("Changes saved successfully");
+        setTimeout(() => setSaveSuccess(null), 3000);
+        onDelete?.();
+      } else {
+        let errorMessage = `Save failed (${res.status})`;
+        try {
+          const respBody = (await res.json()) as { error?: string; message?: string };
+          if (respBody?.error || respBody?.message) {
+            errorMessage = respBody.error ?? respBody.message ?? errorMessage;
+          }
+        } catch {
+          // not JSON
+        }
+        setSaveError(errorMessage);
+      }
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Network error while saving");
+    } finally {
+      setSavingId(null);
+    }
+  }
 
   if (listings.length === 0) {
     return null;
@@ -76,6 +216,7 @@ export function ListingsTable({ listings, vertical, onDelete }: Props) {
 
   async function handleDelete(id: string) {
     if (!confirm("Are you sure you want to delete this listing?")) return;
+    if (editingId === id) handleEditCancel();
     setDeletingId(id);
     try {
       const res = await fetch(`/api/listings/${id}`, { method: "DELETE" });
@@ -90,6 +231,7 @@ export function ListingsTable({ listings, vertical, onDelete }: Props) {
   }
 
   async function handleValidateUrl(id: string) {
+    if (editingId === id) setEditingId(null);
     setValidatingId(id);
     setActionError(null);
     try {
@@ -119,6 +261,7 @@ export function ListingsTable({ listings, vertical, onDelete }: Props) {
   }
 
   async function handlePublish(id: string) {
+    if (editingId === id) setEditingId(null);
     setPublishingId(id);
     setActionError(null);
 
@@ -166,6 +309,21 @@ export function ListingsTable({ listings, vertical, onDelete }: Props) {
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+      {saveSuccess && (
+        <div
+          role="status"
+          className="flex items-start justify-between gap-3 border-b border-green-200 bg-green-50 px-4 py-2 text-xs text-green-800"
+        >
+          <span>{saveSuccess}</span>
+          <button
+            type="button"
+            onClick={() => setSaveSuccess(null)}
+            className="text-green-700 hover:text-green-900 font-semibold"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       {actionError && (
         <div
           role="alert"
@@ -249,8 +407,8 @@ export function ListingsTable({ listings, vertical, onDelete }: Props) {
                 fieldSources && Object.keys(fieldSources).length > 0;
               const isExpanded = expandedId === listing.id;
 
-              return (
-                <tr key={listing.id} data-element-id={`listing-row-${listing.id}`} className="hover:bg-gray-50">
+              return (<Fragment key={listing.id}>
+                <tr data-element-id={`listing-row-${listing.id}`} className="hover:bg-gray-50">
                   <td className="px-4 py-3 align-top">
                     <div className="flex items-start gap-2">
                       {listing.imageUrls[0] && (
@@ -420,6 +578,18 @@ export function ListingsTable({ listings, vertical, onDelete }: Props) {
                       )}
                       <button
                         type="button"
+                        onClick={() =>
+                          editingId === listing.id
+                            ? handleEditCancel()
+                            : handleEditOpen(listing)
+                        }
+                        disabled={savingId === listing.id}
+                        className="text-xs text-gray-600 hover:text-gray-800 disabled:opacity-50"
+                      >
+                        {editingId === listing.id ? "Cancel Edit" : "Edit"}
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => handleDelete(listing.id)}
                         disabled={deletingId === listing.id}
                         className="text-xs text-red-600 hover:text-red-800 disabled:opacity-50"
@@ -429,6 +599,78 @@ export function ListingsTable({ listings, vertical, onDelete }: Props) {
                     </div>
                   </td>
                 </tr>
+                {editingId === listing.id && (
+                  <tr key={`edit-${listing.id}`}>
+                    <td colSpan={7} className="px-4 py-4 bg-gray-50 border-t border-gray-200">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {EDIT_FIELDS.map((field) => {
+                          const { borderClass, hint } = getFieldBorderClass(
+                            field.key,
+                            fieldSources
+                          );
+                          return (
+                            <div key={field.key}>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">
+                                {field.label}
+                              </label>
+                              {field.type === "textarea" ? (
+                                <textarea
+                                  rows={3}
+                                  value={editForm[field.key] ?? ""}
+                                  onChange={(e) =>
+                                    setEditForm((prev) => ({
+                                      ...prev,
+                                      [field.key]: e.target.value,
+                                    }))
+                                  }
+                                  className={`w-full rounded px-2 py-1.5 text-sm border focus:outline-none focus:ring-1 focus:ring-indigo-500 ${borderClass}`}
+                                />
+                              ) : (
+                                <input
+                                  type={field.type}
+                                  value={editForm[field.key] ?? ""}
+                                  onChange={(e) =>
+                                    setEditForm((prev) => ({
+                                      ...prev,
+                                      [field.key]: e.target.value,
+                                    }))
+                                  }
+                                  className={`w-full rounded px-2 py-1.5 text-sm border focus:outline-none focus:ring-1 focus:ring-indigo-500 ${borderClass}`}
+                                />
+                              )}
+                              {hint && (
+                                <p className="text-[10px] text-amber-600 mt-0.5">
+                                  {hint}
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {saveError && (
+                        <p className="text-xs text-red-600 mt-2">{saveError}</p>
+                      )}
+                      <div className="flex items-center gap-3 mt-4">
+                        <button
+                          type="button"
+                          onClick={() => handleEditSave(listing.id)}
+                          disabled={savingId === listing.id}
+                          className="bg-indigo-600 text-white px-4 py-1.5 rounded text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
+                        >
+                          {savingId === listing.id ? "Saving\u2026" : "Save"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleEditCancel()}
+                          className="text-sm text-gray-500 hover:text-gray-700"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
               );
             }
 
