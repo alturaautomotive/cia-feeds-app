@@ -592,7 +592,11 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
               )}
 
               <div className="grid grid-cols-2 gap-3">
-                {fields.map((field) => {
+                {(() => {
+                  const fieldSources = scrapedListing.data.fieldSources as
+                    | Record<string, string>
+                    | undefined;
+                  return fields.map((field) => {
                   const isFullWidth =
                     field.type === "textarea" ||
                     field.key === "name" ||
@@ -600,10 +604,16 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
                   const isMissing =
                     scrapedListing.missingFields.includes(field.key) &&
                     !editData[field.key]?.trim();
-                  const fieldSources = scrapedListing.data.fieldSources as
-                    | Record<string, string>
-                    | undefined;
-                  const source = fieldSources?.[field.key];
+                  const rawSource = fieldSources?.[field.key];
+                  const originalValue =
+                    scrapedListing.data[field.key] != null
+                      ? String(scrapedListing.data[field.key])
+                      : "";
+                  const currentValue = editData[field.key] ?? "";
+                  const source =
+                    rawSource && currentValue !== originalValue && currentValue.trim() !== ""
+                      ? "user_entered"
+                      : rawSource;
                   const borderClass = isMissing
                     ? "border-red-400"
                     : source === "fallback_low_confidence"
@@ -612,7 +622,9 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
                         ? "border-gray-300 bg-gray-50/30"
                         : source === "scraped"
                           ? "border-green-400 bg-green-50/30"
-                          : "border-gray-400 bg-white";
+                          : source === "user_entered"
+                            ? "border-blue-400 bg-white"
+                            : "border-gray-400 bg-white";
                   const sourceHint =
                     source === "fallback_low_confidence"
                       ? { className: "text-[10px] text-amber-600 mt-0.5", text: "Auto-filled — please review" }
@@ -675,7 +687,8 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
                       )}
                     </div>
                   );
-                })}
+                });
+                })()}
               </div>
 
               <div className="flex justify-end mt-4 gap-2">
