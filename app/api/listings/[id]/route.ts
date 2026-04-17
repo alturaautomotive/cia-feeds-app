@@ -85,17 +85,13 @@ export async function PATCH(
   const b = body as Record<string, unknown>;
 
   // Publish gate for services vertical — only `ready_to_publish` → `published`
-  // transitions are allowed. urlValidationScore and blocked status are
-  // additional guards.
+  // transitions are allowed. urlValidationScore is an additional guard.
   if (listing.vertical === "services" && b.publishStatus === "published") {
     if (listing.publishStatus !== "ready_to_publish") {
       return NextResponse.json({ error: "must_be_ready_to_publish" }, { status: 403 });
     }
     if (listing.urlValidationScore == null) {
       return NextResponse.json({ error: "url_validation_required" }, { status: 403 });
-    }
-    if (listing.publishStatus === "blocked") {
-      return NextResponse.json({ error: "url_blocked" }, { status: 403 });
     }
   }
 
