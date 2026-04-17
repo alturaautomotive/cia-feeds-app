@@ -17,6 +17,7 @@ const VERTICALS = [
 ] as const;
 
 interface Props {
+  slug: string;
   profileImageUrl: string | null;
   currentVertical: string;
   websiteUrl: string | null;
@@ -38,6 +39,7 @@ type MetaStep =
   | "done";
 
 export default function ProfileClient({
+  slug,
   profileImageUrl: initialPhotoUrl,
   currentVertical: initialVertical,
   websiteUrl: initialWebsiteUrl,
@@ -255,7 +257,9 @@ export default function ProfileClient({
           );
           return;
         }
-        setMetaError(data.error || "Failed to save catalog.");
+        setMetaError(
+          data.detail ? `Meta error: ${data.detail}` : (data.error || "Failed to save catalog.")
+        );
         return;
       }
       setMetaCatalogId(data.catalogId);
@@ -279,7 +283,10 @@ export default function ProfileClient({
           meta_not_connected: "Please connect your Meta account first.",
           catalog_not_selected: "Please select a catalog before registering a feed.",
         };
-        setMetaError(feedErrorMessages[data.error] || data.error || "Failed to register feed.");
+        setMetaError(
+          feedErrorMessages[data.error]
+            || (data.detail ? `Meta error: ${data.detail}` : (data.error || "Failed to register feed."))
+        );
         return;
       }
       setMetaFeedId(data.feedId);
@@ -1005,9 +1012,13 @@ export default function ProfileClient({
               <div className="text-xs text-gray-500 mb-2">Step 5 of 5 — Register Feed</div>
               <div className="rounded-md bg-gray-50 border border-gray-200 p-3 mb-3">
                 <p className="text-xs text-gray-500 mb-1">Feed URL</p>
-                <p className="text-xs text-gray-700 break-all font-mono">
-                  https://www.ciafeed.com/feeds/&#123;your-slug&#125;.csv
-                </p>
+                {slug ? (
+                  <p className="text-xs text-gray-700 break-all font-mono">
+                    {`https://www.ciafeed.com/feeds/${slug}.csv`}
+                  </p>
+                ) : (
+                  <p className="text-xs text-gray-400">Slug not set</p>
+                )}
                 {metaCatalogId && (
                   <p className="text-xs text-gray-400 mt-2">Catalog: {metaCatalogId}</p>
                 )}

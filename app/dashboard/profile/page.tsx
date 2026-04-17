@@ -27,6 +27,7 @@ export default async function ProfilePage() {
   const dealer = await prisma.dealer.findUnique({
     where: { id: effectiveDealerId },
     select: {
+      slug: true,
       profileImageUrl: true,
       vertical: true,
       websiteUrl: true,
@@ -44,6 +45,7 @@ export default async function ProfilePage() {
 
   return (
     <ProfileClient
+      slug={dealer?.slug ?? ""}
       profileImageUrl={dealer?.profileImageUrl ?? null}
       currentVertical={dealer?.vertical ?? "automotive"}
       websiteUrl={dealer?.websiteUrl ?? null}

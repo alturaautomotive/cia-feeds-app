@@ -5,13 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getEffectiveDealerId } from "@/lib/impersonation";
 import { checkSubscription } from "@/lib/checkSubscription";
 import { decrypt } from "@/lib/crypto";
-
-const VERTICAL_TO_META: Record<string, string> = {
-  automotive: "automotive_models",
-  realestate: "home_listings",
-  services: "local_service_businesses",
-  ecommerce: "ecommerce",
-};
+import { VERTICAL_META_TYPE, type Vertical } from "@/lib/verticals";
 
 async function loadDealerToken(dealerId: string): Promise<string | null> {
   const dealer = await prisma.dealer.findUnique({
@@ -168,7 +162,7 @@ export async function POST(request: NextRequest) {
       select: { vertical: true },
     });
     const metaVertical =
-      VERTICAL_TO_META[dealer?.vertical ?? "automotive"] ?? "automotive_models";
+      VERTICAL_META_TYPE[(dealer?.vertical ?? "automotive") as Vertical] ?? "automotive_models";
 
     const createRes = await fetch(
       `https://graph.facebook.com/v19.0/${encodeURIComponent(

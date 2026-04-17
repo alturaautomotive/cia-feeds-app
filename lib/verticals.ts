@@ -9,8 +9,8 @@ export const VERTICAL_LABELS: Record<Vertical, string> = {
 };
 
 export const VERTICAL_META_TYPE: Record<Vertical, string> = {
-  automotive: "vehicles",
-  services: "local_service_businesses",
+  automotive: "automotive_models",
+  services: "ecommerce",
   realestate: "home_listings",
   ecommerce: "ecommerce",
 };

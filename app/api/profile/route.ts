@@ -3,16 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { checkSubscription } from "@/lib/checkSubscription";
 import { getEffectiveDealerContext } from "@/lib/impersonation";
 import { decrypt } from "@/lib/crypto";
+import { VERTICAL_META_TYPE, VALID_VERTICALS, type Vertical } from "@/lib/verticals";
 
-const VALID_VERTICALS = ["automotive", "services", "ecommerce", "realestate"];
 const VALID_CTA_PREFERENCES = ["sms", "whatsapp", "messenger"];
-
-const VERTICAL_TO_META: Record<string, string> = {
-  automotive: "automotive_models",
-  realestate: "home_listings",
-  services: "local_service_businesses",
-  ecommerce: "ecommerce",
-};
 
 const SAFE_SELECT = {
   id: true,
@@ -199,7 +192,7 @@ export async function PATCH(request: NextRequest) {
 
   // Handle vertical switch — kept separate due to Meta API side effects
   if ("vertical" in b) {
-    if (typeof b.vertical !== "string" || !VALID_VERTICALS.includes(b.vertical)) {
+    if (typeof b.vertical !== "string" || !(VALID_VERTICALS as readonly string[]).includes(b.vertical)) {
       return NextResponse.json({ error: "invalid_vertical" }, { status: 400 });
     }
 
@@ -266,7 +259,7 @@ export async function PATCH(request: NextRequest) {
           if (!accessToken) {
             accessToken = decrypt(dealer.metaAccessToken);
           }
-          const metaVertical = VERTICAL_TO_META[newVertical] ?? "automotive_models";
+          const metaVertical = VERTICAL_META_TYPE[newVertical as Vertical] ?? "automotive_models";
           const catRes = await fetch(
             `https://graph.facebook.com/v19.0/${dealer.metaBusinessId}/owned_product_catalogs`,
             {
