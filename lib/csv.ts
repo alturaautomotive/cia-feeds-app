@@ -33,7 +33,7 @@ export function serializeCSV(rows: Record<string, unknown>[], headers: string[])
 // --- Vertical-specific CSV headers ---
 
 export const SERVICES_CSV_HEADERS = [
-  "id", "name", "description", "price", "category", "address", "url", "image_url", "availability", "brand", "condition", "fb_product_category",
+  "id", "title", "description", "price", "link", "image_link", "availability", "brand", "condition", "google_product_category", "fb_product_category", "address",
 ];
 
 export const ECOMMERCE_CSV_HEADERS = [
@@ -83,6 +83,8 @@ export function serializeEcommerceRow(listing: {
   return serializeCSVRow(row, ECOMMERCE_CSV_HEADERS);
 }
 
+const ALLOWED_AVAILABILITY = new Set(["in stock", "out of stock", "available for order", "discontinued"]);
+
 export function serializeServicesRow(listing: {
   id: string;
   title: string;
@@ -91,18 +93,45 @@ export function serializeServicesRow(listing: {
   url: string | null;
   data: Record<string, unknown>;
 }): Record<string, unknown> {
-  const row = mapListingToRow(listing);
-  // Services verticals prefer raw price text (e.g. "Starting at $50/hr") over normalized numeric price
-  if (listing.data.price) {
-    row.price = String(listing.data.price);
+  const d = listing.data;
+
+  // Title resolution: listing.title → data.name → data.title → "Service"
+  const title = listing.title || (typeof d.name === "string" ? d.name : "") || (typeof d.title === "string" ? d.title : "") || "Service";
+
+  // Link resolution: listing.url → data.url → ""
+  const link = listing.url || (typeof d.url === "string" ? d.url : "") || "";
+
+  // Image link: listing.imageUrls[0] → ""
+  const image_link = listing.imageUrls[0] ?? "";
+
+  // Price: prefer raw string from data.price, else format numeric, else "0 USD"
+  let price: string;
+  if (typeof d.price === "string" && d.price !== "") {
+    price = d.price;
+  } else if (listing.price != null) {
+    price = `${listing.price} USD`;
+  } else {
+    price = "0 USD";
   }
-  // Ensure address is explicitly mapped for Meta's local_service_businesses spec
-  row.address = listing.data.address || row.address || "";
-  row.availability = "available for order";
-  row.fb_product_category = "Professional Services";
-  row.brand = listing.data.brand ? String(listing.data.brand) : "";
-  row.condition = listing.data.condition ? String(listing.data.condition) : "";
-  return row;
+
+  // Availability normalization
+  const rawAvailability = typeof d.availability === "string" ? d.availability.toLowerCase() : "";
+  const availability = ALLOWED_AVAILABILITY.has(rawAvailability) ? rawAvailability : "in stock";
+
+  return {
+    id: listing.id,
+    title,
+    description: (typeof d.description === 'string' ? d.description : '') || title,
+    price,
+    link,
+    image_link,
+    availability,
+    brand: d.brand ? String(d.brand) : "",
+    condition: d.condition ? String(d.condition) : "new",
+    google_product_category: d.google_product_category ? String(d.google_product_category) : "888",
+    fb_product_category: d.fb_product_category ? String(d.fb_product_category) : "Professional Services",
+    address: typeof d.address === 'string' ? d.address : '',
+  };
 }
 
 export function serializeRealEstateRow(listing: {

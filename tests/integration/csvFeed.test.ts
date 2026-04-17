@@ -749,4 +749,109 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
       expect(cols[i], `column index ${i} (${VEHICLE_CSV_HEADERS[i]}) should be non-empty`).not.toBe("");
     }
   });
+
+  // ── Services vertical CSV contract ────────────────────────────────────────
+
+  it("services feed has correct Meta PRODUCTS header row", async () => {
+    const svcDealer = { id: "dealer-svc-uuid", name: "Svc Dealer", slug: "svc-dealer", vertical: "services", address: "300 Service Ave, Austin, TX 78701" };
+    vi.mocked(prisma.dealer.findUnique).mockResolvedValue(svcDealer as never);
+    vi.mocked(prisma.listing.findMany).mockResolvedValue([] as never);
+
+    const req = new Request("http://localhost:3000/feeds/svc-dealer.csv");
+    const res = await GET(req, { params: Promise.resolve({ slug: "svc-dealer.csv" }) });
+
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    const lines = text.split("\r\n").filter(Boolean);
+
+    expect(lines[0]).toBe(
+      "id,title,description,price,link,image_link,availability,brand,condition,google_product_category,fb_product_category,address"
+    );
+
+    // Old column names must NOT appear in the header
+    const header = lines[0];
+    expect(header).not.toContain(",name,");
+    expect(header).not.toContain(",url,");
+    expect(header).not.toContain(",image_url,");
+    expect(header).not.toContain(",category,");
+  });
+
+  it("services feed maps title/link/image_link from listing fields", async () => {
+    const svcDealer = { id: "dealer-svc-uuid", name: "Svc Dealer", slug: "svc-dealer", vertical: "services", address: "300 Service Ave, Austin, TX 78701" };
+    vi.mocked(prisma.dealer.findUnique).mockResolvedValue(svcDealer as never);
+    vi.mocked(prisma.listing.findMany).mockResolvedValue([
+      {
+        id: "listing-svc-1",
+        dealerId: svcDealer.id,
+        vertical: "services",
+        title: "Ceramic Coating",
+        price: 100,
+        url: "https://dealer.com/ceramic-coating",
+        imageUrls: ["https://example.com/image.jpg"],
+        publishStatus: "published",
+        data: { description: "Premium coating service", brand: "DetailPro", condition: "new" },
+        archivedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ] as never);
+
+    const req = new Request("http://localhost:3000/feeds/svc-dealer.csv");
+    const res = await GET(req, { params: Promise.resolve({ slug: "svc-dealer.csv" }) });
+
+    const text = await res.text();
+    const lines = text.split("\r\n").filter(Boolean);
+    const headers = lines[0].split(",");
+    const cols = lines[1].split(",");
+
+    // Assert column values by index against new headers
+    expect(cols[headers.indexOf("id")]).toBe("listing-svc-1");
+    expect(cols[headers.indexOf("title")]).toBe("Ceramic Coating");
+    expect(cols[headers.indexOf("price")]).toBe("100 USD");
+    expect(cols[headers.indexOf("link")]).toBe("https://dealer.com/ceramic-coating");
+    expect(cols[headers.indexOf("image_link")]).toBe("https://example.com/image.jpg");
+    expect(cols[headers.indexOf("availability")]).toBe("in stock");
+    expect(cols[headers.indexOf("brand")]).toBe("DetailPro");
+    expect(cols[headers.indexOf("condition")]).toBe("new");
+    expect(cols[headers.indexOf("google_product_category")]).toBe("888");
+    expect(cols[headers.indexOf("fb_product_category")]).toBe("Professional Services");
+
+    // Old column names must not be present as properties
+    const row = lines[1];
+    expect(headers).not.toContain("name");
+    expect(headers).not.toContain("url");
+    expect(headers).not.toContain("image_url");
+  });
+
+  it("services feed normalizes invalid availability to 'in stock'", async () => {
+    const svcDealer = { id: "dealer-svc-uuid", name: "Svc Dealer", slug: "svc-dealer", vertical: "services", address: "300 Service Ave, Austin, TX 78701" };
+    vi.mocked(prisma.dealer.findUnique).mockResolvedValue(svcDealer as never);
+    vi.mocked(prisma.listing.findMany).mockResolvedValue([
+      {
+        id: "listing-svc-avail",
+        dealerId: svcDealer.id,
+        vertical: "services",
+        title: "Oil Change",
+        price: 50,
+        url: "https://dealer.com/oil-change",
+        imageUrls: ["https://example.com/oil.jpg"],
+        publishStatus: "published",
+        data: { description: "Full synthetic oil change", availability: "ready to ship" },
+        archivedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ] as never);
+
+    const req = new Request("http://localhost:3000/feeds/svc-dealer.csv");
+    const res = await GET(req, { params: Promise.resolve({ slug: "svc-dealer.csv" }) });
+
+    const text = await res.text();
+    const lines = text.split("\r\n").filter(Boolean);
+    const headers = lines[0].split(",");
+    const cols = lines[1].split(",");
+
+    // "ready to ship" is not in the allowed set → normalized to "in stock"
+    expect(cols[headers.indexOf("availability")]).toBe("in stock");
+  });
 });
