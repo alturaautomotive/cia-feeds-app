@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, Fragment } from "react";
+import { useState, Fragment, useRef } from "react";
 
 function normalizeUrl(url: string | null): string | null {
   if (!url || url.trim() === "") return null;
@@ -108,10 +108,15 @@ export function ListingsTable({ listings, vertical, onDelete }: Props) {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   function handleEditOpen(listing: ListingRow) {
     setSaveError(null);
     setSaveSuccess(null);
+    setUploadError(null);
+    setUploadingImage(false);
     const form: Record<string, string> = {
       name: String(listing.data?.name ?? listing.title ?? ""),
       description: String(listing.data?.description ?? ""),
@@ -135,6 +140,61 @@ export function ListingsTable({ listings, vertical, onDelete }: Props) {
     setEditForm({});
     setEditOriginal({});
     setSaveError(null);
+    setUploadError(null);
+    setUploadingImage(false);
+  }
+
+  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setUploadError("Please select an image file (JPG, PNG, or WebP).");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setUploadError("Image must be 5 MB or smaller.");
+      return;
+    }
+
+    setUploadingImage(true);
+    setUploadError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("files", file);
+
+      const res = await fetch("/api/listings/upload-image", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (res.ok) {
+        const data = (await res.json()) as { urls: string[] };
+        const newUrl = data.urls?.[0];
+        if (newUrl) {
+          setEditForm((prev) => ({ ...prev, image_url: newUrl }));
+        }
+      } else {
+        let errorMessage = "Upload failed";
+        try {
+          const body = (await res.json()) as { error?: string; message?: string };
+          if (body?.error || body?.message) {
+            errorMessage = body.error ?? body.message ?? errorMessage;
+          }
+        } catch {
+          // not JSON
+        }
+        setUploadError(errorMessage);
+      }
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Network error during upload");
+    } finally {
+      setUploadingImage(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
   }
 
   async function handleEditSave(id: string) {
@@ -608,6 +668,83 @@ export function ListingsTable({ listings, vertical, onDelete }: Props) {
                             field.key,
                             fieldSources
                           );
+
+                          if (field.key === "image_url") {
+                            return (
+                              <div key={field.key}>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">
+                                  {field.label}
+                                </label>
+                                <input
+                                  type="url"
+                                  value={editForm.image_url ?? ""}
+                                  placeholder="https://..."
+                                  onChange={(e) =>
+                                    setEditForm((prev) => ({
+                                      ...prev,
+                                      image_url: e.target.value,
+                                    }))
+                                  }
+                                  className={`w-full rounded px-2 py-1.5 text-sm border focus:outline-none focus:ring-1 focus:ring-indigo-500 ${borderClass}`}
+                                />
+                                <div className="flex items-center gap-2 mt-1.5">
+                                  <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={handleImageUpload}
+                                    id={`image-upload-${editingId}`}
+                                    className="hidden"
+                                    disabled={uploadingImage}
+                                  />
+                                  <label
+                                    htmlFor={`image-upload-${editingId}`}
+                                    className={`inline-flex items-center gap-1 text-xs font-medium border border-gray-300 rounded px-3 py-1.5 ${
+                                      uploadingImage
+                                        ? "opacity-50 cursor-not-allowed"
+                                        : "cursor-pointer hover:bg-gray-50"
+                                    }`}
+                                  >
+                                    {uploadingImage ? (
+                                      <>
+                                        <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                        </svg>
+                                        Uploading…
+                                      </>
+                                    ) : (
+                                      "📷 Upload Your Own Image"
+                                    )}
+                                  </label>
+                                  {editForm.image_url && (
+                                    /* eslint-disable-next-line @next/next/no-img-element */
+                                    <img
+                                      key={editForm.image_url}
+                                      src={editForm.image_url}
+                                      alt="Preview"
+                                      className="h-12 w-12 object-cover rounded border border-gray-200"
+                                      onError={(e) => {
+                                        e.currentTarget.style.display = "none";
+                                      }}
+                                    />
+                                  )}
+                                </div>
+                                {uploadError && (
+                                  <p className="mt-1 text-xs text-red-600">{uploadError}</p>
+                                )}
+                                <p className="mt-1 text-xs text-gray-500">
+                                  Max 5 MB. JPG, PNG, or WebP. Uploaded images replace the current image URL.
+                                </p>
+                                {hint && (
+                                  <p className="text-[10px] text-amber-600 mt-0.5">
+                                    {hint}
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          }
+
                           return (
                             <div key={field.key}>
                               <label className="block text-xs font-medium text-gray-600 mb-1">
@@ -654,7 +791,7 @@ export function ListingsTable({ listings, vertical, onDelete }: Props) {
                         <button
                           type="button"
                           onClick={() => handleEditSave(listing.id)}
-                          disabled={savingId === listing.id}
+                          disabled={savingId === listing.id || uploadingImage}
                           className="bg-indigo-600 text-white px-4 py-1.5 rounded text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
                         >
                           {savingId === listing.id ? "Saving\u2026" : "Save"}
