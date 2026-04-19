@@ -130,6 +130,10 @@ export async function PATCH(
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.warn({ event: "publish_gate_image_check_error", listingId: id, message });
+      return NextResponse.json(
+        { error: "image_validation_failed", message },
+        { status: 403 }
+      );
     }
   }
 

@@ -228,14 +228,13 @@ export async function POST(request: NextRequest) {
             });
             if (validation.isCrawlerSafe) {
               imageUrls[i] = finalUrl;
-            } else if (finalUrl === originalUrl) {
-              imageUrls.splice(i, 1);
             } else {
-              imageUrls[i] = finalUrl;
+              imageUrls.splice(i, 1);
             }
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             console.log({ event: "image_validation_error", listingId: listing.id, imageUrl: imageUrls[i], message });
+            imageUrls.splice(i, 1);
             continue;
           }
         }

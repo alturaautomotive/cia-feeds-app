@@ -22,10 +22,11 @@ export async function validateImageUrl(url: string): Promise<ImageValidationResu
     let response: Response | null = null;
 
     for (let i = 0; i < 5; i++) {
-      response = await fetch(currentUrl, { method: "GET", redirect: "manual" });
+      response = await fetch(currentUrl, { method: "HEAD", redirect: "manual" });
 
       if ([301, 302, 303, 307, 308].includes(response.status)) {
         const location = response.headers.get("location");
+        await response.body?.cancel();
         if (!location) break;
         currentUrl = new URL(location, currentUrl).toString();
         redirectChain.push(currentUrl);
@@ -49,6 +50,7 @@ export async function validateImageUrl(url: string): Promise<ImageValidationResu
 
     httpStatus = response.status;
     contentType = response.headers.get("content-type");
+    await response.body?.cancel();
 
     // Check 1: HTTP 200
     if (httpStatus !== 200) {
@@ -94,13 +96,39 @@ export async function validateImageUrl(url: string): Promise<ImageValidationResu
   }
 }
 
+const MAX_REHOST_SIZE = 5 * 1024 * 1024; // 5 MB, matches upload-image route
+
 export async function rehostImageToStorage(sourceUrl: string, dealerId: string): Promise<string> {
   const response = await fetch(sourceUrl, { redirect: "follow" });
   if (!response.ok) {
     throw new Error("Failed to fetch source image: HTTP " + response.status);
   }
-  const arrayBuffer = await response.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
+
+  // Check Content-Length header first for an early rejection
+  const contentLength = response.headers.get("content-length");
+  if (contentLength && parseInt(contentLength, 10) > MAX_REHOST_SIZE) {
+    await response.body?.cancel();
+    throw new Error(`Image exceeds ${MAX_REHOST_SIZE / (1024 * 1024)} MB limit`);
+  }
+
+  // Stream the body with a size guard in case Content-Length is absent or wrong
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error("Failed to read response body");
+  }
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    totalBytes += value.byteLength;
+    if (totalBytes > MAX_REHOST_SIZE) {
+      await reader.cancel();
+      throw new Error(`Image exceeds ${MAX_REHOST_SIZE / (1024 * 1024)} MB limit`);
+    }
+    chunks.push(value);
+  }
+  const buffer = Buffer.concat(chunks);
 
   let contentType = response.headers.get("content-type") || "image/jpeg";
   contentType = contentType.split(";")[0].trim();
@@ -127,7 +155,10 @@ export async function rehostImageToStorage(sourceUrl: string, dealerId: string):
     sanitizedFilename = "image";
   }
 
-  const path = `service-images/${dealerId}/${Date.now()}-${sanitizedFilename}${extension}`;
+  const finalFilename = sanitizedFilename.toLowerCase().endsWith(extension)
+    ? sanitizedFilename
+    : sanitizedFilename + extension;
+  const path = `service-images/${dealerId}/${Date.now()}-${finalFilename}`;
 
   const { error: uploadError } = await supabaseAdmin.storage
     .from("vehicle-images")
