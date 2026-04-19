@@ -52,3 +52,19 @@ export function logScrapeEnd(payload: ScrapeEndPayload): void {
 export function logCsvGeneration(payload: CsvGenerationPayload): void {
   console.log({ event: "csv_generated", ...payload });
 }
+
+export interface ImageValidationPayload {
+  listingId: string;
+  imageLink: string;
+  httpStatus: number | null;
+  contentType: string | null;
+  redirectChain: string[];
+  isCrawlerSafe: boolean;
+  failureReason: string | null;
+  rehosted: boolean;
+  rehostedUrl: string | null;
+}
+
+export function logServiceImageValidation(payload: ImageValidationPayload): void {
+  console.log({ event: "service_image_validation", ...payload });
+}
