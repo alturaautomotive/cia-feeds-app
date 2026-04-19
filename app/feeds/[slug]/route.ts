@@ -136,6 +136,7 @@ function streamListingsCSV(
 
       let cursor: string | undefined;
       let listingCount = 0;
+      let skippedCount = 0;
 
       while (true) {
         const batch = await prisma.listing.findMany({
@@ -151,17 +152,27 @@ function streamListingsCSV(
         });
 
         for (const listing of batch) {
+          if (vertical === "services") {
+            const firstImage = listing.imageUrls[0];
+            if (
+              !firstImage ||
+              firstImage === "https://placehold.co/600x400?text=No+Image"
+            ) {
+              console.log({ event: "feed_skip_no_valid_image", listingId: listing.id });
+              skippedCount++;
+              continue;
+            }
+          }
           const data = listing.data as Record<string, unknown>;
           const row = vertical === "services"
             ? serializeServicesRow({ ...listing, data })
             : mapListingToRow({ ...listing, data });
           controller.enqueue(encoder.encode(serializeCSVRow(row, csvHeaders)));
+          listingCount++;
         }
 
-        listingCount += batch.length;
-
         if (batch.length < BATCH_SIZE) {
-          logCsvGeneration({ slug, dealerId, vehicleCount: listingCount, durationMs: Date.now() - startMs });
+          logCsvGeneration({ slug, dealerId, vehicleCount: listingCount, skippedCount, durationMs: Date.now() - startMs });
           break;
         }
 

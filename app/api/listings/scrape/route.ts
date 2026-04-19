@@ -17,6 +17,8 @@ import {
   computeIsHighQuality,
 } from "@/lib/serviceUrlValidator";
 import { getRequiredFields } from "@/lib/verticals";
+import { validateAndRehostServiceImage } from "@/lib/imageValidator";
+import { logServiceImageValidation } from "@/lib/logger";
 import type { Prisma } from "@prisma/client";
 
 const EXTRACTION_PROMPT = `
@@ -130,6 +132,38 @@ export async function POST(request: NextRequest) {
       }
       if (typeof rawData.image_url_2 === "string" && rawData.image_url_2) {
         imageUrls.push(rawData.image_url_2);
+      }
+    }
+
+    // Validate and re-host services images
+    if (vertical === "services" && imageUrls.length > 0) {
+      for (let i = imageUrls.length - 1; i >= 0; i--) {
+        try {
+          const originalUrl = imageUrls[i];
+          const { finalUrl, validation } = await validateAndRehostServiceImage(originalUrl, dealerId, listingId);
+          logServiceImageValidation({
+            listingId,
+            imageLink: originalUrl,
+            httpStatus: validation.httpStatus,
+            contentType: validation.contentType,
+            redirectChain: validation.redirectChain,
+            isCrawlerSafe: validation.isCrawlerSafe,
+            failureReason: validation.failureReason,
+            rehosted: finalUrl !== originalUrl,
+            rehostedUrl: finalUrl !== originalUrl ? finalUrl : null,
+          });
+          if (validation.isCrawlerSafe) {
+            imageUrls[i] = finalUrl;
+          } else if (finalUrl === originalUrl) {
+            imageUrls.splice(i, 1);
+          } else {
+            imageUrls[i] = finalUrl;
+          }
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.log({ event: "image_validation_error", listingId, imageUrl: imageUrls[i], message });
+          continue;
+        }
       }
     }
 

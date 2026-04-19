@@ -12,6 +12,8 @@ import {
   type FieldSource,
   type FieldSourcesMap,
 } from "@/lib/serviceUrlValidator";
+import { validateImageUrl } from "@/lib/imageValidator";
+import { logServiceImageValidation } from "@/lib/logger";
 import type { Prisma } from "@prisma/client";
 
 const ALLOWED_PUBLISH_STATUSES = [
@@ -92,6 +94,42 @@ export async function PATCH(
     }
     if (listing.urlValidationScore == null) {
       return NextResponse.json({ error: "url_validation_required" }, { status: 403 });
+    }
+
+    // Image publish gate
+    const effectiveImageUrls = Array.isArray(b.imageUrls)
+      ? (b.imageUrls as string[])
+      : listing.imageUrls;
+
+    if (
+      !effectiveImageUrls.length ||
+      effectiveImageUrls[0] === "https://placehold.co/600x400?text=No+Image"
+    ) {
+      return NextResponse.json({ error: "image_required_for_publish" }, { status: 403 });
+    }
+
+    try {
+      const validation = await validateImageUrl(effectiveImageUrls[0]);
+      logServiceImageValidation({
+        listingId: id,
+        imageLink: effectiveImageUrls[0],
+        httpStatus: validation.httpStatus,
+        contentType: validation.contentType,
+        redirectChain: validation.redirectChain,
+        isCrawlerSafe: validation.isCrawlerSafe,
+        failureReason: validation.failureReason,
+        rehosted: false,
+        rehostedUrl: null,
+      });
+      if (!validation.isCrawlerSafe) {
+        return NextResponse.json(
+          { error: "image_not_crawler_safe", failureReason: validation.failureReason },
+          { status: 403 }
+        );
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn({ event: "publish_gate_image_check_error", listingId: id, message });
     }
   }
 
