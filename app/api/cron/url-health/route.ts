@@ -86,7 +86,29 @@ async function checkUrl(url: string): Promise<CheckResult> {
       }
     }
 
-    return { status: "error" };
+    // GET fallback for 403, 405, and other unexpected status codes
+    try {
+      const getResponse = await fetch(url, {
+        method: "GET",
+        redirect: "follow",
+        signal: AbortSignal.timeout(8000),
+      });
+
+      if (getResponse.status >= 200 && getResponse.status < 300) {
+        if (isVdpUrl(getResponse.url)) {
+          return { status: "active" };
+        }
+        return { status: "redirect" };
+      }
+
+      if (getResponse.status === 404 || getResponse.status === 410) {
+        return { status: "sold_or_removed" };
+      }
+
+      return { status: "error" };
+    } catch {
+      return { status: "error" };
+    }
   } catch {
     return { status: "error" };
   }
