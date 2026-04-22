@@ -10,12 +10,19 @@
     },
     "app/api/cron/crawl/route.ts": {
       "maxDuration": 300
+    },
+    "app/api/cron/url-health/route.ts": {
+      "maxDuration": 300
     }
   },
   "crons": [
     {
       "path": "/api/cron/crawl",
       "schedule": "0 6 * * 1"
+    },
+    {
+      "path": "/api/cron/url-health",
+      "schedule": "0 3 * * *"
     }
   ]
 }
