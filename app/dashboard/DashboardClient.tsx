@@ -199,6 +199,9 @@ export function DashboardClient({
       isComplete: false,
       missingFields: [],
       archivedAt: null,
+      urlStatus: "active",
+      urlLastCheckedAt: null,
+      urlCheckFailed: false,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
