@@ -262,9 +262,10 @@ function parseAddressFields(raw: string): { street_address: string; city: string
     };
   } else if (parts.length === 2) {
     const stateZip = parseStateZip(parts[1]);
+    const looksLikeStreet = /^\d/.test(parts[0].trim());
     return {
-      street_address: "",
-      city: parts[0],
+      street_address: looksLikeStreet ? parts[0] : "",
+      city: looksLikeStreet ? "" : parts[0],
       region: stateZip.region ?? "",
       postal_code: stateZip.postal_code ?? "",
       country: "US",

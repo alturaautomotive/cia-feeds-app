@@ -305,7 +305,7 @@ describe("mapVehicleToRow() — Meta-spec fields", () => {
     expect(row.availability).toBe("not_available");
   });
 
-  it("renders 2-part address into flat columns", () => {
+  it("renders 2-part address (city first) into flat columns", () => {
     const row = mapVehicleToRow({
       ...baseVehicle,
       address: "Springfield, IL 62701",
@@ -314,6 +314,18 @@ describe("mapVehicleToRow() — Meta-spec fields", () => {
     expect(row.city).toBe("Springfield");
     expect(row.region).toBe("IL");
     expect(row.postal_code).toBe("62701");
+    expect(row.country).toBe("US");
+  });
+
+  it("renders 2-part address (street first) into flat columns", () => {
+    const row = mapVehicleToRow({
+      ...baseVehicle,
+      address: "11161 & 1235 Asheville Hwy Brevard, NC 28712",
+    });
+    expect(row.street_address).toBe("11161 & 1235 Asheville Hwy Brevard");
+    expect(row.city).toBe("");
+    expect(row.region).toBe("NC");
+    expect(row.postal_code).toBe("28712");
     expect(row.country).toBe("US");
   });
 

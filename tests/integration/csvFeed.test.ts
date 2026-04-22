@@ -422,6 +422,37 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     expect(cols2[countryIdx]).toBe("US");
   });
 
+  it("automotive feed populates street_address when 2-part address starts with digit", async () => {
+    vi.mocked(prisma.dealer.findUnique).mockResolvedValue(dealer as never);
+    vi.mocked(prisma.vehicle.findMany).mockResolvedValue([
+      makeVehicle({
+        id: "v-street-only",
+        make: "Honda",
+        model: "Civic",
+        address: "11161 & 1235 Asheville Hwy Brevard, NC 28712",
+      }),
+    ] as never);
+
+    const req = new Request("http://localhost:3000/feeds/int-dealer.csv");
+    const res = await GET(req, { params: Promise.resolve({ slug: "int-dealer.csv" }) });
+    const text = await res.text();
+    const lines = text.split("\r\n").filter(Boolean);
+    const headers = lines[0].split(",");
+
+    const streetIdx = headers.indexOf("street_address");
+    const cityIdx = headers.indexOf("city");
+    const regionIdx = headers.indexOf("region");
+    const postalIdx = headers.indexOf("postal_code");
+    const countryIdx = headers.indexOf("country");
+
+    const cols = parseCsvRow(lines[1]);
+    expect(cols[streetIdx]).toBe("11161 & 1235 Asheville Hwy Brevard");
+    expect(cols[cityIdx]).toBe("");
+    expect(cols[regionIdx]).toBe("NC");
+    expect(cols[postalIdx]).toBe("28712");
+    expect(cols[countryIdx]).toBe("US");
+  });
+
   it("vehicle with null address and no dealer address is emitted with empty address cells and warning", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.mocked(prisma.dealer.findUnique).mockResolvedValue(dealer as never);
