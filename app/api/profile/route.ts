@@ -16,6 +16,7 @@ const SAFE_SELECT = {
   vertical: true,
   websiteUrl: true,
   autoCrawlEnabled: true,
+  urlHealthCheckEnabled: true,
   address: true,
   phone: true,
   ctaPreference: true,
@@ -180,6 +181,14 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "invalid_autoCrawlEnabled" }, { status: 400 });
     }
     batchData.autoCrawlEnabled = b.autoCrawlEnabled;
+  }
+
+  // Handle urlHealthCheckEnabled toggle
+  if ("urlHealthCheckEnabled" in b) {
+    if (typeof b.urlHealthCheckEnabled !== "boolean") {
+      return NextResponse.json({ error: "invalid_urlHealthCheckEnabled" }, { status: 400 });
+    }
+    batchData.urlHealthCheckEnabled = b.urlHealthCheckEnabled;
   }
 
   // Perform a single DB write for all simple field updates

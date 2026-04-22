@@ -145,7 +145,7 @@ export async function GET(request: NextRequest) {
               data: {
                 urlStatus: "error",
                 urlLastCheckedAt: new Date(),
-                urlCheckFailed: true,
+                urlCheckFailed: false,
               },
             });
             errors++;

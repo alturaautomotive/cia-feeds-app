@@ -8,6 +8,7 @@ import { getEffectiveDealerContext } from "@/lib/impersonation";
 import { VERTICAL_LABELS, type Vertical } from "@/lib/verticals";
 import FeedUrlCard from "./FeedUrlCard";
 import EmbedWidgetCard from "./EmbedWidgetCard";
+import UrlHealthCheckToggle from "./UrlHealthCheckToggle";
 
 const BACK_LABEL: Record<string, string> = {
   automotive: "Vehicles",
@@ -37,7 +38,7 @@ export default async function FeedPage() {
 
   const dealer = await prisma.dealer.findUnique({
     where: { id: effectiveDealerId },
-    select: { slug: true, vertical: true, phone: true, fbPageId: true, ctaPreference: true, address: true },
+    select: { slug: true, vertical: true, phone: true, fbPageId: true, ctaPreference: true, address: true, urlHealthCheckEnabled: true },
   });
 
   const slug = dealer?.slug ?? (session.user.slug as string | undefined) ?? "";
@@ -50,6 +51,7 @@ export default async function FeedPage() {
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/+$/, "");
   const feedUrl = `${appUrl}/feeds/${slug}.csv`;
   const catalogApiUrl = `${appUrl}/api/catalog/${slug}`;
+  const urlHealthCheckEnabled = dealer?.urlHealthCheckEnabled ?? true;
   const dealerPhone = dealer?.phone ?? null;
   const dealerFbPageId = dealer?.fbPageId ?? null;
   const dealerCtaPreference = dealer?.ctaPreference ?? null;
@@ -99,7 +101,7 @@ export default async function FeedPage() {
         </p>
 
         {!dealer?.address?.trim() ? (
-          <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-md p-4">
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-md p-4 mt-6">
             <p>
               Please add your dealership address in your{" "}
               <Link
@@ -112,7 +114,7 @@ export default async function FeedPage() {
             </p>
           </div>
         ) : dealerVertical === "services" && publishedServicesCount === 0 ? (
-          <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-md p-4">
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-md p-4 mt-6">
             <p>
               You don&apos;t have any published services yet. Validate your service URLs to publish them and enable your feed.
             </p>
@@ -131,6 +133,10 @@ export default async function FeedPage() {
             />
           </>
         )}
+
+        <div className="mt-6">
+          <UrlHealthCheckToggle urlHealthCheckEnabled={urlHealthCheckEnabled} />
+        </div>
       </div>
     </div>
   );
