@@ -97,6 +97,23 @@ export async function PATCH(
     }
   }
 
+  // Validate urlStatus field
+  const allowedUrlStatuses = ["active", "sold_or_removed", "redirect", "error"];
+  if ("urlStatus" in b) {
+    const val = b.urlStatus;
+    if (val === null || typeof val !== "string" || val.trim() === "" || !allowedUrlStatuses.includes(val)) {
+      validationErrors["urlStatus"] = `urlStatus must be one of: ${allowedUrlStatuses.join(", ")}`;
+    }
+  }
+
+  // Validate boolean fields
+  if ("urlCheckFailed" in b) {
+    const val = b.urlCheckFailed;
+    if (typeof val !== "boolean") {
+      validationErrors["urlCheckFailed"] = "urlCheckFailed must be a boolean";
+    }
+  }
+
   // Validate images field
   if ("images" in b) {
     const imgs = b.images;
@@ -126,6 +143,8 @@ export async function PATCH(
     "imageUrl",
     "description",
     "images",
+    "urlStatus",
+    "urlCheckFailed",
   ];
 
   const updates: Record<string, unknown> = {};
