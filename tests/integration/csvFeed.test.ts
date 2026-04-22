@@ -461,6 +461,33 @@ describe("GET /feeds/[slug].csv — CSV contract", () => {
     warnSpy.mockRestore();
   });
 
+  it("automotive header contains availability and rows emit 'available' for non-archived vehicles", async () => {
+    vi.mocked(prisma.dealer.findUnique).mockResolvedValue(dealer as never);
+    vi.mocked(prisma.vehicle.findMany).mockResolvedValue([
+      makeVehicle({ id: "v-avail-1", make: "Honda", model: "Civic" }),
+      makeVehicle({ id: "v-avail-2", make: "Ford", model: "F-150", archivedAt: new Date("2026-01-15") }),
+    ] as never);
+
+    const req = new Request("http://localhost:3000/feeds/int-dealer.csv");
+    const res = await GET(req, { params: Promise.resolve({ slug: "int-dealer.csv" }) });
+    const text = await res.text();
+    const lines = text.split("\r\n").filter(Boolean);
+    const headers = lines[0].split(",");
+
+    // Header must contain availability
+    expect(headers).toContain("availability");
+
+    const availIdx = headers.indexOf("availability");
+
+    // Non-archived vehicle → "available"
+    const cols1 = parseCsvRow(lines[1]);
+    expect(cols1[availIdx]).toBe("available");
+
+    // Archived vehicle → "not_available"
+    const cols2 = parseCsvRow(lines[2]);
+    expect(cols2[availIdx]).toBe("not_available");
+  });
+
   it("automotive feed normalizes compound body_style values", async () => {
     vi.mocked(prisma.dealer.findUnique).mockResolvedValue(dealer as never);
     vi.mocked(prisma.vehicle.findMany).mockResolvedValue([

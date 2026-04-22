@@ -177,6 +177,7 @@ export const VEHICLE_CSV_HEADERS = [
   "image[1].url",
   "fb_page_id",
   "description",
+  "availability",
 ];
 
 export type VehicleForCSV = {
@@ -209,6 +210,7 @@ export type VehicleForCSV = {
     latitude?: number | null;
     longitude?: number | null;
   } | null;
+  archivedAt: Date | null;
 };
 
 function normalizeImageUrl(img: string): string {
@@ -360,6 +362,7 @@ export function mapVehicleToRow(v: VehicleForCSV): Record<string, unknown> {
     "image[1].url": imgs[1] ?? imgs[0] ?? "",
     fb_page_id: v.dealer?.fbPageId ?? "",
     description,
+    availability: v.archivedAt == null ? "available" : "not_available",
   };
 }
 

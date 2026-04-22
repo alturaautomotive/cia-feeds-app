@@ -25,6 +25,7 @@ const baseVehicle = {
   address: null,
   latitude: null,
   longitude: null,
+  archivedAt: null,
 };
 
 describe("mapVehicleToRow() — address resolution", () => {
@@ -292,6 +293,16 @@ describe("mapVehicleToRow() — Meta-spec fields", () => {
   it("image[1].url duplicates image[0].url for single-image vehicles", () => {
     const row = mapVehicleToRow(baseVehicle);
     expect(row["image[1].url"]).toBe("https://img.com/camry.jpg");
+  });
+
+  it("availability is 'available' when archivedAt is null", () => {
+    const row = mapVehicleToRow({ ...baseVehicle, archivedAt: null });
+    expect(row.availability).toBe("available");
+  });
+
+  it("availability is 'not_available' when archivedAt is a Date", () => {
+    const row = mapVehicleToRow({ ...baseVehicle, archivedAt: new Date() });
+    expect(row.availability).toBe("not_available");
   });
 
   it("renders 2-part address into flat columns", () => {
