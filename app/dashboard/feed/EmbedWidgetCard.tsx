@@ -30,9 +30,12 @@ export default function EmbedWidgetCard({
     const appOrigin = typeof window !== 'undefined' ? window.location.origin : '';
     const safeCatalogApiUrl = catalogApiUrl.startsWith(appOrigin + '/') || catalogApiUrl.startsWith('/') ? catalogApiUrl : '';
     const escapedUrl = escapeJS(safeCatalogApiUrl);
+    const escapedSlug = escapeJS(slug);
 
     return `<script>
 (function(){
+  var origin = window.location.origin;
+  var escapedSlug = '${escapedSlug}';
   var container = document.createElement('div');
   container.id = 'cia-catalog-widget';
   document.currentScript.parentElement.appendChild(container);
@@ -59,7 +62,7 @@ export default function EmbedWidgetCard({
 
       var grid = document.createElement('div');
       grid.style.display = 'grid';
-      grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(260px, 1fr))';
+      grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(350px, 1fr))';
       grid.style.gap = '16px';
 
       items.forEach(function(item){
@@ -74,14 +77,14 @@ export default function EmbedWidgetCard({
           img.src = item.image;
           img.alt = item.title || '';
           img.style.width = '100%';
-          img.style.height = '180px';
+          img.style.height = '250px';
           img.style.objectFit = 'cover';
           img.style.display = 'block';
           card.appendChild(img);
         } else {
           var ph = document.createElement('div');
           ph.style.width = '100%';
-          ph.style.height = '180px';
+          ph.style.height = '250px';
           ph.style.backgroundColor = '#f3f4f6';
           ph.style.display = 'flex';
           ph.style.alignItems = 'center';
@@ -133,7 +136,14 @@ export default function EmbedWidgetCard({
         }
 
         card.appendChild(body);
-        grid.appendChild(card);
+
+        var link = document.createElement('a');
+        link.href = origin + '/w/' + escapedSlug + '/' + item.id;
+        link.style.textDecoration = 'none';
+        link.style.color = 'inherit';
+        link.style.display = 'block';
+        link.appendChild(card);
+        grid.appendChild(link);
       });
 
       wrapper.appendChild(grid);
