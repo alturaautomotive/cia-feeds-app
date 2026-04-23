@@ -17,13 +17,20 @@ enum CtaPreference {
   messenger
 }
 
+enum Vertical {
+  automotive
+  services
+  ecommerce
+  realestate
+}
+
 model Dealer {
   id                   String    @id @default(uuid())
   name                 String
   email                String    @unique
   passwordHash         String
   slug                 String    @unique
-  vertical             String    @default("automotive")
+  vertical             Vertical  @default(automotive)
   active               Boolean   @default(true)
   stripeCustomerId     String?
   stripeSubscriptionId String?
@@ -47,17 +54,37 @@ model Dealer {
   translationTone      String?        @default("professional")
   latitude             Float?
   longitude            Float?
+  defaultSubAccountId  String?
   vehicles             Vehicle[]
   listings             Listing[]
   crawlJobs            CrawlJob[]
   crawlSnapshots       CrawlSnapshot[]
   leads                Lead[]
+  subAccounts          SubAccount[]   @relation("DealerSubAccounts")
+}
+
+model SubAccount {
+  id             String          @id @default(uuid())
+  dealerId       String
+  dealer         Dealer          @relation("DealerSubAccounts", fields: [dealerId], references: [id])
+  vertical       Vertical        @default(automotive)
+  name           String
+  stripeSubId    String?
+  createdAt      DateTime        @default(now())
+  vehicles       Vehicle[]
+  listings       Listing[]
+  crawlJobs      CrawlJob[]
+  crawlSnapshots CrawlSnapshot[]
+
+  @@index([dealerId])
 }
 
 model Vehicle {
-  id             String   @id @default(uuid())
+  id             String      @id @default(uuid())
   dealerId       String
-  dealer         Dealer   @relation(fields: [dealerId], references: [id])
+  dealer         Dealer      @relation(fields: [dealerId], references: [id])
+  subAccountId   String?
+  subAccount     SubAccount? @relation(fields: [subAccountId], references: [id])
   description    String?
   vin            String?
   make           String?
@@ -93,6 +120,7 @@ model Vehicle {
   @@unique([dealerId, url])
   @@index([dealerId])
   @@index([dealerId, archivedAt])
+  @@index([subAccountId])
   leads          Lead[]
 }
 
@@ -112,9 +140,11 @@ model Lead {
 }
 
 model Listing {
-  id                  String    @id @default(uuid())
+  id                  String      @id @default(uuid())
   dealerId            String
-  dealer              Dealer    @relation(fields: [dealerId], references: [id])
+  dealer              Dealer      @relation(fields: [dealerId], references: [id])
+  subAccountId        String?
+  subAccount          SubAccount? @relation(fields: [subAccountId], references: [id])
   vertical            String
   title               String
   price               Float?
@@ -134,6 +164,7 @@ model Listing {
 
   @@index([dealerId, vertical])
   @@index([dealerId, archivedAt])
+  @@index([subAccountId])
   @@unique([dealerId, canonicalUrl])
 }
 
@@ -141,6 +172,8 @@ model CrawlJob {
   id           String         @id @default(uuid())
   dealerId     String
   dealer       Dealer         @relation(fields: [dealerId], references: [id])
+  subAccountId String?
+  subAccount   SubAccount?    @relation(fields: [subAccountId], references: [id])
   status       String         @default("pending") // pending | running | mapping_complete | complete | failed
   phase        String         @default("mapping") // mapping | enriching | complete
   startedAt    DateTime       @default(now())
@@ -150,14 +183,17 @@ model CrawlJob {
   snapshots    CrawlSnapshot[]
 
   @@index([dealerId])
+  @@index([subAccountId])
 }
 
 model CrawlSnapshot {
-  id          String   @id @default(uuid())
-  crawlJobId  String
-  crawlJob    CrawlJob @relation(fields: [crawlJobId], references: [id])
-  dealerId    String
-  dealer      Dealer   @relation(fields: [dealerId], references: [id])
+  id           String      @id @default(uuid())
+  crawlJobId   String
+  crawlJob     CrawlJob    @relation(fields: [crawlJobId], references: [id])
+  dealerId     String
+  dealer       Dealer      @relation(fields: [dealerId], references: [id])
+  subAccountId String?
+  subAccount   SubAccount? @relation(fields: [subAccountId], references: [id])
   url         String
   firstSeenAt DateTime @default(now())
   lastSeenAt  DateTime @default(now())
@@ -173,6 +209,7 @@ model CrawlSnapshot {
   @@unique([dealerId, url])
   @@index([dealerId])
   @@index([crawlJobId])
+  @@index([subAccountId])
 }
 
 model PasswordResetToken {
