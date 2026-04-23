@@ -203,10 +203,10 @@ export default async function VehicleLandingPage({
 
   return (
     <div className="min-h-screen bg-white">
-      <LandingCarousel images={allImages} />
+      <div className="py-6"><LandingCarousel images={allImages} /></div>
       {pixelId && <PixelInitializer pixelId={pixelId} vehicleId={vehicleId} price={vehicle.price} />}
       <SocialProof fakeViewer={fakeViewer} tViewed={translations.viewedText} />
-      <VehicleDetails vehicle={vehicleForDetails} dealer={dealer} translations={detailsTranslations} />
+      <div className="max-w-5xl mx-auto px-4"><VehicleDetails vehicle={vehicleForDetails} dealer={dealer} translations={detailsTranslations} /></div>
       <StickyCTAs dealer={dealer} tCtas={ctaTranslations} />
       <Chatbot vehicleId={vehicleId} dealerId={dealer.id} vin={vehicle.vin ?? undefined} pixelId={pixelId} price={vehicle.price} translations={chatbotTranslations} />
     </div>

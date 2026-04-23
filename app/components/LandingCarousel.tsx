@@ -27,15 +27,18 @@ export default function LandingCarousel({ images }: Props) {
 
   if (images.length === 0) {
     return (
-      <div className="w-full h-[400px] md:h-[500px] bg-gray-100 flex items-center justify-center text-gray-400">
-        No images available
+      <div className="max-w-5xl mx-auto px-4">
+        <div className="w-full h-[260px] md:h-[400px] bg-gray-100 flex items-center justify-center text-gray-400 rounded-lg">
+          No images available
+        </div>
       </div>
     );
   }
 
   return (
+    <div className="max-w-5xl mx-auto px-4">
     <div
-      className="w-full h-[400px] md:h-[500px] relative overflow-hidden bg-black"
+      className="w-full h-[260px] md:h-[400px] relative overflow-hidden bg-gray-100 rounded-lg"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onTouchStart={(e) => {
@@ -53,7 +56,7 @@ export default function LandingCarousel({ images }: Props) {
           key={i}
           src={src}
           alt={`Slide ${i + 1}`}
-          className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-500 ${
+          className={`absolute inset-0 w-full h-full object-contain transition-opacity duration-500 ${
             i === currentIndex ? "opacity-100" : "opacity-0"
           }`}
         />
@@ -94,6 +97,7 @@ export default function LandingCarousel({ images }: Props) {
           </div>
         </>
       )}
+    </div>
     </div>
   );
 }

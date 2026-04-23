@@ -62,6 +62,7 @@ export default function EmbedWidgetCard({
     .then(function(data){
       var dealer = data.dealer;
       var items = data.items || [];
+      var savedItems = items;
 
       var wrapper = document.createElement('div');
       wrapper.style.fontFamily = 'system-ui, -apple-system, sans-serif';
@@ -69,123 +70,17 @@ export default function EmbedWidgetCard({
       wrapper.style.margin = '0 auto';
       wrapper.style.padding = '16px';
 
-      var heading = document.createElement('h2');
-      heading.textContent = dealer.name + ' Catalog';
-      heading.style.fontSize = '24px';
-      heading.style.fontWeight = '700';
-      heading.style.color = '#111827';
-      heading.style.marginBottom = '16px';
-      wrapper.appendChild(heading);
+      /* --- Build heading --- */
+      var headingText = dealer.name + ' Catalog';
 
-      var grid = document.createElement('div');
-      grid.style.display = 'grid';
-      grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(350px, 1fr))';
-      grid.style.gap = '16px';
-
-      items.forEach(function(item){
-        var card = document.createElement('div');
-        card.style.border = '1px solid #e5e7eb';
-        card.style.borderRadius = '8px';
-        card.style.overflow = 'hidden';
-        card.style.backgroundColor = '#fff';
-
-        if(item.image){
-          var img = document.createElement('img');
-          img.src = item.image;
-          img.alt = item.title || '';
-          img.style.width = '100%';
-          img.style.height = '250px';
-          img.style.objectFit = 'cover';
-          img.style.display = 'block';
-          card.appendChild(img);
-        } else {
-          var ph = document.createElement('div');
-          ph.style.width = '100%';
-          ph.style.height = '250px';
-          ph.style.backgroundColor = '#f3f4f6';
-          ph.style.display = 'flex';
-          ph.style.alignItems = 'center';
-          ph.style.justifyContent = 'center';
-          ph.style.color = '#9ca3af';
-          ph.style.fontSize = '14px';
-          ph.textContent = 'No image';
-          card.appendChild(ph);
-        }
-
-        var body = document.createElement('div');
-        body.style.padding = '12px';
-
-        var title = document.createElement('div');
-        title.textContent = item.title || 'Untitled';
-        title.style.fontWeight = '600';
-        title.style.fontSize = '15px';
-        title.style.color = '#111827';
-        title.style.marginBottom = '4px';
-        body.appendChild(title);
-
-        if(item.price != null){
-          var price = document.createElement('div');
-          price.textContent = '$' + Number(item.price).toLocaleString('en-US');
-          price.style.color = '#4f46e5';
-          price.style.fontWeight = '700';
-          price.style.fontSize = '15px';
-          price.style.marginBottom = '8px';
-          body.appendChild(price);
-        }
-
-        if(item.details){
-          var chips = document.createElement('div');
-          chips.style.display = 'flex';
-          chips.style.flexWrap = 'wrap';
-          chips.style.gap = '6px';
-          var keys = Object.keys(item.details).slice(0, 4);
-          keys.forEach(function(k){
-            var chip = document.createElement('span');
-            chip.textContent = k + ': ' + item.details[k];
-            chip.style.fontSize = '12px';
-            chip.style.backgroundColor = '#f3f4f6';
-            chip.style.color = '#374151';
-            chip.style.padding = '2px 8px';
-            chip.style.borderRadius = '9999px';
-            chips.appendChild(chip);
-          });
-          body.appendChild(chips);
-        }
-
-        card.appendChild(body);
-
-        var link = document.createElement('a');
-        link.href = landingBase + '/w/' + escapedSlug + '/' + item.id;
-        link.style.textDecoration = 'none';
-        link.style.color = 'inherit';
-        link.style.display = 'block';
-        link.appendChild(card);
-        grid.appendChild(link);
-      });
-
-      wrapper.appendChild(grid);
-
-      /* --- Translate titles & detail chips if lang !== en --- */
-      if(container.dataset.lang !== 'en'){
-        var slug = '${escapedSlug}';
-        var lang = container.dataset.lang;
-        var tone = container.dataset.tone;
-        var titles = grid.querySelectorAll('[style*="fontWeight: 600"]');
-        var chips = grid.querySelectorAll('span[style*="backgroundColor: #f3f4f6"]');
-        var els = [];
-        for(var ti=0;ti<titles.length;ti++) els.push(titles[ti]);
-        for(var ci=0;ci<chips.length;ci++) els.push(chips[ci]);
-        els.forEach(function(el){
-          if(!el.textContent.match(/^\\$?\\d/)){
-            fetch(landingBase + '/api/translate', {
-              method: 'POST',
-              headers: {'Content-Type': 'application/json'},
-              body: JSON.stringify({slug: slug, text: el.textContent.trim(), lang: lang, tone: tone})
-            }).then(function(res){ if(res.ok) return res.json(); }).then(function(data){
-              if(data && data.translated) el.textContent = data.translated;
-            }).catch(function(){});
-          }
-        });
+      function makeHeading() {
+        var h = document.createElement('h2');
+        h.textContent = headingText;
+        h.style.fontSize = '24px';
+        h.style.fontWeight = '700';
+        h.style.color = '#111827';
+        h.style.marginBottom = '16px';
+        return h;
       }
 
       /* --- Dynamic CTA buttons --- */
@@ -205,7 +100,8 @@ export default function EmbedWidgetCard({
         ['sms','whatsapp','messenger'].forEach(function(k){ if(ctaMap[k].ok) buttons.push(ctaMap[k]); });
       }
 
-      if (buttons.length) {
+      function makeCta() {
+        if (!buttons.length) return null;
         var cta = document.createElement('div');
         cta.style.display = 'flex';
         cta.style.gap = '12px';
@@ -234,9 +130,169 @@ export default function EmbedWidgetCard({
           }
           cta.appendChild(a);
         });
-
-        wrapper.appendChild(cta);
+        return cta;
       }
+
+      /* --- Build catalog grid --- */
+      function buildCatalog(itemsList) {
+        var grid = document.createElement('div');
+        grid.style.display = 'grid';
+        grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(350px, 1fr))';
+        grid.style.gap = '16px';
+
+        itemsList.forEach(function(item){
+          var card = document.createElement('div');
+          card.style.border = '1px solid #e5e7eb';
+          card.style.borderRadius = '8px';
+          card.style.overflow = 'hidden';
+          card.style.backgroundColor = '#fff';
+          card.style.cursor = 'pointer';
+          card.style.transition = 'box-shadow 0.2s';
+
+          card.addEventListener('mouseenter', function(){ card.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)'; });
+          card.addEventListener('mouseleave', function(){ card.style.boxShadow = 'none'; });
+
+          if(item.image){
+            var img = document.createElement('img');
+            img.src = item.image;
+            img.alt = item.title || '';
+            img.style.width = '100%';
+            img.style.height = '250px';
+            img.style.objectFit = 'cover';
+            img.style.display = 'block';
+            card.appendChild(img);
+          } else {
+            var ph = document.createElement('div');
+            ph.style.width = '100%';
+            ph.style.height = '250px';
+            ph.style.backgroundColor = '#f3f4f6';
+            ph.style.display = 'flex';
+            ph.style.alignItems = 'center';
+            ph.style.justifyContent = 'center';
+            ph.style.color = '#9ca3af';
+            ph.style.fontSize = '14px';
+            ph.textContent = 'No image';
+            card.appendChild(ph);
+          }
+
+          var body = document.createElement('div');
+          body.style.padding = '12px';
+
+          var title = document.createElement('div');
+          title.textContent = item.title || 'Untitled';
+          title.style.fontWeight = '600';
+          title.style.fontSize = '15px';
+          title.style.color = '#111827';
+          title.style.marginBottom = '4px';
+          body.appendChild(title);
+
+          if(item.price != null){
+            var price = document.createElement('div');
+            price.textContent = '$' + Number(item.price).toLocaleString('en-US');
+            price.style.color = '#4f46e5';
+            price.style.fontWeight = '700';
+            price.style.fontSize = '15px';
+            price.style.marginBottom = '8px';
+            body.appendChild(price);
+          }
+
+          if(item.details){
+            var chips = document.createElement('div');
+            chips.style.display = 'flex';
+            chips.style.flexWrap = 'wrap';
+            chips.style.gap = '6px';
+            var keys = Object.keys(item.details).slice(0, 4);
+            keys.forEach(function(k){
+              var chip = document.createElement('span');
+              chip.textContent = k + ': ' + item.details[k];
+              chip.style.fontSize = '12px';
+              chip.style.backgroundColor = '#f3f4f6';
+              chip.style.color = '#374151';
+              chip.style.padding = '2px 8px';
+              chip.style.borderRadius = '9999px';
+              chips.appendChild(chip);
+            });
+            body.appendChild(chips);
+          }
+
+          card.appendChild(body);
+
+          card.addEventListener('click', function(){ showLandingView(item.id); });
+          grid.appendChild(card);
+        });
+
+        /* --- Translate titles & detail chips if lang !== en --- */
+        if(container.dataset.lang !== 'en'){
+          var tSlug = '${escapedSlug}';
+          var lang = container.dataset.lang;
+          var tone = container.dataset.tone;
+          var titles = grid.querySelectorAll('[style*="fontWeight: 600"]');
+          var chipEls = grid.querySelectorAll('span[style*="backgroundColor: #f3f4f6"]');
+          var els = [];
+          for(var ti=0;ti<titles.length;ti++) els.push(titles[ti]);
+          for(var ci=0;ci<chipEls.length;ci++) els.push(chipEls[ci]);
+          els.forEach(function(el){
+            if(!el.textContent.match(/^\\$?\\d/)){
+              fetch(landingBase + '/api/translate', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({slug: tSlug, text: el.textContent.trim(), lang: lang, tone: tone})
+              }).then(function(res){ if(res.ok) return res.json(); }).then(function(d){
+                if(d && d.translated) el.textContent = d.translated;
+              }).catch(function(){});
+            }
+          });
+        }
+
+        return grid;
+      }
+
+      /* --- View switching --- */
+      function showCatalogView() {
+        wrapper.innerHTML = '';
+        wrapper.appendChild(makeHeading());
+        wrapper.appendChild(buildCatalog(savedItems));
+        var ctaEl = makeCta();
+        if (ctaEl) wrapper.appendChild(ctaEl);
+      }
+
+      function showLandingView(itemId) {
+        wrapper.innerHTML = '';
+
+        var backBtn = document.createElement('button');
+        backBtn.textContent = '\\u2190 Back to catalog';
+        backBtn.style.background = '#fff';
+        backBtn.style.border = '1px solid #e5e7eb';
+        backBtn.style.borderRadius = '6px';
+        backBtn.style.padding = '8px 16px';
+        backBtn.style.fontSize = '14px';
+        backBtn.style.color = '#4f46e5';
+        backBtn.style.cursor = 'pointer';
+        backBtn.style.margin = '16px auto';
+        backBtn.style.display = 'block';
+        backBtn.style.fontWeight = '600';
+        backBtn.addEventListener('click', function(){ showCatalogView(); });
+        wrapper.appendChild(backBtn);
+
+        var iframe = document.createElement('iframe');
+        iframe.src = landingBase + '/w/' + escapedSlug + '/' + itemId;
+        iframe.style.width = '100%';
+        iframe.style.height = '800px';
+        iframe.style.border = 'none';
+        iframe.style.borderRadius = '8px';
+        iframe.style.background = '#f9fafb';
+        iframe.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
+        iframe.loading = 'lazy';
+        wrapper.appendChild(iframe);
+
+        container.scrollIntoView({behavior:'smooth',block:'start'});
+      }
+
+      /* --- Initial render --- */
+      wrapper.appendChild(makeHeading());
+      wrapper.appendChild(buildCatalog(items));
+      var ctaEl = makeCta();
+      if (ctaEl) wrapper.appendChild(ctaEl);
 
       container.appendChild(wrapper);
 
