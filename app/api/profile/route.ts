@@ -21,7 +21,6 @@ const SAFE_SELECT = {
   urlHealthCheckEnabled: true,
   address: true,
   phone: true,
-  customDomain: true,
   ctaPreference: true,
   translationLang: true,
   translationTone: true,
@@ -94,23 +93,6 @@ export async function PATCH(request: NextRequest) {
       }
     }
     batchData.websiteUrl = urlToSave;
-  }
-
-  // Handle customDomain update
-  if ("customDomain" in b) {
-    const rawDomain = b.customDomain;
-    if (rawDomain !== null && typeof rawDomain !== "string") {
-      return NextResponse.json({ error: "invalid_customDomain" }, { status: 400 });
-    }
-    const domainToSave = typeof rawDomain === "string" && rawDomain.trim() ? rawDomain.trim() : null;
-    if (domainToSave) {
-      try {
-        new URL("https://" + domainToSave);
-      } catch {
-        return NextResponse.json({ error: "invalid_customDomain" }, { status: 400 });
-      }
-    }
-    batchData.customDomain = domainToSave;
   }
 
   // Handle address update (+ geocoding) — kept separate due to side effects

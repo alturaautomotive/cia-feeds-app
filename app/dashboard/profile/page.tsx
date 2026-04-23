@@ -33,7 +33,6 @@ export default async function ProfilePage() {
       websiteUrl: true,
       address: true,
       phone: true,
-      customDomain: true,
       ctaPreference: true,
       translationLang: true,
       translationTone: true,
@@ -54,7 +53,6 @@ export default async function ProfilePage() {
       websiteUrl={dealer?.websiteUrl ?? null}
       address={dealer?.address ?? null}
       phone={dealer?.phone ?? null}
-      customDomain={dealer?.customDomain ?? null}
       ctaPreference={dealer?.ctaPreference ?? null}
       translationLang={dealer?.translationLang ?? "en"}
       translationTone={dealer?.translationTone ?? "professional"}

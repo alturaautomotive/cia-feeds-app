@@ -9,7 +9,6 @@ interface Props {
   vertical: string;
   catalogApiUrl: string;
   ctaPreference: string | null;
-  customDomain?: string | null;
   defaultLandingBaseUrl: string;
   translationLang?: string;
   translationTone?: string;
@@ -22,13 +21,11 @@ export default function EmbedWidgetCard({
   vertical,
   catalogApiUrl,
   ctaPreference,
-  customDomain,
   defaultLandingBaseUrl,
   translationLang = "en",
   translationTone = "professional",
 }: Props) {
   const [copied, setCopied] = useState(false);
-  const [useCustomDomain, setUseCustomDomain] = useState(!!customDomain);
   const [sampleItemId, setSampleItemId] = useState("");
   const [copiedIframe, setCopiedIframe] = useState(false);
 
@@ -36,9 +33,7 @@ export default function EmbedWidgetCard({
     return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/</g, '\\x3c').replace(/>/g, '\\x3e');
   }
 
-  const effectiveLandingBase = useCustomDomain && customDomain
-    ? `https://${customDomain}`
-    : defaultLandingBaseUrl;
+  const effectiveLandingBase = defaultLandingBaseUrl;
 
   function generateSnippet(): string {
     // Validate that catalogApiUrl points to our own domain
@@ -295,18 +290,6 @@ export default function EmbedWidgetCard({
       >
         {copied ? "Copied!" : "Copy Embed Code"}
       </button>
-
-      {customDomain && (
-        <label className="flex items-center gap-2 mt-3 text-sm text-gray-700 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={useCustomDomain}
-            onChange={(e) => setUseCustomDomain(e.target.checked)}
-            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-          />
-          Use custom domain ({customDomain}) for landing pages
-        </label>
-      )}
 
       <p className="text-xs text-gray-400 mt-3">
         Widget auto-updates when your catalog changes.
