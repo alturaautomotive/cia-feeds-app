@@ -43,8 +43,19 @@ export default async function ProfilePage() {
       metaCatalogId: true,
       metaFeedId: true,
       metaPixelId: true,
+      subAccounts: {
+        orderBy: { createdAt: "asc" },
+        select: { id: true, name: true, vertical: true, createdAt: true },
+      },
     },
   });
+
+  const subAccountsForClient = (dealer?.subAccounts ?? []).map((s) => ({
+    id: s.id,
+    name: s.name,
+    vertical: s.vertical,
+    createdAt: s.createdAt.toISOString(),
+  }));
 
   return (
     <ProfileClient
@@ -62,6 +73,7 @@ export default async function ProfilePage() {
       metaCatalogId={dealer?.metaCatalogId ?? null}
       metaFeedId={dealer?.metaFeedId ?? null}
       metaPixelId={dealer?.metaPixelId ?? null}
+      subAccounts={subAccountsForClient}
     />
   );
 }

@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
   if (vertical != null && (typeof vertical !== "string" || !VALID_VERTICALS.includes(vertical))) {
     return NextResponse.json({ error: "invalid_vertical" }, { status: 400 });
   }
-  const dealerVertical = typeof vertical === "string" ? vertical : "automotive";
+  const dealerVertical = (typeof vertical === "string" ? vertical : "automotive") as "automotive" | "services" | "ecommerce" | "realestate";
 
   const trimmedName = name.trim();
   if (!trimmedName) {
@@ -72,6 +72,21 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Create the first SubAccount for the new dealer
+    const subAccount = await prisma.subAccount.create({
+      data: {
+        dealerId: dealer.id,
+        vertical: dealerVertical,
+        name: `${trimmedName} (${dealerVertical})`,
+      },
+    });
+
+    // Set the default sub-account
+    await prisma.dealer.update({
+      where: { id: dealer.id },
+      data: { defaultSubAccountId: subAccount.id },
+    });
+
     const baseUrl = (process.env.NEXT_PUBLIC_APP_URL ?? new URL(request.url).origin).replace(/\/+$/, "");
     const feedUrl = `${baseUrl}/feeds/${slug}.csv`;
 
@@ -86,6 +101,7 @@ export async function POST(request: NextRequest) {
         name: dealer.name,
         slug: dealer.slug,
         feedUrl,
+        defaultSubAccountId: subAccount.id,
       },
       { status: 201 }
     );

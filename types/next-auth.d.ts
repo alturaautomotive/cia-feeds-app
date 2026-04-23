@@ -10,6 +10,7 @@ declare module "next-auth" {
       image?: string | null;
       slug: string;
       vertical: string;
+      subAccountId: string | null;
     };
   }
 
@@ -17,6 +18,7 @@ declare module "next-auth" {
     id: string;
     slug: string;
     vertical: string;
+    subAccountId: string | null;
   }
 }
 
@@ -25,5 +27,6 @@ declare module "next-auth/jwt" {
     id: string;
     slug: string;
     vertical: string;
+    subAccountId: string | null;
   }
 }

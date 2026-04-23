@@ -41,6 +41,7 @@ export const authOptions: NextAuthOptions = {
 
         const dealer = await prisma.dealer.findUnique({
           where: { email: credentials.email },
+          include: { subAccounts: { orderBy: { createdAt: "asc" }, take: 1 } },
         });
 
         if (!dealer) {
@@ -66,6 +67,7 @@ export const authOptions: NextAuthOptions = {
           email: dealer.email,
           slug: dealer.slug,
           vertical: dealer.vertical,
+          subAccountId: dealer.defaultSubAccountId ?? dealer.subAccounts[0]?.id ?? null,
         };
       },
     }),
@@ -79,8 +81,9 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
-        token.slug = (user as { slug: string; vertical: string }).slug;
-        token.vertical = (user as { slug: string; vertical: string }).vertical;
+        token.slug = (user as { slug: string; vertical: string; subAccountId: string | null }).slug;
+        token.vertical = (user as { slug: string; vertical: string; subAccountId: string | null }).vertical;
+        token.subAccountId = (user as { subAccountId: string | null }).subAccountId ?? null;
       }
       return token;
     },
@@ -89,6 +92,7 @@ export const authOptions: NextAuthOptions = {
         session.user.id = token.id as string;
         session.user.slug = token.slug as string;
         session.user.vertical = token.vertical as string;
+        session.user.subAccountId = (token.subAccountId as string) ?? null;
       }
       return session;
     },

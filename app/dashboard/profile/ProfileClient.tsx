@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 const CTA_OPTIONS = [
   { value: "", label: "Auto", icon: "🔄", desc: "Show all available contact options" },
@@ -32,6 +33,13 @@ const VERTICALS = [
   { id: "realestate", icon: "\u{1F3E0}", title: "Real Estate", desc: "Property listings for sale or rent" },
 ] as const;
 
+interface SubAccountItem {
+  id: string;
+  name: string;
+  vertical: string;
+  createdAt: string;
+}
+
 interface Props {
   slug: string;
   profileImageUrl: string | null;
@@ -47,6 +55,7 @@ interface Props {
   metaCatalogId: string | null;
   metaFeedId: string | null;
   metaPixelId: string | null;
+  subAccounts?: SubAccountItem[];
 }
 
 type MetaStep =
@@ -72,16 +81,15 @@ export default function ProfileClient({
   metaCatalogId: initialMetaCatalogId,
   metaFeedId: initialMetaFeedId,
   metaPixelId: initialMetaPixelId,
+  subAccounts: initialSubAccounts = [],
 }: Props) {
+  const router = useRouter();
   const [photoUrl, setPhotoUrl] = useState<string | null>(initialPhotoUrl);
-  const [vertical, setVertical] = useState(initialVertical);
+  const vertical = initialVertical;
   const [uploading, setUploading] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const [switchTarget, setSwitchTarget] = useState<string | null>(null);
-  const [switching, setSwitching] = useState(false);
 
   const [siteUrl, setSiteUrl] = useState(initialWebsiteUrl ?? "");
   const [savingSiteUrl, setSavingSiteUrl] = useState(false);
@@ -136,6 +144,14 @@ export default function ProfileClient({
   const [savingPixelId, setSavingPixelId] = useState(false);
   const [pixelIdSaved, setPixelIdSaved] = useState(false);
   const [pixelIdError, setPixelIdError] = useState<string | null>(null);
+
+  // SubAccounts state
+  const [subAccountsList, setSubAccountsList] = useState<SubAccountItem[]>(initialSubAccounts);
+  const [newSubName, setNewSubName] = useState("");
+  const [newSubVertical, setNewSubVertical] = useState("automotive");
+  const [creatingSub, setCreatingSub] = useState(false);
+  const [subError, setSubError] = useState<string | null>(null);
+  const [showCreateSub, setShowCreateSub] = useState(false);
 
   async function handleDisconnect() {
     setDisconnecting(true);
@@ -437,38 +453,6 @@ export default function ProfileClient({
       setRemoving(false);
     }
   }
-
-  async function handleConfirmSwitch() {
-    if (!switchTarget) return;
-    setSwitching(true);
-    setError(null);
-
-    try {
-      const res = await fetch("/api/profile", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ vertical: switchTarget }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setError(data.error || "Failed to switch vertical.");
-        setSwitchTarget(null);
-        return;
-      }
-
-      setVertical(switchTarget);
-      setSwitchTarget(null);
-      window.location.href = "/dashboard";
-    } catch {
-      setError("Network error. Please try again.");
-    } finally {
-      setSwitching(false);
-    }
-  }
-
-  const currentVerticalInfo = VERTICALS.find((v) => v.id === vertical);
-  const targetVerticalInfo = VERTICALS.find((v) => v.id === switchTarget);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1266,77 +1250,139 @@ export default function ProfileClient({
           </div>
         )}
 
-        {/* Business Vertical */}
-        <div className="bg-white rounded-lg shadow-sm p-6">
-          <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Business Vertical</h2>
-          <p className="text-xs text-gray-400 mb-4">Your vertical determines how your Meta feed CSV is formatted.</p>
+        {/* Sub-Accounts */}
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-4">
+          <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Sub-Accounts</h2>
+          <p className="text-xs text-gray-400 mb-4">
+            Manage multiple verticals under one account. Each sub-account has its own inventory and feed.
+          </p>
 
-          <div className="space-y-2">
-            {VERTICALS.map((v) => {
-              const isCurrent = v.id === vertical;
-              return (
-                <button
-                  key={v.id}
-                  type="button"
-                  data-element-id={`vertical-${v.id}`}
-                  onClick={() => { if (!isCurrent) setSwitchTarget(v.id); }}
-                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg border text-left transition-colors ${
-                    isCurrent ? "border-indigo-500 bg-indigo-50" : "border-gray-200 hover:border-gray-300 cursor-pointer"
-                  }`}
-                >
-                  <div>
-                    <div className="text-sm font-medium text-gray-900">{v.icon} {v.title}</div>
-                    <div className="text-xs text-gray-500">{isCurrent ? "Currently active" : v.desc}</div>
+          {subAccountsList.length > 0 && (
+            <div className="space-y-2 mb-4">
+              {subAccountsList.map((sa) => {
+                const vInfo = VERTICALS.find((v) => v.id === sa.vertical);
+                return (
+                  <div
+                    key={sa.id}
+                    className="flex items-center justify-between px-3 py-2.5 rounded-lg border border-gray-200"
+                  >
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">
+                        {vInfo?.icon ?? ""} {sa.name}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {vInfo?.title ?? sa.vertical}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/dashboard?subAccountId=${sa.id}`)}
+                      className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+                    >
+                      Switch
+                    </button>
                   </div>
-                  {isCurrent && <span className="text-indigo-500 text-base">&check;</span>}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* Switch confirmation modal */}
-      {switchTarget && targetVerticalInfo && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div data-element-id="switch-modal" className="bg-white rounded-xl p-6 max-w-[400px] w-full mx-4">
-            <div className="text-3xl mb-3">{"\u26A0\uFE0F"}</div>
-            <h3 className="text-base font-bold text-gray-900 mb-2">Permanently switch to {targetVerticalInfo.title}?</h3>
-            <p className="text-sm text-gray-600 leading-relaxed mb-4">
-              Switching from <strong>{currentVerticalInfo?.title}</strong> to{" "}
-              <strong>{targetVerticalInfo.title}</strong> will <strong>permanently delete</strong> all
-              inventory, crawl jobs, and crawl snapshots. This <strong>cannot be undone</strong>. A new
-              empty CSV feed will be created when you add your first item.
-            </p>
-            {isMetaConnected && (
-              <div className="bg-red-50 rounded-md p-3 text-xs text-red-700 mb-5">
-                Your existing Meta catalog will be replaced with a new one created for the{" "}
-                {targetVerticalInfo.title} vertical. You&apos;ll need to re-publish your feed after adding items.
-              </div>
-            )}
-            <div className="flex gap-2.5">
-              <button
-                data-element-id="cancel-switch"
-                type="button"
-                onClick={() => setSwitchTarget(null)}
-                disabled={switching}
-                className="flex-1 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                Keep {currentVerticalInfo?.title}
-              </button>
-              <button
-                data-element-id="confirm-switch"
-                type="button"
-                onClick={handleConfirmSwitch}
-                disabled={switching}
-                className="flex-1 py-2 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700 disabled:opacity-50"
-              >
-                {switching ? "Switching\u2026" : "Permanently Switch"}
-              </button>
+                );
+              })}
             </div>
-          </div>
+          )}
+
+          {subError && (
+            <div className="rounded-md bg-red-50 p-3 mb-3">
+              <p className="text-sm text-red-600">{subError}</p>
+            </div>
+          )}
+
+          {showCreateSub ? (
+            <div className="border border-gray-200 rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-gray-800 mb-3">Create Sub-Account</h3>
+              <div className="mb-3">
+                <label className="block text-xs font-medium text-gray-700 mb-1">Name</label>
+                <input
+                  type="text"
+                  placeholder="e.g. My Real Estate"
+                  value={newSubName}
+                  onChange={(e) => setNewSubName(e.target.value)}
+                  className="w-full border border-gray-400 bg-white rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div className="mb-3">
+                <label className="block text-xs font-medium text-gray-700 mb-1">Vertical</label>
+                <select
+                  value={newSubVertical}
+                  onChange={(e) => setNewSubVertical(e.target.value)}
+                  className="w-full border border-gray-400 bg-white rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  {VERTICALS.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.icon} {v.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={creatingSub}
+                  onClick={async () => {
+                    if (!newSubName.trim()) {
+                      setSubError("Name is required.");
+                      return;
+                    }
+                    setCreatingSub(true);
+                    setSubError(null);
+                    try {
+                      const res = await fetch("/api/subaccounts", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ name: newSubName.trim(), vertical: newSubVertical }),
+                      });
+                      if (!res.ok) {
+                        const data = await res.json().catch(() => ({}));
+                        setSubError(data.error || "Failed to create sub-account.");
+                        return;
+                      }
+                      const data = await res.json();
+                      setSubAccountsList((prev) => [...prev, {
+                        id: data.subAccount.id,
+                        name: data.subAccount.name,
+                        vertical: data.subAccount.vertical,
+                        createdAt: data.subAccount.createdAt,
+                      }]);
+                      setNewSubName("");
+                      setNewSubVertical("automotive");
+                      setShowCreateSub(false);
+                    } catch {
+                      setSubError("Network error. Please try again.");
+                    } finally {
+                      setCreatingSub(false);
+                    }
+                  }}
+                  className="flex-1 bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {creatingSub ? "Creating\u2026" : "Create"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowCreateSub(false); setSubError(null); }}
+                  className="flex-1 border border-gray-300 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowCreateSub(true)}
+              className="w-full border-2 border-dashed border-indigo-400 text-indigo-600 rounded-md py-2 text-sm cursor-pointer hover:bg-indigo-50"
+            >
+              + Add Sub-Account
+            </button>
+          )}
         </div>
-      )}
+
+      </div>
     </div>
   );
 }

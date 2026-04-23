@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, FormEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import type { Vehicle } from "@prisma/client";
 import { AddVehicleForm } from "./components/AddVehicleForm";
@@ -43,6 +44,12 @@ const VEHICLE_DATA_FIELDS: Array<{ key: keyof Vehicle; label: string }> = [
   { key: "description", label: "Description" },
 ];
 
+interface SubAccountInfo {
+  id: string;
+  name: string;
+  vertical: string;
+}
+
 interface Props {
   vehicles: VehicleRow[];
   listings: ListingRow[];
@@ -51,6 +58,8 @@ interface Props {
   isImpersonating?: boolean;
   impersonatedDealerName?: string;
   impersonatedDealerSlug?: string;
+  subAccounts?: SubAccountInfo[];
+  currentSubAccountId?: string | null;
 }
 
 export function DashboardClient({
@@ -61,7 +70,10 @@ export function DashboardClient({
   isImpersonating = false,
   impersonatedDealerName = "",
   impersonatedDealerSlug = "",
+  subAccounts = [],
+  currentSubAccountId = null,
 }: Props) {
+  const router = useRouter();
   const [vehicles, setVehicles] = useState<VehicleRow[]>(initialVehicles);
   const [listings, setListings] = useState<ListingRow[]>(initialListings);
   const [vdpUrl, setVdpUrl] = useState("");
@@ -71,6 +83,10 @@ export function DashboardClient({
     missingFields: string[];
   } | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [showCreateSubAccount, setShowCreateSubAccount] = useState(false);
+  const [newSubName, setNewSubName] = useState("");
+  const [newSubVertical, setNewSubVertical] = useState("automotive");
+  const [creatingSub, setCreatingSub] = useState(false);
 
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const statusMapRef = useRef<Map<string, string>>(new Map());
@@ -175,6 +191,7 @@ export function DashboardClient({
       url: submittedUrl,
       scrapeStatus: "pending",
       dealerId: "",
+      subAccountId: currentSubAccountId ?? null,
       description: null,
       vin: null,
       make: null,
@@ -256,6 +273,32 @@ export function DashboardClient({
     window.location.href = "/admin";
   }
 
+  async function handleCreateSubAccount() {
+    if (!newSubName.trim()) return;
+    setCreatingSub(true);
+    try {
+      const res = await fetch("/api/subaccounts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newSubName.trim(), vertical: newSubVertical }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setShowCreateSubAccount(false);
+        setNewSubName("");
+        setNewSubVertical("automotive");
+        router.push(`/dashboard?subAccountId=${data.subAccount.id}`);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setErrorMsg(data.error || "Failed to create sub-account.");
+      }
+    } catch {
+      setErrorMsg("Network error. Please try again.");
+    } finally {
+      setCreatingSub(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Impersonation banner */}
@@ -288,6 +331,26 @@ export function DashboardClient({
             <span className="bg-indigo-50 text-indigo-600 text-xs font-semibold px-2 py-0.5 rounded-full">
               {verticalLabel}
             </span>
+            {subAccounts.length > 1 && (
+              <select
+                value={currentSubAccountId ?? ""}
+                onChange={(e) => router.push(`/dashboard?subAccountId=${e.target.value}`)}
+                className="border border-gray-300 bg-white rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                {subAccounts.map((sa) => (
+                  <option key={sa.id} value={sa.id}>
+                    {sa.name} ({sa.vertical})
+                  </option>
+                ))}
+              </select>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowCreateSubAccount(true)}
+              className="text-xs text-indigo-600 hover:text-indigo-500 font-medium"
+            >
+              + Sub-Account
+            </button>
           </div>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-500">{dealerName}</span>
@@ -401,6 +464,55 @@ export function DashboardClient({
           )
         )}
       </div>
+
+      {/* Create SubAccount modal */}
+      {showCreateSubAccount && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-[400px] w-full mx-4">
+            <h3 className="text-base font-bold text-gray-900 mb-4">Create Sub-Account</h3>
+            <div className="mb-3">
+              <label className="block text-xs font-medium text-gray-700 mb-1">Name</label>
+              <input
+                type="text"
+                value={newSubName}
+                onChange={(e) => setNewSubName(e.target.value)}
+                placeholder="e.g. My Auto Shop (automotive)"
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div className="mb-4">
+              <label className="block text-xs font-medium text-gray-700 mb-1">Vertical</label>
+              <select
+                value={newSubVertical}
+                onChange={(e) => setNewSubVertical(e.target.value)}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="automotive">Automotive</option>
+                <option value="services">Services</option>
+                <option value="ecommerce">E-Commerce</option>
+                <option value="realestate">Real Estate</option>
+              </select>
+            </div>
+            <div className="flex gap-2.5">
+              <button
+                type="button"
+                onClick={() => { setShowCreateSubAccount(false); setNewSubName(""); }}
+                className="flex-1 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleCreateSubAccount}
+                disabled={creatingSub || !newSubName.trim()}
+                className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {creatingSub ? "Creating\u2026" : "Create"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

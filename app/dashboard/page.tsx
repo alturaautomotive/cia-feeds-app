@@ -10,7 +10,7 @@ import { DashboardClient } from "./DashboardClient";
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ session_id?: string; impersonate?: string }>;
+  searchParams: Promise<{ session_id?: string; impersonate?: string; subAccountId?: string }>;
 }) {
   const session = await getServerSession(authOptions);
 
@@ -96,10 +96,19 @@ export default async function DashboardPage({
 
   const dealer = await prisma.dealer.findUnique({
     where: { id: effectiveDealerId },
-    select: { vertical: true, name: true, slug: true },
+    select: { vertical: true, name: true, slug: true, defaultSubAccountId: true, subAccounts: { orderBy: { createdAt: "asc" } } },
   });
 
-  const vertical = dealer?.vertical ?? "automotive";
+  const subAccounts = dealer?.subAccounts ?? [];
+  const { subAccountId: requestedSubAccountId } = await searchParams;
+  const currentSubAccountId =
+    requestedSubAccountId && subAccounts.some((s) => s.id === requestedSubAccountId)
+      ? requestedSubAccountId
+      : dealer?.defaultSubAccountId ?? subAccounts[0]?.id ?? null;
+
+  const currentSubAccount = subAccounts.find((s) => s.id === currentSubAccountId);
+  const vertical = currentSubAccount?.vertical ?? dealer?.vertical ?? "automotive";
+
   const impersonatedDealerName = isImpersonating
     ? dealer?.name ?? "Unknown Dealer"
     : "";
@@ -107,9 +116,19 @@ export default async function DashboardPage({
     ? dealer?.slug ?? ""
     : "";
 
+  const subAccountsForClient = subAccounts.map((s) => ({
+    id: s.id,
+    name: s.name,
+    vertical: s.vertical,
+  }));
+
   if (vertical === "automotive") {
     const vehicles = await prisma.vehicle.findMany({
-      where: { dealerId: effectiveDealerId, archivedAt: null },
+      where: {
+        dealerId: effectiveDealerId,
+        archivedAt: null,
+        ...(currentSubAccountId ? { subAccountId: currentSubAccountId } : {}),
+      },
       orderBy: { createdAt: "desc" },
     });
 
@@ -122,6 +141,8 @@ export default async function DashboardPage({
         isImpersonating={isImpersonating}
         impersonatedDealerName={impersonatedDealerName}
         impersonatedDealerSlug={impersonatedDealerSlug}
+        subAccounts={subAccountsForClient}
+        currentSubAccountId={currentSubAccountId}
       />
     );
   }
@@ -132,6 +153,7 @@ export default async function DashboardPage({
       dealerId: effectiveDealerId,
       vertical,
       archivedAt: null,
+      ...(currentSubAccountId ? { subAccountId: currentSubAccountId } : {}),
     },
     orderBy: { createdAt: "desc" },
   });
@@ -145,6 +167,8 @@ export default async function DashboardPage({
       isImpersonating={isImpersonating}
       impersonatedDealerName={impersonatedDealerName}
       impersonatedDealerSlug={impersonatedDealerSlug}
+      subAccounts={subAccountsForClient}
+      currentSubAccountId={currentSubAccountId}
     />
   );
 }

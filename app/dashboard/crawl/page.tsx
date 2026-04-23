@@ -6,7 +6,11 @@ import { checkSubscription } from "@/lib/checkSubscription";
 import { getEffectiveDealerContext } from "@/lib/impersonation";
 import { CrawlClient } from "./CrawlClient";
 
-export default async function CrawlPage() {
+export default async function CrawlPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ subAccountId?: string }>;
+}) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
     redirect("/login");
@@ -24,15 +28,24 @@ export default async function CrawlPage() {
 
   const dealer = await prisma.dealer.findUnique({
     where: { id: effectiveDealerId },
-    select: { name: true, vertical: true, websiteUrl: true, autoCrawlEnabled: true },
+    select: { name: true, vertical: true, websiteUrl: true, autoCrawlEnabled: true, subAccounts: { orderBy: { createdAt: "asc" } } },
   });
 
   if (!dealer || (dealer.vertical !== "automotive" && dealer.vertical !== "ecommerce")) {
     redirect("/dashboard");
   }
 
+  const { subAccountId: requestedSubAccountId } = await searchParams;
+  const subAccounts = dealer.subAccounts ?? [];
+  const currentSubAccountId =
+    requestedSubAccountId && subAccounts.some((s) => s.id === requestedSubAccountId)
+      ? requestedSubAccountId
+      : subAccounts[0]?.id ?? null;
+
+  const subFilter = currentSubAccountId ? { subAccountId: currentSubAccountId } : {};
+
   const lastCrawlJob = await prisma.crawlJob.findFirst({
-    where: { dealerId: effectiveDealerId, status: "complete" },
+    where: { dealerId: effectiveDealerId, status: "complete", ...subFilter },
     orderBy: { startedAt: "desc" },
     select: { completedAt: true, urlsFound: true },
   });
@@ -46,11 +59,12 @@ export default async function CrawlPage() {
       dealerId: effectiveDealerId,
       startedAt: { gte: monthStart },
       status: { not: "failed" },
+      ...subFilter,
     },
   });
 
   const snapshots = await prisma.crawlSnapshot.findMany({
-    where: { dealerId: effectiveDealerId },
+    where: { dealerId: effectiveDealerId, ...subFilter },
     orderBy: { firstSeenAt: "desc" },
     select: {
       id: true,
