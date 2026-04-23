@@ -171,6 +171,9 @@ export default function ProfileClient({
   const [creatingSub, setCreatingSub] = useState(false);
   const [subError, setSubError] = useState<string | null>(null);
   const [showCreateSub, setShowCreateSub] = useState(false);
+  const [editingSubAccountId, setEditingSubAccountId] = useState<string | null>(null);
+  const [editNewVertical, setEditNewVertical] = useState("automotive");
+  const [resettingSub, setResettingSub] = useState(false);
 
   // Team Members state
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -264,6 +267,41 @@ export default function ProfileClient({
       }
     } catch {
       setTeamError("Failed to cancel invite.");
+    }
+  }
+
+  async function loadSubAccounts() {
+    try {
+      const res = await fetch("/api/subaccounts");
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setSubAccountsList(data.subAccounts || []);
+      }
+    } catch {
+      // silent
+    }
+  }
+
+  async function resetSubAccount(id: string, newVertical: string) {
+    setResettingSub(true);
+    setSubError(null);
+    try {
+      const res = await fetch(`/api/subaccounts/${id}/reset`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vertical: newVertical }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setSubError(data.error || "Failed to reset sub-account.");
+        return;
+      }
+      setEditingSubAccountId(null);
+      await loadSubAccounts();
+    } catch {
+      setSubError("Network error. Please try again.");
+    } finally {
+      setResettingSub(false);
     }
   }
 
@@ -1393,18 +1431,78 @@ export default function ProfileClient({
                         {vInfo?.title ?? sa.vertical}
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => router.push(`/dashboard?subAccountId=${sa.id}`)}
-                      className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
-                    >
-                      Switch
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingSubAccountId(sa.id);
+                          setEditNewVertical(sa.vertical);
+                          setSubError(null);
+                        }}
+                        className="text-xs text-gray-500 hover:text-gray-700 font-medium"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/dashboard?subAccountId=${sa.id}`)}
+                        className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+                      >
+                        Switch
+                      </button>
+                    </div>
                   </div>
                 );
               })}
             </div>
           )}
+
+          {/* Edit Vertical Modal */}
+          {editingSubAccountId && (() => {
+            const editSa = subAccountsList.find((s) => s.id === editingSubAccountId);
+            if (!editSa) return null;
+            return (
+              <div className="border border-amber-300 bg-amber-50 rounded-lg p-4 mb-4">
+                <h3 className="text-sm font-semibold text-gray-800 mb-1">
+                  Change Vertical for &ldquo;{editSa.name}&rdquo;
+                </h3>
+                <p className="text-xs text-amber-700 mb-3">
+                  Changing the vertical will permanently delete all vehicles, listings, crawl jobs, and snapshots for this sub-account.
+                </p>
+                <div className="mb-3">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">New Vertical</label>
+                  <select
+                    value={editNewVertical}
+                    onChange={(e) => setEditNewVertical(e.target.value)}
+                    className="w-full border border-gray-400 bg-white rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    {VERTICALS.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.icon} {v.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={resettingSub || editNewVertical === editSa.vertical}
+                    onClick={() => resetSubAccount(editingSubAccountId, editNewVertical)}
+                    className="flex-1 bg-red-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {resettingSub ? "Resetting\u2026" : "Confirm & Reset Data"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setEditingSubAccountId(null); setSubError(null); }}
+                    className="flex-1 border border-gray-300 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
 
           {subError && (
             <div className="rounded-md bg-red-50 p-3 mb-3">

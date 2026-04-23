@@ -101,8 +101,15 @@ export default async function DashboardPage({
 
   const subAccounts = dealer?.subAccounts ?? [];
   const { subAccountId: requestedSubAccountId } = await searchParams;
-  const currentSubAccountId =
-    requestedSubAccountId && subAccounts.some((s) => s.id === requestedSubAccountId)
+
+  // Scoped access: editors can only view their assigned sub-account
+  const tu = session.user.teamUser;
+  const editorLockedSubAccountId =
+    tu?.role === "editor" && tu.subAccountId ? tu.subAccountId : null;
+
+  const currentSubAccountId = editorLockedSubAccountId
+    ? editorLockedSubAccountId
+    : requestedSubAccountId && subAccounts.some((s) => s.id === requestedSubAccountId)
       ? requestedSubAccountId
       : dealer?.defaultSubAccountId ?? subAccounts[0]?.id ?? null;
 
