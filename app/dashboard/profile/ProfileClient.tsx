@@ -914,7 +914,7 @@ export default function ProfileClient({
             <label className="block text-xs font-medium text-gray-700 mb-1">Language</label>
             <select
               data-element-id="translation-lang-select"
-              className="w-full border border-gray-400 bg-white rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 font-medium bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
               value={translationLang}
               onChange={(e) => {
                 setTranslationLang(e.target.value);
@@ -931,7 +931,7 @@ export default function ProfileClient({
             <label className="block text-xs font-medium text-gray-700 mb-1">Tone</label>
             <select
               data-element-id="translation-tone-select"
-              className="w-full border border-gray-400 bg-white rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 font-medium bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
               value={translationTone}
               onChange={(e) => {
                 setTranslationTone(e.target.value);
@@ -1520,7 +1520,7 @@ export default function ProfileClient({
                   placeholder="e.g. My Real Estate"
                   value={newSubName}
                   onChange={(e) => setNewSubName(e.target.value)}
-                  className="w-full border border-gray-400 bg-white rounded-md px-3 py-2 text-sm placeholder:text-gray-500 placeholder:font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 font-medium placeholder:text-gray-500 placeholder:font-normal bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 />
               </div>
               <div className="mb-3">
@@ -1528,10 +1528,11 @@ export default function ProfileClient({
                 <select
                   value={newSubVertical}
                   onChange={(e) => setNewSubVertical(e.target.value)}
-                  className="w-full border border-gray-400 bg-white rounded-md px-3 py-2 text-sm placeholder:text-gray-500 placeholder:font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 font-medium bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 >
+                  <option value="" disabled hidden className="text-gray-500 font-normal">— Select Vertical —</option>
                   {VERTICALS.map((v) => (
-                    <option key={v.id} value={v.id}>
+                    <option key={v.id} value={v.id} className="text-gray-900 font-medium">
                       {v.icon} {v.title}
                     </option>
                   ))}
@@ -1692,7 +1693,7 @@ export default function ProfileClient({
                   placeholder="teammate@example.com"
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
-                  className="w-full border border-gray-400 bg-white rounded-md px-3 py-2 text-sm placeholder:text-gray-500 placeholder:font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 font-medium placeholder:text-gray-500 placeholder:font-normal bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 />
               </div>
               <div className="mb-3">
@@ -1700,10 +1701,10 @@ export default function ProfileClient({
                 <select
                   value={inviteRole}
                   onChange={(e) => setInviteRole(e.target.value)}
-                  className="w-full border border-gray-400 bg-white rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 font-medium bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 >
-                  <option value="editor">Editor (scoped to sub-account)</option>
-                  <option value="admin">Admin (full access)</option>
+                  <option value="editor" className="text-gray-900 font-medium">Editor (scoped to sub-account)</option>
+                  <option value="admin" className="text-gray-900 font-medium">Admin (full access)</option>
                 </select>
               </div>
               {inviteRole === "editor" && subAccountsList.length > 0 && (
@@ -1712,9 +1713,9 @@ export default function ProfileClient({
                   <select
                     value={inviteSubAccountId}
                     onChange={(e) => setInviteSubAccountId(e.target.value)}
-                    className="w-full border border-gray-400 bg-white rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 font-medium bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                   >
-                    <option value="">All sub-accounts</option>
+                    <option value="" className="text-gray-500 font-normal">All sub-accounts</option>
                     {subAccountsList.map((sa) => (
                       <option key={sa.id} value={sa.id}>{sa.name}</option>
                     ))}

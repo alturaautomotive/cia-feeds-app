@@ -335,10 +335,10 @@ export function DashboardClient({
               <select
                 value={currentSubAccountId ?? ""}
                 onChange={(e) => router.push(`/dashboard?subAccountId=${e.target.value}`)}
-                className="border border-gray-300 bg-white rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="border border-gray-300 bg-white rounded-md px-2 py-1 text-sm text-gray-900 font-medium placeholder:text-gray-500 placeholder:font-normal focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
               >
                 {subAccounts.map((sa) => (
-                  <option key={sa.id} value={sa.id}>
+                  <option key={sa.id} value={sa.id} className="text-gray-900 font-medium">
                     {sa.name} ({sa.vertical})
                   </option>
                 ))}
