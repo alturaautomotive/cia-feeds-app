@@ -46,6 +46,28 @@ export async function sendAdminNewSignupEmail(
   }
 }
 
+export async function sendNewLeadEmail(
+  dealerEmail: string,
+  leadName: string,
+  leadEmail: string | undefined,
+  leadPhone: string | undefined,
+  vehicleInfo: string
+): Promise<void> {
+  const resend = getResend();
+  if (!resend) return;
+  const contact = [leadEmail, leadPhone].filter(Boolean).join(", ") || "No contact info";
+  try {
+    await resend.emails.send({
+      from: FROM,
+      to: dealerEmail,
+      subject: `New lead on ${vehicleInfo}`,
+      html: `<p>You have a new lead on <strong>${vehicleInfo}</strong>:</p><ul><li><strong>Name:</strong> ${leadName}</li><li><strong>Contact:</strong> ${contact}</li></ul>`,
+    });
+  } catch (err) {
+    console.error("[email] sendNewLeadEmail failed:", err);
+  }
+}
+
 export async function sendPasswordResetEmail(
   toEmail: string,
   resetUrl: string

@@ -47,6 +47,7 @@ model Dealer {
   listings             Listing[]
   crawlJobs            CrawlJob[]
   crawlSnapshots       CrawlSnapshot[]
+  leads                Lead[]
 }
 
 model Vehicle {
@@ -88,6 +89,22 @@ model Vehicle {
   @@unique([dealerId, url])
   @@index([dealerId])
   @@index([dealerId, archivedAt])
+  leads          Lead[]
+}
+
+model Lead {
+  id        String   @id @default(uuid())
+  dealerId  String
+  vehicleId String
+  name      String
+  email     String?
+  phone     String?
+  createdAt DateTime @default(now())
+  dealer    Dealer   @relation(fields: [dealerId], references: [id], onDelete: Cascade)
+  vehicle   Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([dealerId])
+  @@index([vehicleId])
 }
 
 model Listing {

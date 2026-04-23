@@ -4,6 +4,7 @@ import LandingCarousel from "@/app/components/LandingCarousel";
 import VehicleDetails from "@/app/components/VehicleDetails";
 import StickyCTAs from "@/app/components/StickyCTAs";
 import SocialProof from "@/app/components/SocialProof";
+import Chatbot from "@/app/components/Chatbot";
 import { getExtraImages } from "@/lib/getExtraImages";
 
 export const revalidate = 3600; // cache for 1 hour
@@ -71,6 +72,7 @@ export default async function VehicleLandingPage({
       <SocialProof />
       <VehicleDetails vehicle={{ ...vehicle, vin: vehicle.vin }} dealer={dealer} />
       <StickyCTAs dealer={dealer} />
+      <Chatbot vehicleId={vehicleId} dealerId={dealer.id} vin={vehicle.vin ?? undefined} />
     </div>
   );
 }
