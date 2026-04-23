@@ -11,6 +11,11 @@ declare module "next-auth" {
       slug: string;
       vertical: string;
       subAccountId: string | null;
+      teamUser?: {
+        id: string;
+        role: "admin" | "editor";
+        subAccountId?: string;
+      };
     };
   }
 
@@ -19,6 +24,11 @@ declare module "next-auth" {
     slug: string;
     vertical: string;
     subAccountId: string | null;
+    teamUser?: {
+      id: string;
+      role: "admin" | "editor";
+      subAccountId?: string;
+    };
   }
 }
 
@@ -28,5 +38,10 @@ declare module "next-auth/jwt" {
     slug: string;
     vertical: string;
     subAccountId: string | null;
+    teamUser?: {
+      id: string;
+      role: "admin" | "editor";
+      subAccountId?: string;
+    };
   }
 }

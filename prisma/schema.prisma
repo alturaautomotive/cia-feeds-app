@@ -61,6 +61,7 @@ model Dealer {
   crawlSnapshots       CrawlSnapshot[]
   leads                Lead[]
   subAccounts          SubAccount[]   @relation("DealerSubAccounts")
+  teamUsers            TeamUser[]
 }
 
 model SubAccount {
@@ -75,6 +76,7 @@ model SubAccount {
   listings       Listing[]
   crawlJobs      CrawlJob[]
   crawlSnapshots CrawlSnapshot[]
+  teamUsers      TeamUser[]
 
   @@index([dealerId])
 }
@@ -228,4 +230,33 @@ model OAuthState {
 
   @@index([state])
   @@index([expiresAt])
+}
+
+model TeamUser {
+  id           String      @id @default(uuid())
+  email        String
+  dealerId     String
+  subAccountId String?
+  role         String      // "admin" | "editor"
+  invitedAt    DateTime    @default(now())
+  acceptedAt   DateTime?
+  dealer       Dealer      @relation(fields: [dealerId], references: [id])
+  subAccount   SubAccount? @relation(fields: [subAccountId], references: [id])
+
+  @@unique([dealerId, email])
+  @@index([dealerId])
+  @@index([subAccountId])
+}
+
+model TeamInvite {
+  id           String   @id @default(uuid())
+  token        String   @unique
+  email        String
+  dealerId     String
+  subAccountId String?
+  role         String   // "admin" | "editor"
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  @@index([token])
 }

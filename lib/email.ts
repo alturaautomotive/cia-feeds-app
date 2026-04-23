@@ -68,6 +68,26 @@ export async function sendNewLeadEmail(
   }
 }
 
+export async function sendTeamInviteEmail(
+  toEmail: string,
+  dealerName: string,
+  role: string,
+  inviteUrl: string
+): Promise<void> {
+  const resend = getResend();
+  if (!resend) return;
+  try {
+    await resend.emails.send({
+      from: FROM,
+      to: toEmail,
+      subject: `You're invited to join ${dealerName} on CIA Feeds`,
+      html: `<p>Hi,</p><p><strong>${dealerName}</strong> has invited you to join their team on CIA Feeds as <strong>${role}</strong>.</p><p>Click the link below to accept the invitation (valid for 7 days):</p><p><a href="${inviteUrl}">${inviteUrl}</a></p><p>If you did not expect this invitation, you can ignore this email.</p>`,
+    });
+  } catch (err) {
+    console.error("[email] sendTeamInviteEmail failed:", err);
+  }
+}
+
 export async function sendPasswordResetEmail(
   toEmail: string,
   resetUrl: string

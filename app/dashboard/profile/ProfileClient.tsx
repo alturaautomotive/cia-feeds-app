@@ -33,6 +33,25 @@ const VERTICALS = [
   { id: "realestate", icon: "\u{1F3E0}", title: "Real Estate", desc: "Property listings for sale or rent" },
 ] as const;
 
+interface TeamMember {
+  id: string;
+  email: string;
+  role: string;
+  subAccountId: string | null;
+  invitedAt: string;
+  acceptedAt: string | null;
+  subAccount: { name: string } | null;
+}
+
+interface PendingInvite {
+  id: string;
+  email: string;
+  role: string;
+  subAccountId: string | null;
+  createdAt: string;
+  expiresAt: string;
+}
+
 interface SubAccountItem {
   id: string;
   name: string;
@@ -152,6 +171,106 @@ export default function ProfileClient({
   const [creatingSub, setCreatingSub] = useState(false);
   const [subError, setSubError] = useState<string | null>(null);
   const [showCreateSub, setShowCreateSub] = useState(false);
+
+  // Team Members state
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
+  const [teamLoading, setTeamLoading] = useState(false);
+  const [showInviteForm, setShowInviteForm] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("editor");
+  const [inviteSubAccountId, setInviteSubAccountId] = useState("");
+  const [inviting, setInviting] = useState(false);
+  const [teamError, setTeamError] = useState<string | null>(null);
+  const [teamSuccess, setTeamSuccess] = useState<string | null>(null);
+
+  async function loadTeamMembers() {
+    setTeamLoading(true);
+    try {
+      const res = await fetch("/api/team/members");
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setTeamMembers(data.members || []);
+        setPendingInvites(data.pendingInvites || []);
+      }
+    } catch {
+      // silent
+    } finally {
+      setTeamLoading(false);
+    }
+  }
+
+  async function handleInvite() {
+    if (!inviteEmail.trim()) {
+      setTeamError("Email is required.");
+      return;
+    }
+    setInviting(true);
+    setTeamError(null);
+    setTeamSuccess(null);
+    try {
+      const res = await fetch("/api/team/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: inviteEmail.trim(),
+          role: inviteRole,
+          subAccountId: inviteSubAccountId || null,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const messages: Record<string, string> = {
+          cannot_invite_self: "You cannot invite yourself.",
+          already_team_member: "This person is already a team member.",
+          invalid_email: "Please enter a valid email address.",
+          invalid_role: "Please select a valid role.",
+          invalid_sub_account: "Invalid sub-account selected.",
+        };
+        setTeamError(messages[data.error] || data.error || "Failed to send invite.");
+        return;
+      }
+      setTeamSuccess(`Invite sent to ${inviteEmail.trim()}`);
+      setInviteEmail("");
+      setInviteRole("editor");
+      setInviteSubAccountId("");
+      setShowInviteForm(false);
+      await loadTeamMembers();
+    } catch {
+      setTeamError("Network error. Please try again.");
+    } finally {
+      setInviting(false);
+    }
+  }
+
+  async function handleRemoveMember(memberId: string) {
+    setTeamError(null);
+    try {
+      const res = await fetch(`/api/team/members?id=${memberId}`, { method: "DELETE" });
+      if (res.ok) {
+        setTeamMembers((prev) => prev.filter((m) => m.id !== memberId));
+      }
+    } catch {
+      setTeamError("Failed to remove member.");
+    }
+  }
+
+  async function handleCancelInvite(inviteId: string) {
+    setTeamError(null);
+    try {
+      const res = await fetch(`/api/team/members?inviteId=${inviteId}`, { method: "DELETE" });
+      if (res.ok) {
+        setPendingInvites((prev) => prev.filter((i) => i.id !== inviteId));
+      }
+    } catch {
+      setTeamError("Failed to cancel invite.");
+    }
+  }
+
+  // Load team members on mount
+  useEffect(() => {
+    loadTeamMembers();
+  }, []);
 
   async function handleDisconnect() {
     setDisconnecting(true);
@@ -1378,6 +1497,157 @@ export default function ProfileClient({
               className="w-full border-2 border-dashed border-indigo-400 text-indigo-600 rounded-md py-2 text-sm cursor-pointer hover:bg-indigo-50"
             >
               + Add Sub-Account
+            </button>
+          )}
+        </div>
+
+        {/* Team Members */}
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-4">
+          <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
+            Team Members
+          </h2>
+          <p className="text-xs text-gray-400 mb-4">
+            Invite team members to manage inventory under your account.
+          </p>
+
+          {teamError && (
+            <div className="rounded-md bg-red-50 p-3 mb-3">
+              <p className="text-sm text-red-600">{teamError}</p>
+            </div>
+          )}
+          {teamSuccess && (
+            <div className="rounded-md bg-green-50 p-3 mb-3">
+              <p className="text-sm text-green-600">{teamSuccess}</p>
+            </div>
+          )}
+
+          {teamLoading && teamMembers.length === 0 && (
+            <p className="text-xs text-gray-400 mb-3">Loading team...</p>
+          )}
+
+          {/* Active Members */}
+          {teamMembers.length > 0 && (
+            <div className="space-y-2 mb-4">
+              {teamMembers.map((m) => (
+                <div
+                  key={m.id}
+                  className="flex items-center justify-between px-3 py-2.5 rounded-lg border border-gray-200"
+                >
+                  <div>
+                    <div className="text-sm font-medium text-gray-900">{m.email}</div>
+                    <div className="text-xs text-gray-500">
+                      {m.role === "admin" ? "Admin" : "Editor"}
+                      {m.subAccount ? ` \u00b7 ${m.subAccount.name}` : " \u00b7 All sub-accounts"}
+                      {m.acceptedAt ? "" : " \u00b7 Pending"}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveMember(m.id)}
+                    className="text-xs text-red-500 hover:text-red-600 font-medium"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Pending Invites */}
+          {pendingInvites.length > 0 && (
+            <div className="mb-4">
+              <h3 className="text-xs font-semibold text-gray-500 mb-2">Pending Invites</h3>
+              <div className="space-y-2">
+                {pendingInvites.map((inv) => (
+                  <div
+                    key={inv.id}
+                    className="flex items-center justify-between px-3 py-2 rounded-lg border border-dashed border-gray-300 bg-gray-50"
+                  >
+                    <div>
+                      <div className="text-sm text-gray-700">{inv.email}</div>
+                      <div className="text-xs text-gray-400">
+                        {inv.role === "admin" ? "Admin" : "Editor"} &middot; Expires{" "}
+                        {new Date(inv.expiresAt).toLocaleDateString()}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCancelInvite(inv.id)}
+                      className="text-xs text-gray-500 hover:text-red-500 font-medium"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Invite Form */}
+          {showInviteForm ? (
+            <div className="border border-gray-200 rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-gray-800 mb-3">Invite Team Member</h3>
+              <div className="mb-3">
+                <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
+                <input
+                  type="email"
+                  placeholder="teammate@example.com"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  className="w-full border border-gray-400 bg-white rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div className="mb-3">
+                <label className="block text-xs font-medium text-gray-700 mb-1">Role</label>
+                <select
+                  value={inviteRole}
+                  onChange={(e) => setInviteRole(e.target.value)}
+                  className="w-full border border-gray-400 bg-white rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="editor">Editor (scoped to sub-account)</option>
+                  <option value="admin">Admin (full access)</option>
+                </select>
+              </div>
+              {inviteRole === "editor" && subAccountsList.length > 0 && (
+                <div className="mb-3">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Sub-Account</label>
+                  <select
+                    value={inviteSubAccountId}
+                    onChange={(e) => setInviteSubAccountId(e.target.value)}
+                    className="w-full border border-gray-400 bg-white rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="">All sub-accounts</option>
+                    {subAccountsList.map((sa) => (
+                      <option key={sa.id} value={sa.id}>{sa.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={inviting}
+                  onClick={handleInvite}
+                  className="flex-1 bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {inviting ? "Sending\u2026" : "Send Invite"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowInviteForm(false); setTeamError(null); }}
+                  className="flex-1 border border-gray-300 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowInviteForm(true)}
+              className="w-full border-2 border-dashed border-indigo-400 text-indigo-600 rounded-md py-2 text-sm cursor-pointer hover:bg-indigo-50"
+            >
+              + Invite Team Member
             </button>
           )}
         </div>

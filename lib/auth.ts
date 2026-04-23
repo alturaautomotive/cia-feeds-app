@@ -61,6 +61,16 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
+        // Check if this user is a team member for this dealer
+        const teamUser = await prisma.teamUser.findFirst({
+          where: {
+            email: credentials.email.toLowerCase(),
+            dealerId: dealer.id,
+            acceptedAt: { not: null },
+          },
+          select: { id: true, role: true, subAccountId: true },
+        });
+
         return {
           id: dealer.id,
           name: dealer.name,
@@ -68,6 +78,9 @@ export const authOptions: NextAuthOptions = {
           slug: dealer.slug,
           vertical: dealer.vertical,
           subAccountId: dealer.defaultSubAccountId ?? dealer.subAccounts[0]?.id ?? null,
+          teamUser: teamUser
+            ? { id: teamUser.id, role: teamUser.role as "admin" | "editor", subAccountId: teamUser.subAccountId ?? undefined }
+            : undefined,
         };
       },
     }),
@@ -84,6 +97,7 @@ export const authOptions: NextAuthOptions = {
         token.slug = (user as { slug: string; vertical: string; subAccountId: string | null }).slug;
         token.vertical = (user as { slug: string; vertical: string; subAccountId: string | null }).vertical;
         token.subAccountId = (user as { subAccountId: string | null }).subAccountId ?? null;
+        token.teamUser = (user as { teamUser?: { id: string; role: "admin" | "editor"; subAccountId?: string } }).teamUser;
       }
       return token;
     },
@@ -93,6 +107,7 @@ export const authOptions: NextAuthOptions = {
         session.user.slug = token.slug as string;
         session.user.vertical = token.vertical as string;
         session.user.subAccountId = (token.subAccountId as string) ?? null;
+        session.user.teamUser = token.teamUser;
       }
       return session;
     },
