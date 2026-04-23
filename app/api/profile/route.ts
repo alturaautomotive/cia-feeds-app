@@ -244,7 +244,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "invalid_vertical" }, { status: 400 });
     }
 
-    const newVertical = b.vertical;
+    const newVertical = b.vertical as Vertical;
 
     const dealer = await prisma.dealer.findUnique({
       where: { id: effectiveDealerId },
