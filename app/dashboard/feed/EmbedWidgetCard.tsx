@@ -11,6 +11,8 @@ interface Props {
   ctaPreference: string | null;
   customDomain?: string | null;
   defaultLandingBaseUrl: string;
+  translationLang?: string;
+  translationTone?: string;
 }
 
 export default function EmbedWidgetCard({
@@ -22,6 +24,8 @@ export default function EmbedWidgetCard({
   ctaPreference,
   customDomain,
   defaultLandingBaseUrl,
+  translationLang = "en",
+  translationTone = "professional",
 }: Props) {
   const [copied, setCopied] = useState(false);
   const [useCustomDomain, setUseCustomDomain] = useState(!!customDomain);
@@ -43,6 +47,8 @@ export default function EmbedWidgetCard({
     const escapedUrl = escapeJS(safeCatalogApiUrl);
     const escapedSlug = escapeJS(slug);
     const escapedLandingBase = escapeJS(effectiveLandingBase);
+    const escapedLang = escapeJS(translationLang);
+    const escapedTone = escapeJS(translationTone);
 
     return `<script>
 (function(){
@@ -50,6 +56,8 @@ export default function EmbedWidgetCard({
   var escapedSlug = '${escapedSlug}';
   var container = document.createElement('div');
   container.id = 'cia-catalog-widget';
+  container.setAttribute('data-lang', '${escapedLang}');
+  container.setAttribute('data-tone', '${escapedTone}');
   document.currentScript.parentElement.appendChild(container);
 
   fetch('${escapedUrl}')
@@ -159,6 +167,29 @@ export default function EmbedWidgetCard({
       });
 
       wrapper.appendChild(grid);
+
+      /* --- Translate titles & detail chips if lang !== en --- */
+      if(container.dataset.lang !== 'en'){
+        var slug = '${escapedSlug}';
+        var lang = container.dataset.lang;
+        var tone = container.dataset.tone;
+        var titles = grid.querySelectorAll('[style*="fontWeight: 600"]');
+        var chips = grid.querySelectorAll('span[style*="backgroundColor: #f3f4f6"]');
+        var els = [];
+        for(var ti=0;ti<titles.length;ti++) els.push(titles[ti]);
+        for(var ci=0;ci<chips.length;ci++) els.push(chips[ci]);
+        els.forEach(function(el){
+          if(!el.textContent.match(/^\\$?\\d/)){
+            fetch(landingBase + '/api/translate', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({slug: slug, text: el.textContent.trim(), lang: lang, tone: tone})
+            }).then(function(res){ if(res.ok) return res.json(); }).then(function(data){
+              if(data && data.translated) el.textContent = data.translated;
+            }).catch(function(){});
+          }
+        });
+      }
 
       /* --- Dynamic CTA buttons --- */
       var pref = dealer.ctaPreference;
