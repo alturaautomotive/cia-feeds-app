@@ -10,6 +10,22 @@ const CTA_OPTIONS = [
   { value: "messenger", label: "Messenger", icon: "💙", desc: "Opens Facebook Messenger" },
 ] as const;
 
+const LANG_OPTIONS = [
+  { value: "en", label: "English" },
+  { value: "es-MX", label: "Mexican Spanish" },
+  { value: "es-PR", label: "Puerto Rican Spanish" },
+  { value: "pt-BR", label: "Brazilian Portuguese" },
+  { value: "ko-KR", label: "Korean" },
+  { value: "fr", label: "French" },
+  { value: "de", label: "German" },
+] as const;
+
+const TONE_OPTIONS = [
+  { value: "professional", label: "Professional" },
+  { value: "funny", label: "Funny" },
+  { value: "luxury", label: "Luxury" },
+] as const;
+
 const VERTICALS = [
   { id: "automotive", icon: "\u{1F697}", title: "Automotive", desc: "Vehicle listings" },
   { id: "services", icon: "\u{1F527}", title: "Services", desc: "Local service businesses" },
@@ -25,6 +41,8 @@ interface Props {
   phone: string | null;
   customDomain: string | null;
   ctaPreference: string | null;
+  translationLang: string;
+  translationTone: string;
   fbPageId: string | null;
   isMetaConnected: boolean;
   metaCatalogId: string | null;
@@ -48,6 +66,8 @@ export default function ProfileClient({
   phone: initialPhone,
   customDomain: initialCustomDomain,
   ctaPreference: initialCtaPreference,
+  translationLang: initialTranslationLang,
+  translationTone: initialTranslationTone,
   fbPageId: initialFbPageId,
   isMetaConnected: initialIsMetaConnected,
   metaCatalogId: initialMetaCatalogId,
@@ -88,6 +108,12 @@ export default function ProfileClient({
   const [savingCta, setSavingCta] = useState(false);
   const [ctaSaved, setCtaSaved] = useState(false);
   const [ctaError, setCtaError] = useState<string | null>(null);
+
+  const [translationLang, setTranslationLang] = useState(initialTranslationLang);
+  const [translationTone, setTranslationTone] = useState(initialTranslationTone);
+  const [savingTranslation, setSavingTranslation] = useState(false);
+  const [translationSaved, setTranslationSaved] = useState(false);
+  const [translationError, setTranslationError] = useState<string | null>(null);
 
   // Meta Business Integration wizard state
   const [isMetaConnected, setIsMetaConnected] = useState(initialIsMetaConnected);
@@ -795,6 +821,85 @@ export default function ProfileClient({
           )}
           {ctaError && (
             <p className="text-xs text-red-600 mt-2">{ctaError}</p>
+          )}
+        </div>
+
+        {/* Translation Settings */}
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-4">
+          <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
+            Translation Settings
+          </h2>
+          <p className="text-xs text-gray-400 mb-4">
+            Choose the language and tone for AI-generated listing descriptions.
+          </p>
+          <div className="mb-3">
+            <label className="block text-xs font-medium text-gray-700 mb-1">Language</label>
+            <select
+              data-element-id="translation-lang-select"
+              className="w-full border border-gray-400 bg-white rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              value={translationLang}
+              onChange={(e) => {
+                setTranslationLang(e.target.value);
+                setTranslationSaved(false);
+                setTranslationError(null);
+              }}
+            >
+              {LANG_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="mb-3">
+            <label className="block text-xs font-medium text-gray-700 mb-1">Tone</label>
+            <select
+              data-element-id="translation-tone-select"
+              className="w-full border border-gray-400 bg-white rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              value={translationTone}
+              onChange={(e) => {
+                setTranslationTone(e.target.value);
+                setTranslationSaved(false);
+                setTranslationError(null);
+              }}
+            >
+              {TONE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+          <button
+            type="button"
+            disabled={savingTranslation}
+            onClick={async () => {
+              setSavingTranslation(true);
+              setTranslationSaved(false);
+              setTranslationError(null);
+              try {
+                const res = await fetch("/api/profile", {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ translationLang, translationTone }),
+                });
+                if (!res.ok) {
+                  const data = await res.json().catch(() => ({}));
+                  setTranslationError(data.error || "Failed to save translation settings.");
+                  return;
+                }
+                setTranslationSaved(true);
+              } catch {
+                setTranslationError("Network error. Please try again.");
+              } finally {
+                setSavingTranslation(false);
+              }
+            }}
+            className="w-full bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
+          >
+            {savingTranslation ? "Saving\u2026" : "Save"}
+          </button>
+          {translationSaved && (
+            <p className="text-xs text-green-600 mt-2">Translation settings saved.</p>
+          )}
+          {translationError && (
+            <p className="text-xs text-red-600 mt-2">{translationError}</p>
           )}
         </div>
 

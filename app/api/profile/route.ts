@@ -6,6 +6,8 @@ import { decrypt } from "@/lib/crypto";
 import { VERTICAL_META_TYPE, VALID_VERTICALS, type Vertical } from "@/lib/verticals";
 
 const VALID_CTA_PREFERENCES = ["sms", "whatsapp", "messenger"];
+const VALID_TRANSLATION_LANGS = ["en", "es-MX", "es-PR", "pt-BR", "ko-KR", "fr", "de"];
+const VALID_TRANSLATION_TONES = ["professional", "funny", "luxury"];
 
 const SAFE_SELECT = {
   id: true,
@@ -21,6 +23,8 @@ const SAFE_SELECT = {
   phone: true,
   customDomain: true,
   ctaPreference: true,
+  translationLang: true,
+  translationTone: true,
   latitude: true,
   longitude: true,
 } as const;
@@ -190,6 +194,30 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "invalid_cta_preference" }, { status: 400 });
     } else {
       batchData.ctaPreference = rawCta as "sms" | "whatsapp" | "messenger";
+    }
+  }
+
+  // Handle translationLang update
+  if ("translationLang" in b) {
+    const rawLang = b.translationLang;
+    if (rawLang === null) {
+      batchData.translationLang = null;
+    } else if (typeof rawLang !== "string" || !VALID_TRANSLATION_LANGS.includes(rawLang)) {
+      return NextResponse.json({ error: "invalid_translationLang" }, { status: 400 });
+    } else {
+      batchData.translationLang = rawLang;
+    }
+  }
+
+  // Handle translationTone update
+  if ("translationTone" in b) {
+    const rawTone = b.translationTone;
+    if (rawTone === null) {
+      batchData.translationTone = null;
+    } else if (typeof rawTone !== "string" || !VALID_TRANSLATION_TONES.includes(rawTone)) {
+      return NextResponse.json({ error: "invalid_translationTone" }, { status: 400 });
+    } else {
+      batchData.translationTone = rawTone;
     }
   }
 

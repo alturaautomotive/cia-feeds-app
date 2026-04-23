@@ -35,6 +35,8 @@ export default async function ProfilePage() {
       phone: true,
       customDomain: true,
       ctaPreference: true,
+      translationLang: true,
+      translationTone: true,
       latitude: true,
       longitude: true,
       fbPageId: true,
@@ -54,6 +56,8 @@ export default async function ProfilePage() {
       phone={dealer?.phone ?? null}
       customDomain={dealer?.customDomain ?? null}
       ctaPreference={dealer?.ctaPreference ?? null}
+      translationLang={dealer?.translationLang ?? "en"}
+      translationTone={dealer?.translationTone ?? "professional"}
       fbPageId={dealer?.fbPageId ?? null}
       isMetaConnected={!!dealer?.metaAccessToken}
       metaCatalogId={dealer?.metaCatalogId ?? null}

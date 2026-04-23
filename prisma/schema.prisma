@@ -42,6 +42,8 @@ model Dealer {
   phone                String?
   customDomain         String?
   ctaPreference        CtaPreference?
+  translationLang      String?        @default("en")
+  translationTone      String?        @default("professional")
   latitude             Float?
   longitude            Float?
   vehicles             Vehicle[]
