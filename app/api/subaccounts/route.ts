@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getEffectiveDealerContext } from "@/lib/impersonation";
+import { Vertical } from "@prisma/client";
 
 const VALID_VERTICALS = ["automotive", "services", "ecommerce", "realestate"];
 
@@ -53,13 +54,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "invalid_vertical" }, { status: 400 });
   }
 
-  const subAccount = await prisma.subAccount.create({
-    data: {
-      dealerId: effectiveDealerId,
-      name: name.trim(),
-      vertical: vertical as "automotive" | "services" | "ecommerce" | "realestate",
-    },
-  });
+  try {
+    const subAccount = await prisma.subAccount.create({
+      data: {
+        dealerId: effectiveDealerId,
+        name: name.trim(),
+        vertical: vertical as Vertical,
+        createdAt: new Date(),
+      },
+    });
 
-  return NextResponse.json({ subAccount }, { status: 201 });
+    return NextResponse.json({ subAccount }, { status: 201 });
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : "Failed to create sub-account.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

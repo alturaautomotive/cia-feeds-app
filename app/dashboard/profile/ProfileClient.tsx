@@ -1520,7 +1520,7 @@ export default function ProfileClient({
                   placeholder="e.g. My Real Estate"
                   value={newSubName}
                   onChange={(e) => setNewSubName(e.target.value)}
-                  className="w-full border border-gray-400 bg-white rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full border border-gray-400 bg-white rounded-md px-3 py-2 text-sm placeholder:text-gray-400/80 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
               <div className="mb-3">
@@ -1528,7 +1528,7 @@ export default function ProfileClient({
                 <select
                   value={newSubVertical}
                   onChange={(e) => setNewSubVertical(e.target.value)}
-                  className="w-full border border-gray-400 bg-white rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full border border-gray-400 bg-white rounded-md px-3 py-2 text-sm placeholder:text-gray-400/80 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   {VERTICALS.map((v) => (
                     <option key={v.id} value={v.id}>
