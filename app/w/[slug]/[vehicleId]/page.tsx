@@ -8,6 +8,7 @@ import Chatbot from "@/app/components/Chatbot";
 import PixelInitializer from "@/app/components/PixelInitializer";
 import { getExtraImages } from "@/lib/getExtraImages";
 import { getGeoCity } from "@/lib/getGeoCity";
+import RelatedVehicles from "@/app/components/RelatedVehicles";
 import { translateBatch } from "@/lib/translate";
 
 export const revalidate = 3600; // cache for 1 hour
@@ -30,6 +31,7 @@ export default async function VehicleLandingPage({
       translationLang: true,
       translationTone: true,
       metaPixelId: true,
+      feedUrlMode: true,
     },
   });
 
@@ -60,6 +62,16 @@ export default async function VehicleLandingPage({
   });
 
   if (!vehicle) notFound();
+
+  let relatedVehicles: { id: string; make: string | null; model: string | null; year: number | null; price: number | null; imageUrl: string | null }[] = [];
+  if (dealer.feedUrlMode === 'landing') {
+    relatedVehicles = await prisma.vehicle.findMany({
+      where: { dealerId: dealer.id, archivedAt: null, id: { not: vehicleId } },
+      select: { id: true, make: true, model: true, year: true, price: true, imageUrl: true },
+      orderBy: { createdAt: 'desc' },
+      take: 12,
+    });
+  }
 
   // Fire server-side Meta CAPI ViewContent event
   if (dealer.metaPixelId) {
@@ -207,6 +219,11 @@ export default async function VehicleLandingPage({
       {pixelId && <PixelInitializer pixelId={pixelId} vehicleId={vehicleId} price={vehicle.price} />}
       <SocialProof fakeViewer={fakeViewer} tViewed={translations.viewedText} />
       <div className="max-w-5xl mx-auto px-4"><VehicleDetails vehicle={vehicleForDetails} dealer={dealer} translations={detailsTranslations} /></div>
+      {dealer.feedUrlMode === 'landing' && relatedVehicles.length > 0 && (
+        <div className="max-w-5xl mx-auto px-4 mt-12">
+          <RelatedVehicles dealerName={dealer.name} dealerSlug={slug} vehicles={relatedVehicles} />
+        </div>
+      )}
       <StickyCTAs dealer={dealer} tCtas={ctaTranslations} />
       <Chatbot vehicleId={vehicleId} dealerId={dealer.id} vin={vehicle.vin ?? undefined} pixelId={pixelId} price={vehicle.price} translations={chatbotTranslations} />
     </div>
