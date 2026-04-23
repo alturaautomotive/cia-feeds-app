@@ -697,7 +697,7 @@ export default function ProfileClient({
             <input
               data-element-id="business-address-input"
               type="text"
-              className="flex-1 border border-gray-400 bg-white rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              className="flex-1 border border-gray-400 bg-white rounded-md px-3 py-2 text-sm placeholder:text-gray-500 placeholder:font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
               placeholder="1875 Buford Highway, Cumming, GA 30041"
               value={dealerAddress}
               onChange={(e) => {
@@ -779,7 +779,7 @@ export default function ProfileClient({
                 setPhoneSaved(false);
                 setPhoneError(null);
               }}
-              className="flex-1 border border-gray-400 bg-white rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              className="flex-1 border border-gray-400 bg-white rounded-md px-3 py-2 text-sm placeholder:text-gray-500 placeholder:font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
             />
             <button
               type="button"
@@ -1242,7 +1242,7 @@ export default function ProfileClient({
                   placeholder="e.g. CIA Automotive Catalog"
                   value={newCatalogName}
                   onChange={(e) => setNewCatalogName(e.target.value)}
-                  className="w-full border border-gray-400 bg-white rounded-md px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full border border-gray-400 bg-white rounded-md px-3 py-2 text-sm mb-3 placeholder:text-gray-500 placeholder:font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               )}
 
@@ -1310,7 +1310,7 @@ export default function ProfileClient({
                 setPixelIdSaved(false);
                 setPixelIdError(null);
               }}
-              className="flex-1 border border-gray-400 bg-white rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              className="flex-1 border border-gray-400 bg-white rounded-md px-3 py-2 text-sm placeholder:text-gray-500 placeholder:font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
             />
             <button
               type="button"
@@ -1363,7 +1363,7 @@ export default function ProfileClient({
               <input
                 data-element-id="website-url-input"
                 type="url"
-                className="flex-1 border border-gray-400 bg-white rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                className="flex-1 border border-gray-400 bg-white rounded-md px-3 py-2 text-sm placeholder:text-gray-500 placeholder:font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 placeholder="https://yourwebsite.com"
                 value={siteUrl}
                 onChange={(e) => {
@@ -1520,7 +1520,7 @@ export default function ProfileClient({
                   placeholder="e.g. My Real Estate"
                   value={newSubName}
                   onChange={(e) => setNewSubName(e.target.value)}
-                  className="w-full border border-gray-400 bg-white rounded-md px-3 py-2 text-sm placeholder:text-gray-400/80 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full border border-gray-400 bg-white rounded-md px-3 py-2 text-sm placeholder:text-gray-500 placeholder:font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
               <div className="mb-3">
@@ -1528,7 +1528,7 @@ export default function ProfileClient({
                 <select
                   value={newSubVertical}
                   onChange={(e) => setNewSubVertical(e.target.value)}
-                  className="w-full border border-gray-400 bg-white rounded-md px-3 py-2 text-sm placeholder:text-gray-400/80 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full border border-gray-400 bg-white rounded-md px-3 py-2 text-sm placeholder:text-gray-500 placeholder:font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   {VERTICALS.map((v) => (
                     <option key={v.id} value={v.id}>
@@ -1692,7 +1692,7 @@ export default function ProfileClient({
                   placeholder="teammate@example.com"
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
-                  className="w-full border border-gray-400 bg-white rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full border border-gray-400 bg-white rounded-md px-3 py-2 text-sm placeholder:text-gray-500 placeholder:font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
               <div className="mb-3">
