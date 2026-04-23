@@ -9,6 +9,7 @@ import { VERTICAL_LABELS, type Vertical } from "@/lib/verticals";
 import FeedUrlCard from "./FeedUrlCard";
 import EmbedWidgetCard from "./EmbedWidgetCard";
 import UrlHealthCheckToggle from "./UrlHealthCheckToggle";
+import FeedUrlModeToggle from "./FeedUrlModeToggle";
 
 const BACK_LABEL: Record<string, string> = {
   automotive: "Vehicles",
@@ -38,7 +39,7 @@ export default async function FeedPage() {
 
   const dealer = await prisma.dealer.findUnique({
     where: { id: effectiveDealerId },
-    select: { slug: true, vertical: true, phone: true, fbPageId: true, ctaPreference: true, address: true, urlHealthCheckEnabled: true, customDomain: true, translationLang: true, translationTone: true, metaPixelId: true },
+    select: { slug: true, vertical: true, phone: true, fbPageId: true, ctaPreference: true, address: true, urlHealthCheckEnabled: true, customDomain: true, translationLang: true, translationTone: true, metaPixelId: true, feedUrlMode: true },
   });
 
   const slug = dealer?.slug ?? (session.user.slug as string | undefined) ?? "";
@@ -122,6 +123,10 @@ export default async function FeedPage() {
         ) : (
           <>
             <FeedUrlCard feedUrl={feedUrl} vertical={dealerVertical} />
+
+            <FeedUrlModeToggle feedUrlMode={dealer?.feedUrlMode ?? "original"} />
+
+            <div className="mt-6" />
 
             <EmbedWidgetCard
               slug={slug}

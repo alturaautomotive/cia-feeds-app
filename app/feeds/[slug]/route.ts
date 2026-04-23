@@ -14,7 +14,7 @@ export async function GET(
 
   const dealer = await prisma.dealer.findUnique({
     where: { slug },
-    select: { id: true, name: true, vertical: true, address: true },
+    select: { id: true, name: true, vertical: true, address: true, feedUrlMode: true },
   });
 
   if (!dealer) {
@@ -31,8 +31,11 @@ export async function GET(
   const vertical = dealer.vertical;
 
   // Route to the correct CSV serializer based on vertical
+  const feedUrlMode = dealer.feedUrlMode ?? "original";
+  const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.ciafeed.com";
+
   if (vertical === "automotive") {
-    return streamAutomotiveCSV(encoder, dealerId, slug, startMs);
+    return streamAutomotiveCSV(encoder, dealerId, slug, startMs, { feedUrlMode, slug, appBaseUrl });
   }
 
   const headers = getCSVHeadersForVertical(vertical);
@@ -40,14 +43,17 @@ export async function GET(
     return NextResponse.json({ error: "unsupported_vertical" }, { status: 400 });
   }
 
-  return streamListingsCSV(encoder, dealerId, vertical, headers, slug, startMs);
+  return streamListingsCSV(encoder, dealerId, vertical, headers, slug, startMs, { feedUrlMode, slug, appBaseUrl });
 }
+
+type FeedUrlOpts = { feedUrlMode: string; slug: string; appBaseUrl: string };
 
 function streamAutomotiveCSV(
   encoder: TextEncoder,
   dealerId: string,
   slug: string,
   startMs: number,
+  feedUrlOpts: FeedUrlOpts,
 ) {
   const stream = new ReadableStream({
     async start(controller) {
@@ -86,7 +92,7 @@ function streamAutomotiveCSV(
             skippedCount++;
             continue;
           }
-          const row = mapVehicleToRow(v);
+          const row = mapVehicleToRow(v, feedUrlOpts);
 
           // Diagnostic: flag any remaining empty cells. Row is still emitted.
           const emptyFields = VEHICLE_CSV_HEADERS.filter((h) => {
@@ -129,6 +135,7 @@ function streamListingsCSV(
   csvHeaders: string[],
   slug: string,
   startMs: number,
+  feedUrlOpts: FeedUrlOpts,
 ) {
   const stream = new ReadableStream({
     async start(controller) {
@@ -165,8 +172,8 @@ function streamListingsCSV(
           }
           const data = listing.data as Record<string, unknown>;
           const row = vertical === "services"
-            ? serializeServicesRow({ ...listing, data })
-            : mapListingToRow({ ...listing, data });
+            ? serializeServicesRow({ ...listing, data }, feedUrlOpts)
+            : mapListingToRow({ ...listing, data }, feedUrlOpts);
           controller.enqueue(encoder.encode(serializeCSVRow(row, csvHeaders)));
           listingCount++;
         }

@@ -46,6 +46,15 @@ export const REALESTATE_CSV_HEADERS = [
   "postal_code", "num_beds", "num_baths", "property_type", "url", "image_url", "area_size",
 ];
 
+export type FeedUrlOpts = { feedUrlMode?: string; slug?: string; appBaseUrl?: string };
+
+function resolveFeedUrl(originalUrl: string, itemId: string, opts?: FeedUrlOpts): string {
+  if (opts?.feedUrlMode === "landing" && opts.slug && opts.appBaseUrl) {
+    return `${opts.appBaseUrl.replace(/\/+$/, "")}/w/${opts.slug}/${itemId}`;
+  }
+  return originalUrl;
+}
+
 export function mapListingToRow(listing: {
   id: string;
   title: string;
@@ -53,8 +62,10 @@ export function mapListingToRow(listing: {
   imageUrls: string[];
   url: string | null;
   data: Record<string, unknown>;
-}): Record<string, unknown> {
+}, opts?: FeedUrlOpts): Record<string, unknown> {
   const d = listing.data;
+  const originalUrl = listing.url || (typeof d.url === "string" ? d.url : "") || "";
+  const urlForRow = resolveFeedUrl(originalUrl, listing.id, opts);
   return {
     id: listing.id,
     // Spread raw data first so canonical fields below always win
@@ -64,9 +75,9 @@ export function mapListingToRow(listing: {
     name: listing.title || d.name || "",
     description: d.description || "",
     price: listing.price != null ? String(listing.price) : (d.price ? String(d.price) : ""),
-    url: listing.url || d.url || "",
+    url: urlForRow,
     image_url: listing.imageUrls[0] ?? "",
-    link: listing.url || d.link || "",
+    link: urlForRow,
     image: listing.imageUrls[0] ?? "",
   };
 }
@@ -92,14 +103,15 @@ export function serializeServicesRow(listing: {
   imageUrls: string[];
   url: string | null;
   data: Record<string, unknown>;
-}): Record<string, unknown> {
+}, opts?: FeedUrlOpts): Record<string, unknown> {
   const d = listing.data;
 
   // Title resolution: listing.title → data.name → data.title → "Service"
   const title = listing.title || (typeof d.name === "string" ? d.name : "") || (typeof d.title === "string" ? d.title : "") || "Service";
 
   // Link resolution: listing.url → data.url → ""
-  const link = listing.url || (typeof d.url === "string" ? d.url : "") || "";
+  const originalLink = listing.url || (typeof d.url === "string" ? d.url : "") || "";
+  const link = resolveFeedUrl(originalLink, listing.id, opts);
 
   // Image link: listing.imageUrls[0] → ""
   const image_link = listing.imageUrls[0] ?? "";
@@ -291,7 +303,7 @@ function formatAddressAsJSON(fields: {
   });
 }
 
-export function mapVehicleToRow(v: VehicleForCSV): Record<string, unknown> {
+export function mapVehicleToRow(v: VehicleForCSV, opts?: FeedUrlOpts): Record<string, unknown> {
   const imgs = selectBestImages(v.imageUrl, v.images);
 
   // 1. Resolve stateOfVehicle (always non-empty thanks to USED fallback)
@@ -353,7 +365,7 @@ export function mapVehicleToRow(v: VehicleForCSV): Record<string, unknown> {
     latitude: String(v.latitude ?? v.dealer?.latitude ?? 0),
     longitude: String(v.longitude ?? v.dealer?.longitude ?? 0),
     body_style: bodyStyle,
-    url: v.url || "",
+    url: resolveFeedUrl(v.url || "", v.id, opts),
     title: `${make} ${model}`.trim(),
     vehicle_id: v.id,
     "mileage.unit": "MI",

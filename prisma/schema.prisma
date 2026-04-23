@@ -54,6 +54,7 @@ model Dealer {
   translationTone      String?        @default("professional")
   latitude             Float?
   longitude            Float?
+  feedUrlMode          String    @default("original")
   defaultSubAccountId  String?   @unique
   vehicles             Vehicle[]
   listings             Listing[]

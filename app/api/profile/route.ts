@@ -27,6 +27,7 @@ const SAFE_SELECT = {
   latitude: true,
   longitude: true,
   metaPixelId: true,
+  feedUrlMode: true,
 } as const;
 
 export async function GET() {
@@ -218,6 +219,14 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "invalid_urlHealthCheckEnabled" }, { status: 400 });
     }
     batchData.urlHealthCheckEnabled = b.urlHealthCheckEnabled;
+  }
+
+  // Handle feedUrlMode update
+  if ("feedUrlMode" in b) {
+    if (typeof b.feedUrlMode !== "string" || (b.feedUrlMode !== "original" && b.feedUrlMode !== "landing")) {
+      return NextResponse.json({ error: "invalid_feedUrlMode" }, { status: 400 });
+    }
+    batchData.feedUrlMode = b.feedUrlMode;
   }
 
   // Handle metaPixelId update
