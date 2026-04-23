@@ -5,6 +5,7 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { Vertical } from "@prisma/client";
 import { scrapeVehicleUrl } from "@/lib/scrape";
 
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL ?? "").toLowerCase();
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest) {
     dealerId?: string;
     vertical?: string;
   };
-  const effectiveVertical = vertical ?? "automotive";
+  const verticalFilter: Vertical = (vertical ?? "automotive") as Vertical;
 
   let dealerIds: string[];
 
@@ -100,7 +101,7 @@ export async function POST(request: NextRequest) {
     dealerIds = [dealerId];
   } else {
     const dealers = await prisma.dealer.findMany({
-      where: { vertical: effectiveVertical, active: true },
+      where: { vertical: verticalFilter, active: true },
       select: { id: true },
     });
     dealerIds = dealers.map((d) => d.id);
