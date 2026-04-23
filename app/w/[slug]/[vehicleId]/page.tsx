@@ -5,6 +5,7 @@ import VehicleDetails from "@/app/components/VehicleDetails";
 import StickyCTAs from "@/app/components/StickyCTAs";
 import SocialProof from "@/app/components/SocialProof";
 import Chatbot from "@/app/components/Chatbot";
+import PixelInitializer from "@/app/components/PixelInitializer";
 import { getExtraImages } from "@/lib/getExtraImages";
 import { getGeoCity } from "@/lib/getGeoCity";
 import { translateBatch } from "@/lib/translate";
@@ -28,6 +29,7 @@ export default async function VehicleLandingPage({
       ctaPreference: true,
       translationLang: true,
       translationTone: true,
+      metaPixelId: true,
     },
   });
 
@@ -178,13 +180,16 @@ export default async function VehicleLandingPage({
     ended: translations.chatEnded,
   } : undefined;
 
+  const pixelId = dealer.metaPixelId || undefined;
+
   return (
     <div className="min-h-screen bg-white">
       <LandingCarousel images={allImages} />
+      {pixelId && <PixelInitializer pixelId={pixelId} vehicleId={vehicleId} price={vehicle.price} />}
       <SocialProof fakeViewer={fakeViewer} tViewed={translations.viewedText} />
       <VehicleDetails vehicle={vehicleForDetails} dealer={dealer} translations={detailsTranslations} />
       <StickyCTAs dealer={dealer} tCtas={ctaTranslations} />
-      <Chatbot vehicleId={vehicleId} dealerId={dealer.id} vin={vehicle.vin ?? undefined} translations={chatbotTranslations} />
+      <Chatbot vehicleId={vehicleId} dealerId={dealer.id} vin={vehicle.vin ?? undefined} pixelId={pixelId} price={vehicle.price} translations={chatbotTranslations} />
     </div>
   );
 }

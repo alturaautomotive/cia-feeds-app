@@ -19,10 +19,18 @@ interface ChatbotTranslations {
   ended?: string;
 }
 
+declare global {
+  interface Window {
+    fbq?: (...args: unknown[]) => void;
+  }
+}
+
 interface Props {
   vehicleId: string;
   dealerId: string;
   vin?: string;
+  pixelId?: string;
+  price?: number | null;
   translations?: ChatbotTranslations;
 }
 
@@ -36,7 +44,7 @@ const DEFAULT_SCRIPTS: string[] = [
   "Just drop your name and contact info below and we'll send it right over!",
 ];
 
-export default function Chatbot({ vehicleId, dealerId, vin, translations: t }: Props) {
+export default function Chatbot({ vehicleId, dealerId, vin, pixelId, price, translations: t }: Props) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [scriptIdx, setScriptIdx] = useState(0);
@@ -107,6 +115,15 @@ export default function Chatbot({ vehicleId, dealerId, vin, translations: t }: P
         } else {
           thankMsg = (t?.thanksNoCarfax || "Thanks {name}! A team member will reach out shortly.")
             .replace("{name}", form.name);
+        }
+
+        if (pixelId && typeof window.fbq === "function") {
+          window.fbq("track", "Lead", {
+            content_ids: [vehicleId],
+            content_category: "vehicle_lead",
+            value: price || 0,
+            currency: "USD",
+          });
         }
 
         setMessages((prev) => [

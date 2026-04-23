@@ -12,6 +12,7 @@ interface Props {
   defaultLandingBaseUrl: string;
   translationLang?: string;
   translationTone?: string;
+  metaPixelId?: string;
 }
 
 export default function EmbedWidgetCard({
@@ -24,6 +25,7 @@ export default function EmbedWidgetCard({
   defaultLandingBaseUrl,
   translationLang = "en",
   translationTone = "professional",
+  metaPixelId = "",
 }: Props) {
   const [copied, setCopied] = useState(false);
   const [sampleItemId, setSampleItemId] = useState("");
@@ -44,6 +46,7 @@ export default function EmbedWidgetCard({
     const escapedLandingBase = escapeJS(effectiveLandingBase);
     const escapedLang = escapeJS(translationLang);
     const escapedTone = escapeJS(translationTone);
+    const escapedPixelId = escapeJS(metaPixelId);
 
     return `<script>
 (function(){
@@ -53,6 +56,7 @@ export default function EmbedWidgetCard({
   container.id = 'cia-catalog-widget';
   container.setAttribute('data-lang', '${escapedLang}');
   container.setAttribute('data-tone', '${escapedTone}');
+  container.setAttribute('data-pixel-id', '${escapedPixelId}');
   document.currentScript.parentElement.appendChild(container);
 
   fetch('${escapedUrl}')
@@ -237,6 +241,30 @@ export default function EmbedWidgetCard({
       }
 
       container.appendChild(wrapper);
+
+      /* --- Meta Pixel --- */
+      var pixelId = container.dataset.pixelId;
+      if(pixelId){
+        !function(f,b,e,v,n,t,s)
+        {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+        n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+        if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+        n.queue=[];t=b.createElement(e);t.async=!0;
+        t.src=v;s=b.getElementsByTagName(e)[0];
+        s.parentNode.insertBefore(t,s)}(window, document,'script',
+        'https://connect.facebook.net/en_US/fbevents.js');
+        fbq('init', pixelId);
+        fbq('track', 'PageView');
+        var sample = items[0];
+        if(sample){
+          fbq('track', 'ViewContent', {
+            content_ids: [sample.id],
+            content_type: 'product',
+            value: sample.price || 0,
+            currency: 'USD'
+          });
+        }
+      }
     })
     .catch(function(){
       container.innerHTML = '<p style="text-align:center;color:#6b7280;padding:32px;">Could not load catalog.</p>';
