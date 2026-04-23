@@ -6,6 +6,13 @@ interface Props {
     fbPageId: string | null;
     ctaPreference: string | null;
   };
+  tCtas?: {
+    sms?: string;
+    whatsapp?: string;
+    messenger?: string;
+    smsBody?: string;
+    whatsappBody?: string;
+  };
 }
 
 interface CTAButton {
@@ -14,22 +21,25 @@ interface CTAButton {
   target?: string;
 }
 
-export default function StickyCTAs({ dealer }: Props) {
+export default function StickyCTAs({ dealer, tCtas }: Props) {
+  const smsBody = tCtas?.smsBody || "Hi, I'm interested in your inventory";
+  const whatsappBody = tCtas?.whatsappBody || "Hi, I'm interested in your inventory";
+
   const ctaMap: Record<string, { ok: boolean } & CTAButton> = {
     sms: {
       ok: !!dealer.phone,
-      href: `sms:${dealer.phone ?? ""}?body=${encodeURIComponent("Hi, I'm interested in your inventory")}`,
-      label: "Text Us",
+      href: `sms:${dealer.phone ?? ""}?body=${encodeURIComponent(smsBody)}`,
+      label: tCtas?.sms || "Text Us",
     },
     whatsapp: {
       ok: !!dealer.phone,
-      href: `https://wa.me/${(dealer.phone ?? "").replace(/\D/g, "")}?text=${encodeURIComponent("Hi, I'm interested in your inventory")}`,
-      label: "WhatsApp Us",
+      href: `https://wa.me/${(dealer.phone ?? "").replace(/\D/g, "")}?text=${encodeURIComponent(whatsappBody)}`,
+      label: tCtas?.whatsapp || "WhatsApp Us",
     },
     messenger: {
       ok: !!dealer.fbPageId,
       href: `https://m.me/${dealer.fbPageId ?? ""}`,
-      label: "Message on Messenger",
+      label: tCtas?.messenger || "Message on Messenger",
       target: "_blank",
     },
   };

@@ -2,10 +2,28 @@
 
 import { useState, useRef, useEffect } from "react";
 
+interface ChatbotTranslations {
+  scripts?: string[];
+  header?: string;
+  namePlh?: string;
+  emailPlh?: string;
+  phonePlh?: string;
+  sendBtn?: string;
+  sendingBtn?: string;
+  openBtn?: string;
+  closeBtn?: string;
+  thanksCarfax?: string;
+  thanksNoCarfax?: string;
+  error?: string;
+  networkError?: string;
+  ended?: string;
+}
+
 interface Props {
   vehicleId: string;
   dealerId: string;
   vin?: string;
+  translations?: ChatbotTranslations;
 }
 
 interface Message {
@@ -13,12 +31,12 @@ interface Message {
   text: string;
 }
 
-const SCRIPT_MESSAGES: string[] = [
+const DEFAULT_SCRIPTS: string[] = [
   "Hi there! Someone nearby was just looking at this vehicle. Want a free Carfax report?",
   "Just drop your name and contact info below and we'll send it right over!",
 ];
 
-export default function Chatbot({ vehicleId, dealerId, vin }: Props) {
+export default function Chatbot({ vehicleId, dealerId, vin, translations: t }: Props) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [scriptIdx, setScriptIdx] = useState(0);
@@ -36,12 +54,13 @@ export default function Chatbot({ vehicleId, dealerId, vin }: Props) {
     if (!open) {
       setOpen(true);
       if (messages.length === 0) {
+        const scripts = t?.scripts || DEFAULT_SCRIPTS;
         // Drip script messages with delays
-        SCRIPT_MESSAGES.forEach((text, i) => {
+        scripts.forEach((text, i) => {
           setTimeout(() => {
             setMessages((prev) => [...prev, { from: "bot", text }]);
             setScriptIdx(i + 1);
-            if (i === SCRIPT_MESSAGES.length - 1) {
+            if (i === scripts.length - 1) {
               setTimeout(() => setShowForm(true), 400);
             }
           }, (i + 1) * 800);
@@ -80,27 +99,32 @@ export default function Chatbot({ vehicleId, dealerId, vin }: Props) {
           ? `https://www.carfax.com/VehicleHistory/p/Report.cfx?vin=${vin}`
           : null;
 
+        let thankMsg: string;
+        if (carfaxUrl) {
+          thankMsg = (t?.thanksCarfax || "Thanks {name}! Here's the Carfax report: {url}")
+            .replace("{name}", form.name)
+            .replace("{url}", carfaxUrl);
+        } else {
+          thankMsg = (t?.thanksNoCarfax || "Thanks {name}! A team member will reach out shortly.")
+            .replace("{name}", form.name);
+        }
+
         setMessages((prev) => [
           ...prev,
-          {
-            from: "bot",
-            text: carfaxUrl
-              ? `Thanks ${form.name}! Here's the Carfax report: ${carfaxUrl}`
-              : `Thanks ${form.name}! A team member will reach out shortly.`,
-          },
+          { from: "bot", text: thankMsg },
         ]);
         setDone(true);
         setShowForm(false);
       } else {
         setMessages((prev) => [
           ...prev,
-          { from: "bot", text: "Oops, something went wrong. Please try again." },
+          { from: "bot", text: t?.error || "Oops, something went wrong. Please try again." },
         ]);
       }
     } catch {
       setMessages((prev) => [
         ...prev,
-        { from: "bot", text: "Network error. Please try again." },
+        { from: "bot", text: t?.networkError || "Network error. Please try again." },
       ]);
     } finally {
       setSubmitting(false);
@@ -114,7 +138,7 @@ export default function Chatbot({ vehicleId, dealerId, vin }: Props) {
         onClick={handleOpen}
         className="fixed bottom-20 right-4 z-50 bg-indigo-600 text-white rounded-full px-5 py-3 shadow-lg hover:bg-indigo-700 transition-colors font-semibold text-sm md:bottom-24 md:right-6"
       >
-        {open ? "Close" : "Chat Now"}
+        {open ? (t?.closeBtn || "Close") : (t?.openBtn || "Chat Now")}
       </button>
 
       {/* Modal */}
@@ -130,7 +154,7 @@ export default function Chatbot({ vehicleId, dealerId, vin }: Props) {
           <div className="relative w-full max-w-md bg-white rounded-t-2xl md:rounded-2xl shadow-2xl flex flex-col max-h-[80vh] md:max-h-[500px]">
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
-              <span className="font-semibold text-gray-900 text-sm">Vehicle Inquiry</span>
+              <span className="font-semibold text-gray-900 text-sm">{t?.header || "Vehicle Inquiry"}</span>
               <button
                 onClick={() => setOpen(false)}
                 className="text-gray-400 hover:text-gray-600 text-xl leading-none"
@@ -165,7 +189,7 @@ export default function Chatbot({ vehicleId, dealerId, vin }: Props) {
               <form onSubmit={handleSubmit} className="border-t border-gray-200 p-4 space-y-2">
                 <input
                   type="text"
-                  placeholder="Your name *"
+                  placeholder={t?.namePlh || "Your name *"}
                   required
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -173,14 +197,14 @@ export default function Chatbot({ vehicleId, dealerId, vin }: Props) {
                 />
                 <input
                   type="email"
-                  placeholder="Email"
+                  placeholder={t?.emailPlh || "Email"}
                   value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
                 <input
                   type="tel"
-                  placeholder="Phone"
+                  placeholder={t?.phonePlh || "Phone"}
                   value={form.phone}
                   onChange={(e) => setForm({ ...form, phone: e.target.value })}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -190,14 +214,14 @@ export default function Chatbot({ vehicleId, dealerId, vin }: Props) {
                   disabled={submitting}
                   className="w-full bg-indigo-600 text-white rounded-lg py-2 text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors"
                 >
-                  {submitting ? "Sending..." : "Send"}
+                  {submitting ? (t?.sendingBtn || "Sending...") : (t?.sendBtn || "Send")}
                 </button>
               </form>
             )}
 
             {done && (
               <div className="border-t border-gray-200 p-4 text-center text-sm text-gray-500">
-                Conversation ended
+                {t?.ended || "Conversation ended"}
               </div>
             )}
           </div>

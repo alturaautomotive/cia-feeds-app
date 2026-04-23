@@ -20,9 +20,25 @@ interface DealerProps {
   name: string;
 }
 
+interface TranslationProps {
+  priceLabel?: string;
+  msrpLabel?: string;
+  mileageLabel?: string;
+  conditionLabel?: string;
+  colorLabel?: string;
+  trimLabel?: string;
+  drivetrainLabel?: string;
+  transmissionLabel?: string;
+  fuelLabel?: string;
+  descriptionTitle?: string;
+  vinLabel?: string;
+  locationLabel?: string;
+}
+
 interface Props {
   vehicle: VehicleProps;
   dealer: DealerProps;
+  translations?: TranslationProps;
 }
 
 function formatPrice(value: number): string {
@@ -33,7 +49,7 @@ function formatMileage(value: number): string {
   return value.toLocaleString("en-US") + " mi";
 }
 
-export default function VehicleDetails({ vehicle, dealer }: Props) {
+export default function VehicleDetails({ vehicle, dealer, translations: t }: Props) {
   const title = [vehicle.year, vehicle.make, vehicle.model]
     .filter(Boolean)
     .join(" ");
@@ -41,16 +57,16 @@ export default function VehicleDetails({ vehicle, dealer }: Props) {
   const chips: { label: string; value: string }[] = [];
 
   if (vehicle.stateOfVehicle)
-    chips.push({ label: "Condition", value: vehicle.stateOfVehicle });
+    chips.push({ label: t?.conditionLabel || "Condition", value: vehicle.stateOfVehicle });
   if (vehicle.exteriorColor)
-    chips.push({ label: "Color", value: vehicle.exteriorColor });
-  if (vehicle.trim) chips.push({ label: "Trim", value: vehicle.trim });
+    chips.push({ label: t?.colorLabel || "Color", value: vehicle.exteriorColor });
+  if (vehicle.trim) chips.push({ label: t?.trimLabel || "Trim", value: vehicle.trim });
   if (vehicle.drivetrain)
-    chips.push({ label: "Drivetrain", value: vehicle.drivetrain });
+    chips.push({ label: t?.drivetrainLabel || "Drivetrain", value: vehicle.drivetrain });
   if (vehicle.transmission)
-    chips.push({ label: "Transmission", value: vehicle.transmission });
+    chips.push({ label: t?.transmissionLabel || "Transmission", value: vehicle.transmission });
   if (vehicle.fuelType)
-    chips.push({ label: "Fuel", value: vehicle.fuelType });
+    chips.push({ label: t?.fuelLabel || "Fuel", value: vehicle.fuelType });
 
   return (
     <section className="max-w-4xl mx-auto p-6 md:p-8">
@@ -62,13 +78,13 @@ export default function VehicleDetails({ vehicle, dealer }: Props) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         {vehicle.price != null && (
           <div className="bg-indigo-600 text-white rounded-lg p-4">
-            <p className="text-xs uppercase tracking-wider opacity-80">Price</p>
+            <p className="text-xs uppercase tracking-wider opacity-80">{t?.priceLabel || "Price"}</p>
             <p className="text-xl font-bold">{formatPrice(vehicle.price)}</p>
           </div>
         )}
         {vehicle.msrp != null && vehicle.msrp !== vehicle.price && (
           <div className="bg-gray-100 rounded-lg p-4">
-            <p className="text-xs uppercase tracking-wider text-gray-500">MSRP</p>
+            <p className="text-xs uppercase tracking-wider text-gray-500">{t?.msrpLabel || "MSRP"}</p>
             <p className="text-xl font-bold text-gray-900">
               {formatPrice(vehicle.msrp)}
             </p>
@@ -76,7 +92,7 @@ export default function VehicleDetails({ vehicle, dealer }: Props) {
         )}
         {vehicle.mileageValue != null && (
           <div className="bg-gray-100 rounded-lg p-4">
-            <p className="text-xs uppercase tracking-wider text-gray-500">Mileage</p>
+            <p className="text-xs uppercase tracking-wider text-gray-500">{t?.mileageLabel || "Mileage"}</p>
             <p className="text-xl font-bold text-gray-900">
               {formatMileage(vehicle.mileageValue)}
             </p>
@@ -100,7 +116,7 @@ export default function VehicleDetails({ vehicle, dealer }: Props) {
       {vehicle.description && (
         <div className="mb-8">
           <h2 className="text-lg font-semibold text-gray-900 mb-2">
-            Description
+            {t?.descriptionTitle || "Description"}
           </h2>
           <p className="text-gray-700 leading-relaxed whitespace-pre-line">
             {vehicle.description}
@@ -109,11 +125,11 @@ export default function VehicleDetails({ vehicle, dealer }: Props) {
       )}
 
       {vehicle.vin && (
-        <p className="text-sm text-gray-500 mb-1">VIN: {vehicle.vin}</p>
+        <p className="text-sm text-gray-500 mb-1">{t?.vinLabel || "VIN"}: {vehicle.vin}</p>
       )}
 
       {vehicle.address && (
-        <p className="text-sm text-gray-500">Location: {vehicle.address}</p>
+        <p className="text-sm text-gray-500">{t?.locationLabel || "Location"}: {vehicle.address}</p>
       )}
 
       {/* Spacer so sticky CTA bar doesn't cover content */}

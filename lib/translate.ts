@@ -109,6 +109,23 @@ export async function translate(
   return text;
 }
 
+/**
+ * Batch-translate a record of key→text pairs sequentially.
+ * Returns a record with the same keys mapped to translated text.
+ */
+export async function translateBatch(
+  texts: Record<string, string>,
+  dealerId: string,
+  lang: string,
+  tone?: string
+): Promise<Record<string, string>> {
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(texts)) {
+    result[key] = await translate(value, dealerId, lang, tone);
+  }
+  return result;
+}
+
 const __filename = fileURLToPath(import.meta.url);
 
 if (process.argv[1] === __filename) {
