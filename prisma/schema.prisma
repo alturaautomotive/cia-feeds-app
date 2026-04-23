@@ -40,6 +40,7 @@ model Dealer {
   metaFeedId           String?
   address              String?
   phone                String?
+  customDomain         String?
   ctaPreference        CtaPreference?
   latitude             Float?
   longitude            Float?

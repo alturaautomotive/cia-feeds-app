@@ -9,6 +9,8 @@ interface Props {
   vertical: string;
   catalogApiUrl: string;
   ctaPreference: string | null;
+  customDomain?: string | null;
+  defaultLandingBaseUrl: string;
 }
 
 export default function EmbedWidgetCard({
@@ -18,12 +20,21 @@ export default function EmbedWidgetCard({
   vertical,
   catalogApiUrl,
   ctaPreference,
+  customDomain,
+  defaultLandingBaseUrl,
 }: Props) {
   const [copied, setCopied] = useState(false);
+  const [useCustomDomain, setUseCustomDomain] = useState(!!customDomain);
+  const [sampleItemId, setSampleItemId] = useState("");
+  const [copiedIframe, setCopiedIframe] = useState(false);
 
   function escapeJS(s: string): string {
     return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/</g, '\\x3c').replace(/>/g, '\\x3e');
   }
+
+  const effectiveLandingBase = useCustomDomain && customDomain
+    ? `https://${customDomain}`
+    : defaultLandingBaseUrl;
 
   function generateSnippet(): string {
     // Validate that catalogApiUrl points to our own domain
@@ -31,10 +42,11 @@ export default function EmbedWidgetCard({
     const safeCatalogApiUrl = catalogApiUrl.startsWith(appOrigin + '/') || catalogApiUrl.startsWith('/') ? catalogApiUrl : '';
     const escapedUrl = escapeJS(safeCatalogApiUrl);
     const escapedSlug = escapeJS(slug);
+    const escapedLandingBase = escapeJS(effectiveLandingBase);
 
     return `<script>
 (function(){
-  var origin = window.location.origin;
+  var landingBase = '${escapedLandingBase}';
   var escapedSlug = '${escapedSlug}';
   var container = document.createElement('div');
   container.id = 'cia-catalog-widget';
@@ -138,7 +150,7 @@ export default function EmbedWidgetCard({
         card.appendChild(body);
 
         var link = document.createElement('a');
-        link.href = origin + '/w/' + escapedSlug + '/' + item.id;
+        link.href = landingBase + '/w/' + escapedSlug + '/' + item.id;
         link.style.textDecoration = 'none';
         link.style.color = 'inherit';
         link.style.display = 'block';
@@ -253,9 +265,71 @@ export default function EmbedWidgetCard({
         {copied ? "Copied!" : "Copy Embed Code"}
       </button>
 
+      {customDomain && (
+        <label className="flex items-center gap-2 mt-3 text-sm text-gray-700 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={useCustomDomain}
+            onChange={(e) => setUseCustomDomain(e.target.checked)}
+            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+          />
+          Use custom domain ({customDomain}) for landing pages
+        </label>
+      )}
+
       <p className="text-xs text-gray-400 mt-3">
         Widget auto-updates when your catalog changes.
       </p>
+
+      {/* Item Landing Iframe */}
+      <div className="mt-6 pt-6 border-t border-gray-200">
+        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+          Item Landing Iframe
+        </p>
+        <p className="text-sm text-gray-600 mb-3">
+          Embed a single item&apos;s landing page on your site.
+        </p>
+        <div className="flex gap-2.5 mb-3">
+          <input
+            type="text"
+            placeholder="vehicle-id"
+            value={sampleItemId}
+            onChange={(e) => setSampleItemId(e.target.value)}
+            className="flex-1 border border-gray-400 bg-white rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          />
+        </div>
+        {sampleItemId.trim() && (
+          <>
+            <pre className="bg-gray-100 rounded-md p-3 text-xs font-mono overflow-x-auto text-gray-700 mb-3 whitespace-pre-wrap">
+              <code>{`<iframe src="${effectiveLandingBase}/w/${slug}/${sampleItemId.trim()}" style="width:100%;height:600px;border:none;" loading="lazy"></iframe>`}</code>
+            </pre>
+            <button
+              onClick={async () => {
+                const iframeCode = `<iframe src="${effectiveLandingBase}/w/${slug}/${sampleItemId.trim()}" style="width:100%;height:600px;border:none;" loading="lazy"></iframe>`;
+                try {
+                  await navigator.clipboard.writeText(iframeCode);
+                } catch {
+                  const textarea = document.createElement("textarea");
+                  textarea.value = iframeCode;
+                  document.body.appendChild(textarea);
+                  textarea.select();
+                  document.execCommand("copy");
+                  document.body.removeChild(textarea);
+                }
+                setCopiedIframe(true);
+                setTimeout(() => setCopiedIframe(false), 2000);
+              }}
+              className={`whitespace-nowrap px-4 py-2.5 rounded-md text-sm font-semibold text-white transition-colors ${
+                copiedIframe
+                  ? "bg-green-600 hover:bg-green-700"
+                  : "bg-indigo-600 hover:bg-indigo-700"
+              }`}
+            >
+              {copiedIframe ? "Copied!" : "Copy Iframe Code"}
+            </button>
+          </>
+        )}
+      </div>
 
       {(ctaPreference === "whatsapp" || ctaPreference === "sms") && !phone && (
         <div className="mt-4 rounded-md bg-amber-50 border border-amber-200 px-4 py-3">

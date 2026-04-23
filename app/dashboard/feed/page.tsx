@@ -38,7 +38,7 @@ export default async function FeedPage() {
 
   const dealer = await prisma.dealer.findUnique({
     where: { id: effectiveDealerId },
-    select: { slug: true, vertical: true, phone: true, fbPageId: true, ctaPreference: true, address: true, urlHealthCheckEnabled: true },
+    select: { slug: true, vertical: true, phone: true, fbPageId: true, ctaPreference: true, address: true, urlHealthCheckEnabled: true, customDomain: true },
   });
 
   const slug = dealer?.slug ?? (session.user.slug as string | undefined) ?? "";
@@ -130,6 +130,8 @@ export default async function FeedPage() {
               vertical={dealerVertical}
               catalogApiUrl={catalogApiUrl}
               ctaPreference={dealerCtaPreference}
+              customDomain={dealer?.customDomain ?? null}
+              defaultLandingBaseUrl={appUrl}
             />
           </>
         )}
