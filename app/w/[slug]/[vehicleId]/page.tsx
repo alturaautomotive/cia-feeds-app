@@ -6,6 +6,7 @@ import StickyCTAs from "@/app/components/StickyCTAs";
 import SocialProof from "@/app/components/SocialProof";
 import Chatbot from "@/app/components/Chatbot";
 import { getExtraImages } from "@/lib/getExtraImages";
+import { getGeoCity } from "@/lib/getGeoCity";
 
 export const revalidate = 3600; // cache for 1 hour
 
@@ -66,10 +67,19 @@ export default async function VehicleLandingPage({
     ...extraImages.filter((u) => !seen.has(u)),
   ];
 
+  const NAMES = ["Maria", "John", "Sarah"];
+  const geo = await getGeoCity();
+  const fakeViewer = geo
+    ? {
+        name: NAMES[(Math.random() * NAMES.length) | 0],
+        city: `${geo.city} area`,
+      }
+    : undefined;
+
   return (
     <div className="min-h-screen bg-white">
       <LandingCarousel images={allImages} />
-      <SocialProof />
+      <SocialProof fakeViewer={fakeViewer} />
       <VehicleDetails vehicle={{ ...vehicle, vin: vehicle.vin }} dealer={dealer} />
       <StickyCTAs dealer={dealer} />
       <Chatbot vehicleId={vehicleId} dealerId={dealer.id} vin={vehicle.vin ?? undefined} />
