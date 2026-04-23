@@ -63,7 +63,7 @@ export default async function VehicleLandingPage({
 
   if (!vehicle) notFound();
 
-  let relatedVehicles: { id: string; make: string | null; model: string | null; year: number | null; price: number | null; imageUrl: string | null }[] = [];
+  let relatedVehicles: { id: string; make: string | null; model: string | null; year: string | null; price: number | null; imageUrl: string | null }[] = [];
   if (dealer.feedUrlMode === 'landing') {
     relatedVehicles = await prisma.vehicle.findMany({
       where: { dealerId: dealer.id, archivedAt: null, id: { not: vehicleId } },

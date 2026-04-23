@@ -2,7 +2,7 @@
 
 interface Vehicle {
   id: string;
-  year: number | null;  // prisma Int
+  year: string | null;
   make: string | null;
   model: string | null;
   price: number | null;
