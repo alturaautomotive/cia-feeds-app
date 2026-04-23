@@ -11,6 +11,7 @@ interface VehicleProps {
   transmission: string | null;
   fuelType: string | null;
   msrp: number | null;
+  vin: string | null;
   description: string | null;
   address: string | null;
 }
@@ -105,6 +106,10 @@ export default function VehicleDetails({ vehicle, dealer }: Props) {
             {vehicle.description}
           </p>
         </div>
+      )}
+
+      {vehicle.vin && (
+        <p className="text-sm text-gray-500 mb-1">VIN: {vehicle.vin}</p>
       )}
 
       {vehicle.address && (
