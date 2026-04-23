@@ -26,6 +26,7 @@ const SAFE_SELECT = {
   translationTone: true,
   latitude: true,
   longitude: true,
+  metaPixelId: true,
 } as const;
 
 export async function GET() {
@@ -217,6 +218,16 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "invalid_urlHealthCheckEnabled" }, { status: 400 });
     }
     batchData.urlHealthCheckEnabled = b.urlHealthCheckEnabled;
+  }
+
+  // Handle metaPixelId update
+  if ("metaPixelId" in b) {
+    const rawPixelId = b.metaPixelId;
+    if (rawPixelId !== null && typeof rawPixelId !== "string") {
+      return NextResponse.json({ error: "invalid_metaPixelId" }, { status: 400 });
+    }
+    const pixelToSave = typeof rawPixelId === "string" && rawPixelId.trim() ? rawPixelId.trim() : null;
+    batchData.metaPixelId = pixelToSave;
   }
 
   // Perform a single DB write for all simple field updates

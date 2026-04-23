@@ -42,6 +42,7 @@ export default async function ProfilePage() {
       metaAccessToken: true,
       metaCatalogId: true,
       metaFeedId: true,
+      metaPixelId: true,
     },
   });
 
@@ -60,6 +61,7 @@ export default async function ProfilePage() {
       isMetaConnected={!!dealer?.metaAccessToken}
       metaCatalogId={dealer?.metaCatalogId ?? null}
       metaFeedId={dealer?.metaFeedId ?? null}
+      metaPixelId={dealer?.metaPixelId ?? null}
     />
   );
 }

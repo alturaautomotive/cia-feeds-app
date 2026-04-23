@@ -38,6 +38,7 @@ model Dealer {
   metaBusinessId       String?
   metaCatalogId        String?
   metaFeedId           String?
+  metaPixelId          String?
   address              String?
   phone                String?
   customDomain         String?

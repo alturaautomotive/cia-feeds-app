@@ -39,7 +39,6 @@ interface Props {
   websiteUrl: string | null;
   address: string | null;
   phone: string | null;
-  customDomain: string | null;
   ctaPreference: string | null;
   translationLang: string;
   translationTone: string;
@@ -47,6 +46,7 @@ interface Props {
   isMetaConnected: boolean;
   metaCatalogId: string | null;
   metaFeedId: string | null;
+  metaPixelId: string | null;
 }
 
 type MetaStep =
@@ -64,7 +64,6 @@ export default function ProfileClient({
   websiteUrl: initialWebsiteUrl,
   address: initialAddress,
   phone: initialPhone,
-  customDomain: initialCustomDomain,
   ctaPreference: initialCtaPreference,
   translationLang: initialTranslationLang,
   translationTone: initialTranslationTone,
@@ -72,6 +71,7 @@ export default function ProfileClient({
   isMetaConnected: initialIsMetaConnected,
   metaCatalogId: initialMetaCatalogId,
   metaFeedId: initialMetaFeedId,
+  metaPixelId: initialMetaPixelId,
 }: Props) {
   const [photoUrl, setPhotoUrl] = useState<string | null>(initialPhotoUrl);
   const [vertical, setVertical] = useState(initialVertical);
@@ -98,11 +98,6 @@ export default function ProfileClient({
   const [savingPhone, setSavingPhone] = useState(false);
   const [phoneSaved, setPhoneSaved] = useState(false);
   const [phoneError, setPhoneError] = useState<string | null>(null);
-
-  const [customDomain, setCustomDomain] = useState(initialCustomDomain ?? "");
-  const [savingCustomDomain, setSavingCustomDomain] = useState(false);
-  const [customDomainSaved, setCustomDomainSaved] = useState(false);
-  const [customDomainError, setCustomDomainError] = useState<string | null>(null);
 
   const [ctaPref, setCtaPref] = useState(initialCtaPreference ?? "");
   const [savingCta, setSavingCta] = useState(false);
@@ -136,6 +131,11 @@ export default function ProfileClient({
   const [metaMode, setMetaMode] = useState<"existing" | "new">("existing");
   const [disconnecting, setDisconnecting] = useState(false);
   const [businessSkipped, setBusinessSkipped] = useState(false);
+
+  const [pixelId, setPixelId] = useState(initialMetaPixelId ?? "");
+  const [savingPixelId, setSavingPixelId] = useState(false);
+  const [pixelIdSaved, setPixelIdSaved] = useState(false);
+  const [pixelIdError, setPixelIdError] = useState<string | null>(null);
 
   async function handleDisconnect() {
     setDisconnecting(true);
@@ -682,69 +682,6 @@ export default function ProfileClient({
           )}
         </div>
 
-        {/* Custom Landing Domain */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-4">
-          <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
-            Custom Landing Domain
-          </h2>
-          <p className="text-xs text-gray-400 mb-3">
-            Optional. Point your own domain&apos;s DNS to this app, then enter it here to use for landing page links.
-          </p>
-          <div className="flex gap-2.5">
-            <input
-              type="text"
-              data-element-id="custom-domain-input"
-              placeholder="example.com"
-              value={customDomain}
-              onChange={(e) => {
-                setCustomDomain(e.target.value);
-                setCustomDomainSaved(false);
-                setCustomDomainError(null);
-              }}
-              className="flex-1 border border-gray-400 bg-white rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-            />
-            <button
-              type="button"
-              disabled={savingCustomDomain}
-              onClick={async () => {
-                setSavingCustomDomain(true);
-                setCustomDomainSaved(false);
-                setCustomDomainError(null);
-                try {
-                  const res = await fetch("/api/profile", {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ customDomain: customDomain.trim() || null }),
-                  });
-                  if (!res.ok) {
-                    const data = await res.json().catch(() => ({}));
-                    setCustomDomainError(
-                      data.error === "invalid_customDomain"
-                        ? "Please enter a valid domain (e.g. example.com)."
-                        : data.error || "Failed to save custom domain."
-                    );
-                    return;
-                  }
-                  setCustomDomainSaved(true);
-                } catch {
-                  setCustomDomainError("Network error. Please try again.");
-                } finally {
-                  setSavingCustomDomain(false);
-                }
-              }}
-              className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
-            >
-              {savingCustomDomain ? "Saving\u2026" : "Save"}
-            </button>
-          </div>
-          {customDomainSaved && (
-            <p className="text-xs text-green-600 mt-2">Custom domain saved.</p>
-          )}
-          {customDomainError && (
-            <p className="text-xs text-red-600 mt-2">{customDomainError}</p>
-          )}
-        </div>
-
         {/* Contact Button Preference */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-4">
           <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
@@ -1210,6 +1147,65 @@ export default function ProfileClient({
                 Start Over
               </button>
             </div>
+          )}
+        </div>
+
+        {/* Meta Pixel ID */}
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-4">
+          <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
+            Meta Pixel ID
+          </h2>
+          <p className="text-xs text-gray-400 mb-3">
+            Add your Meta Pixel ID to enable conversion tracking on your catalog widget.
+          </p>
+          <div className="flex gap-2.5">
+            <input
+              type="text"
+              data-element-id="meta-pixel-id-input"
+              placeholder="123456789012345"
+              value={pixelId}
+              onChange={(e) => {
+                setPixelId(e.target.value);
+                setPixelIdSaved(false);
+                setPixelIdError(null);
+              }}
+              className="flex-1 border border-gray-400 bg-white rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            />
+            <button
+              type="button"
+              disabled={savingPixelId}
+              onClick={async () => {
+                setSavingPixelId(true);
+                setPixelIdSaved(false);
+                setPixelIdError(null);
+                try {
+                  const res = await fetch("/api/profile", {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ metaPixelId: pixelId.trim() || null }),
+                  });
+                  if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    setPixelIdError(data.error || "Failed to save Meta Pixel ID.");
+                    return;
+                  }
+                  setPixelIdSaved(true);
+                } catch {
+                  setPixelIdError("Network error. Please try again.");
+                } finally {
+                  setSavingPixelId(false);
+                }
+              }}
+              className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {savingPixelId ? "Saving\u2026" : "Save"}
+            </button>
+          </div>
+          {pixelIdSaved && (
+            <p className="text-xs text-green-600 mt-2">Meta Pixel ID saved.</p>
+          )}
+          {pixelIdError && (
+            <p className="text-xs text-red-600 mt-2">{pixelIdError}</p>
           )}
         </div>
 

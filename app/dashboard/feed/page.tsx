@@ -130,7 +130,6 @@ export default async function FeedPage() {
               vertical={dealerVertical}
               catalogApiUrl={catalogApiUrl}
               ctaPreference={dealerCtaPreference}
-              customDomain={dealer?.customDomain ?? null}
               defaultLandingBaseUrl={appUrl}
               translationLang={dealer?.translationLang ?? "en"}
               translationTone={dealer?.translationTone ?? "professional"}
