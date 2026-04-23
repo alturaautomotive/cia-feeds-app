@@ -61,6 +61,25 @@ export default async function VehicleLandingPage({
 
   if (!vehicle) notFound();
 
+  // Fire server-side Meta CAPI ViewContent event
+  if (dealer.metaPixelId) {
+    fetch('/api/track', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pixelId: dealer.metaPixelId,
+        eventName: 'ViewContent',
+        data: {
+          content_ids: [vehicleId],
+          content_type: 'product',
+          value: vehicle.price || 0,
+          currency: 'USD'
+        },
+        dealerId: dealer.id
+      })
+    }).catch((err) => console.error('[landing] track error:', err));
+  }
+
   const baseImages = [vehicle.imageUrl, ...vehicle.images].filter(
     (u): u is string => Boolean(u)
   );

@@ -43,12 +43,12 @@ export async function POST(request: NextRequest) {
 
     const dealer = await prisma.dealer.findUnique({
       where: { id: dealerId },
-      select: { email: true },
+      select: { email: true, metaPixelId: true },
     });
 
     const vehicle = await prisma.vehicle.findUnique({
       where: { id: vehicleId },
-      select: { make: true, model: true, year: true, description: true },
+      select: { make: true, model: true, year: true, description: true, price: true },
     });
 
     if (dealer && vehicle) {
@@ -63,6 +63,24 @@ export async function POST(request: NextRequest) {
         typeof phone === "string" ? phone.trim() : undefined,
         vehicleInfo
       ).catch((err) => console.error("[leads] email notification failed:", err));
+
+      // Fire server-side Meta CAPI Lead event
+      if (dealer?.metaPixelId && vehicle?.price != null) {
+        fetch('/api/track', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            pixelId: dealer.metaPixelId,
+            eventName: 'Lead',
+            data: {
+              content_ids: [vehicleId],
+              value: vehicle.price,
+              currency: 'USD'
+            },
+            dealerId: dealerId
+          })
+        }).catch((err) => console.error('[leads] track error:', err));
+      }
     }
 
     return NextResponse.json({ success: true, leadId: lead.id }, { status: 201 });
