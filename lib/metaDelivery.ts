@@ -10,6 +10,7 @@ import {
 const BATCH_SIZE = 100; // DB cursor batch
 const META_BATCH_LIMIT = 5000; // Meta items_batch max per request
 const DELETE_BATCH_LIMIT = 5000; // Meta delete batch max per request
+const STALE_MIN_AGE_MS = 60 * 60 * 1000; // 1 hour — items must be unseen for at least this long before deletion
 
 /** Verticals that support API delivery mode. Others must use CSV. */
 export const API_SUPPORTED_VERTICALS: ReadonlySet<string> = new Set([
@@ -248,19 +249,27 @@ export async function deliverFeed(
       };
     }
 
-    // There are tracked items but zero current inventory — skip reconciliation
-    // to avoid wiping the entire catalog from a transient empty state.
-    console.warn({
-      event: "reconciliation_skipped_empty_inventory",
+    // Tracked items exist but zero current inventory — run stale reconciliation
+    // with an empty active set so tracked items get cleaned up. The stale age
+    // guard inside reconcileStaleItems prevents wiping from transient states.
+    const activeItemIds = new Set<string>();
+    const deleteSummary = await reconcileStaleItems(
       dealerId,
-      metaCatalogId: dealer.metaCatalogId,
-      trackedCount,
-      reason: "Zero pushable inventory with existing tracked items; skipping stale reconciliation as safety measure.",
-    });
+      dealer.metaCatalogId,
+      vertical,
+      activeItemIds,
+      token
+    );
+
+    const summary = makeEmptySummary();
+    summary.deleteAttempted = deleteSummary.deleteAttempted;
+    summary.deleteSucceeded = deleteSummary.deleteSucceeded;
+    summary.deleteFailed = deleteSummary.deleteFailed;
+
     return {
       mode: "api",
-      status: "error",
-      error: "no_pushable_inventory",
+      status: "success",
+      summary,
     };
   }
 
@@ -529,13 +538,18 @@ export async function reconcileStaleItems(
 ): Promise<{ deleteAttempted: number; deleteSucceeded: number; deleteFailed: number }> {
   const result = { deleteAttempted: 0, deleteSucceeded: 0, deleteFailed: 0 };
 
-  // Find tracked items that are NOT in the current active set and NOT already deleted
+  // Find tracked items that are NOT in the current active set and NOT already deleted.
+  // Apply a minimum stale age guard: only delete items whose lastSeenAt is older than
+  // STALE_MIN_AGE_MS. This prevents catastrophic wipes from transient empty-inventory
+  // states (e.g. all vehicles archived at once and then restored shortly after).
+  const staleAgeCutoff = new Date(Date.now() - STALE_MIN_AGE_MS);
   const staleItems = await prisma.metaCatalogSyncItem.findMany({
     where: {
       dealerId,
       metaCatalogId,
       entityType,
       lastDeletedAt: null,
+      lastSeenAt: { lt: staleAgeCutoff },
       ...(activeItemIds.size > 0
         ? { catalogItemId: { notIn: [...activeItemIds] } }
         : {}),
@@ -569,14 +583,98 @@ export async function reconcileStaleItems(
       );
 
       if (res.ok) {
-        // Mark all items in this batch as deleted
-        const now = new Date();
-        const deletedIds = batch.map((item) => item.id);
-        await prisma.metaCatalogSyncItem.updateMany({
-          where: { id: { in: deletedIds } },
-          data: { lastDeletedAt: now },
-        });
-        result.deleteSucceeded += batch.length;
+        // Parse the response to determine per-item outcomes.
+        // Meta items_batch may return handle-based async results or
+        // validation_status with per-item errors even on HTTP 200.
+        let body: {
+          handles?: string[];
+          validation_status?: unknown;
+        } = {};
+        try {
+          body = await res.json();
+        } catch {
+          // Could not parse response — treat entire batch as unknown/failed
+          // to avoid marking items that may not have been deleted.
+          console.error({
+            event: "meta_delete_batch_parse_error",
+            dealerId,
+            metaCatalogId,
+            batchSize: batch.length,
+          });
+          result.deleteFailed += batch.length;
+          continue;
+        }
+
+        // If response contains handles, the operation is async regardless of
+        // whether validation_status is also present. Resolve via
+        // check_batch_request_status before marking anything deleted.
+        if (body.handles && body.handles.length > 0) {
+          const handleResult = await resolveDeleteHandles(
+            metaCatalogId,
+            token,
+            body.handles,
+            batch,
+            dealerId
+          );
+          result.deleteSucceeded += handleResult.succeeded;
+          result.deleteFailed += handleResult.failed;
+          continue;
+        }
+
+        // Non-handle response — extract per-item failures from validation_status.
+        // Support both object form { errors: [...] } and array form [...].
+        const { failedIds: failedItemIds, unmappedErrorCount } =
+          extractFailedItemIds(body.validation_status);
+
+        // Partition batch into succeeded and failed
+        const succeededRows: string[] = [];
+        const failedRows: typeof batch = [];
+        for (const item of batch) {
+          if (failedItemIds.has(item.catalogItemId)) {
+            failedRows.push(item);
+          } else {
+            succeededRows.push(item.id);
+          }
+        }
+
+        // If there are unmapped errors, we cannot confirm which items they
+        // belong to. Conservatively pull items from succeeded back to failed
+        // so counters stay accurate and those rows remain undeleted for retry.
+        let adjustedSucceeded = succeededRows.length;
+        let adjustedFailed = failedRows.length;
+        if (unmappedErrorCount > 0) {
+          const pullBack = Math.min(unmappedErrorCount, succeededRows.length);
+          // Remove the last `pullBack` items from succeededRows — they remain
+          // undeleted (no lastDeletedAt written) for safety.
+          const demotedIds = succeededRows.splice(
+            succeededRows.length - pullBack,
+            pullBack
+          );
+          adjustedSucceeded = succeededRows.length;
+          adjustedFailed = failedRows.length + demotedIds.length;
+        }
+
+        // Mark only confirmed-deleted items
+        if (succeededRows.length > 0) {
+          const now = new Date();
+          await prisma.metaCatalogSyncItem.updateMany({
+            where: { id: { in: succeededRows } },
+            data: { lastDeletedAt: now },
+          });
+        }
+
+        result.deleteSucceeded += adjustedSucceeded;
+        result.deleteFailed += adjustedFailed;
+
+        if (failedRows.length > 0) {
+          console.warn({
+            event: "meta_delete_batch_partial_failure",
+            dealerId,
+            metaCatalogId,
+            failedCount: failedRows.length,
+            failedIds: failedRows.map((r) => r.catalogItemId),
+          });
+        }
       } else {
         // Try to parse error for logging
         let errorDetail: string;
@@ -608,6 +706,182 @@ export async function reconcileStaleItems(
   }
 
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Handle resolution — query check_batch_request_status for async deletes
+// ---------------------------------------------------------------------------
+
+async function resolveDeleteHandles(
+  metaCatalogId: string,
+  token: string,
+  handles: string[],
+  batch: { id: string; catalogItemId: string }[],
+  dealerId: string
+): Promise<{ succeeded: number; failed: number }> {
+  const failedItemIds = new Set<string>();
+  let resolved = false;
+
+  for (const handle of handles) {
+    try {
+      const encodedHandle = encodeURIComponent(handle);
+      const statusRes = await graphFetch(
+        `/${metaCatalogId}/check_batch_request_status?handle=${encodedHandle}`,
+        {},
+        token
+      );
+
+      if (!statusRes.ok) {
+        // Cannot confirm completion — treat entire batch as failed
+        console.warn({
+          event: "meta_delete_handle_status_error",
+          dealerId,
+          metaCatalogId,
+          handle,
+          status: statusRes.status,
+        });
+        return { succeeded: 0, failed: batch.length };
+      }
+
+      const statusBody = await statusRes.json();
+
+      // check_batch_request_status returns status: "finished" when complete
+      if (statusBody.status !== "finished") {
+        console.warn({
+          event: "meta_delete_batch_handle_pending",
+          dealerId,
+          metaCatalogId,
+          handle,
+          batchStatus: statusBody.status,
+          batchSize: batch.length,
+        });
+        return { succeeded: 0, failed: batch.length };
+      }
+
+      resolved = true;
+
+      // Extract failed IDs from status response errors/invalid_requests
+      if (statusBody.errors) {
+        const errors = Array.isArray(statusBody.errors)
+          ? statusBody.errors
+          : [statusBody.errors];
+        for (const err of errors) {
+          const itemId =
+            (err as Record<string, unknown>)?.retailer_id ??
+            (err as Record<string, unknown>)?.id;
+          if (typeof itemId === "string" && itemId) failedItemIds.add(itemId);
+        }
+      }
+      if (Array.isArray(statusBody.invalid_requests)) {
+        for (const req of statusBody.invalid_requests) {
+          const itemId =
+            (req as Record<string, unknown>)?.retailer_id ??
+            (req as Record<string, unknown>)?.id;
+          if (typeof itemId === "string" && itemId) failedItemIds.add(itemId);
+        }
+      }
+
+      // Also check embedded validation_status
+      if (statusBody.validation_status) {
+        const { failedIds: vsFailedIds } = extractFailedItemIds(
+          statusBody.validation_status
+        );
+        for (const id of vsFailedIds) failedItemIds.add(id);
+      }
+    } catch (err) {
+      console.warn({
+        event: "meta_delete_handle_resolve_error",
+        dealerId,
+        metaCatalogId,
+        handle,
+        message: err instanceof Error ? err.message : String(err),
+      });
+      return { succeeded: 0, failed: batch.length };
+    }
+  }
+
+  if (!resolved) {
+    // No handles were successfully resolved — treat all as failed
+    return { succeeded: 0, failed: batch.length };
+  }
+
+  // Partition batch based on resolved failures
+  const succeededRows: string[] = [];
+  const failedRows: string[] = [];
+  for (const item of batch) {
+    if (failedItemIds.has(item.catalogItemId)) {
+      failedRows.push(item.catalogItemId);
+    } else {
+      succeededRows.push(item.id);
+    }
+  }
+
+  if (succeededRows.length > 0) {
+    const now = new Date();
+    await prisma.metaCatalogSyncItem.updateMany({
+      where: { id: { in: succeededRows } },
+      data: { lastDeletedAt: now },
+    });
+  }
+
+  if (failedRows.length > 0) {
+    console.warn({
+      event: "meta_delete_handle_partial_failure",
+      dealerId,
+      metaCatalogId,
+      failedCount: failedRows.length,
+      failedIds: failedRows,
+    });
+  }
+
+  return { succeeded: succeededRows.length, failed: failedRows.length };
+}
+
+// ---------------------------------------------------------------------------
+// Validation status parser — supports object and array shapes
+// ---------------------------------------------------------------------------
+
+function extractFailedItemIds(
+  validationStatus: unknown
+): { failedIds: Set<string>; unmappedErrorCount: number } {
+  const failedIds = new Set<string>();
+  if (!validationStatus) return { failedIds, unmappedErrorCount: 0 };
+
+  // Normalize to an array of error entries.
+  // Object form: { errors: [ { retailer_id, id, message } ] }
+  // Array form:  [ { retailer_id, id, message, ... } ]
+  let errorEntries: unknown[] = [];
+
+  if (Array.isArray(validationStatus)) {
+    errorEntries = validationStatus;
+  } else if (
+    typeof validationStatus === "object" &&
+    validationStatus !== null
+  ) {
+    const vs = validationStatus as Record<string, unknown>;
+    if (Array.isArray(vs.errors)) {
+      errorEntries = vs.errors;
+    }
+  }
+
+  let unmappedErrorCount = 0;
+  for (const entry of errorEntries) {
+    if (typeof entry !== "object" || entry === null) {
+      unmappedErrorCount++;
+      continue;
+    }
+    const rec = entry as Record<string, unknown>;
+    const itemId = rec.retailer_id ?? rec.id;
+    if (typeof itemId === "string" && itemId) {
+      failedIds.add(itemId);
+    } else {
+      // Error entry with no extractable item ID — conservatively count
+      // as an unconfirmed failure for accurate counters.
+      unmappedErrorCount++;
+    }
+  }
+
+  return { failedIds, unmappedErrorCount };
 }
 
 // ---------------------------------------------------------------------------

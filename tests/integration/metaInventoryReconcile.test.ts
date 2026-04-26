@@ -323,4 +323,283 @@ describe("deliverFeed reconciliation (integration)", () => {
     expect(result.deleteAttempted).toBe(0);
     expect(graphFetch).not.toHaveBeenCalled();
   });
+
+  it("only marks successfully deleted items when Meta returns per-item errors on HTTP 200", async () => {
+    vi.mocked(prisma.metaCatalogSyncItem.findMany).mockResolvedValue([
+      { id: "sync-1", catalogItemId: "item-A" },
+      { id: "sync-2", catalogItemId: "item-B" },
+      { id: "sync-3", catalogItemId: "item-C" },
+    ] as never);
+
+    // HTTP 200 but item-B has a validation error
+    vi.mocked(graphFetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          validation_status: {
+            errors: [{ retailer_id: "item-B", message: "Invalid item" }],
+          },
+        }),
+        { status: 200 }
+      ) as never
+    );
+
+    const result = await reconcileStaleItems(
+      DEALER_ID,
+      CATALOG_ID,
+      "automotive",
+      new Set<string>(),
+      TOKEN
+    );
+
+    expect(result.deleteAttempted).toBe(3);
+    expect(result.deleteSucceeded).toBe(2);
+    expect(result.deleteFailed).toBe(1);
+
+    // Only sync-1 and sync-3 should be marked deleted (not sync-2 for item-B)
+    expect(prisma.metaCatalogSyncItem.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ["sync-1", "sync-3"] } },
+      data: { lastDeletedAt: expect.any(Date) },
+    });
+  });
+
+  it("treats handle-based response without validation_status as failed for retry", async () => {
+    vi.mocked(prisma.metaCatalogSyncItem.findMany).mockResolvedValue([
+      { id: "sync-1", catalogItemId: "item-A" },
+    ] as never);
+
+    // HTTP 200 with only a handle — async processing, outcome unknown
+    // items_batch returns handle
+    vi.mocked(graphFetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ handles: ["handle-abc"] }),
+        { status: 200 }
+      ) as never
+    );
+    // check_batch_request_status returns not-finished
+    vi.mocked(graphFetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ status: "in_progress" }),
+        { status: 200 }
+      ) as never
+    );
+
+    const result = await reconcileStaleItems(
+      DEALER_ID,
+      CATALOG_ID,
+      "automotive",
+      new Set<string>(),
+      TOKEN
+    );
+
+    expect(result.deleteAttempted).toBe(1);
+    expect(result.deleteSucceeded).toBe(0);
+    expect(result.deleteFailed).toBe(1);
+    expect(prisma.metaCatalogSyncItem.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("resolves handle via check_batch_request_status and marks confirmed deletions", async () => {
+    vi.mocked(prisma.metaCatalogSyncItem.findMany).mockResolvedValue([
+      { id: "sync-1", catalogItemId: "item-A" },
+      { id: "sync-2", catalogItemId: "item-B" },
+    ] as never);
+
+    // items_batch returns handle
+    vi.mocked(graphFetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ handles: ["handle-xyz"] }),
+        { status: 200 }
+      ) as never
+    );
+    // check_batch_request_status returns finished with item-B failed
+    vi.mocked(graphFetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          status: "finished",
+          errors: [{ retailer_id: "item-B", message: "Not found" }],
+        }),
+        { status: 200 }
+      ) as never
+    );
+
+    const result = await reconcileStaleItems(
+      DEALER_ID,
+      CATALOG_ID,
+      "automotive",
+      new Set<string>(),
+      TOKEN
+    );
+
+    expect(result.deleteAttempted).toBe(2);
+    expect(result.deleteSucceeded).toBe(1);
+    expect(result.deleteFailed).toBe(1);
+
+    // Only sync-1 (item-A) should be marked deleted
+    expect(prisma.metaCatalogSyncItem.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ["sync-1"] } },
+      data: { lastDeletedAt: expect.any(Date) },
+    });
+  });
+
+  it("does not mark lastDeletedAt when handles AND validation_status are both present but handle not finished", async () => {
+    vi.mocked(prisma.metaCatalogSyncItem.findMany).mockResolvedValue([
+      { id: "sync-1", catalogItemId: "item-A" },
+      { id: "sync-2", catalogItemId: "item-B" },
+    ] as never);
+
+    // Response with both handles and validation_status — handles take precedence
+    vi.mocked(graphFetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          handles: ["handle-both"],
+          validation_status: { errors: [] },
+        }),
+        { status: 200 }
+      ) as never
+    );
+    // check_batch_request_status fails
+    vi.mocked(graphFetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "not ready" }), { status: 500 }) as never
+    );
+
+    const result = await reconcileStaleItems(
+      DEALER_ID,
+      CATALOG_ID,
+      "automotive",
+      new Set<string>(),
+      TOKEN
+    );
+
+    expect(result.deleteAttempted).toBe(2);
+    expect(result.deleteSucceeded).toBe(0);
+    expect(result.deleteFailed).toBe(2);
+    expect(prisma.metaCatalogSyncItem.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("supports array-form validation_status with mixed outcomes", async () => {
+    vi.mocked(prisma.metaCatalogSyncItem.findMany).mockResolvedValue([
+      { id: "sync-1", catalogItemId: "item-A" },
+      { id: "sync-2", catalogItemId: "item-B" },
+      { id: "sync-3", catalogItemId: "item-C" },
+    ] as never);
+
+    // Array-form validation_status: item-B failed, one unmappable error entry
+    vi.mocked(graphFetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          validation_status: [
+            { retailer_id: "item-B", message: "Invalid item" },
+            { message: "Unknown error without item ID" },
+          ],
+        }),
+        { status: 200 }
+      ) as never
+    );
+
+    const result = await reconcileStaleItems(
+      DEALER_ID,
+      CATALOG_ID,
+      "automotive",
+      new Set<string>(),
+      TOKEN
+    );
+
+    expect(result.deleteAttempted).toBe(3);
+    // item-B explicitly failed, one unmapped error pulled back from succeeded
+    expect(result.deleteFailed).toBe(2);
+    expect(result.deleteSucceeded).toBe(1);
+
+    // Only 1 item should be marked deleted (item-A or item-C, but not both
+    // since one was demoted due to unmapped error)
+    expect(prisma.metaCatalogSyncItem.updateMany).toHaveBeenCalledTimes(1);
+    const updateCall = vi.mocked(prisma.metaCatalogSyncItem.updateMany).mock.calls[0][0];
+    expect((updateCall.where as { id: { in: string[] } }).id.in).toHaveLength(1);
+  });
+
+  it("treats unresolved handle completion as failed — no premature lastDeletedAt", async () => {
+    vi.mocked(prisma.metaCatalogSyncItem.findMany).mockResolvedValue([
+      { id: "sync-1", catalogItemId: "item-A" },
+      { id: "sync-2", catalogItemId: "item-B" },
+    ] as never);
+
+    // items_batch returns handle
+    vi.mocked(graphFetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ handles: ["handle-unresolved"] }),
+        { status: 200 }
+      ) as never
+    );
+    // check_batch_request_status throws network error
+    vi.mocked(graphFetch).mockRejectedValueOnce(new Error("connection reset"));
+
+    const result = await reconcileStaleItems(
+      DEALER_ID,
+      CATALOG_ID,
+      "automotive",
+      new Set<string>(),
+      TOKEN
+    );
+
+    expect(result.deleteAttempted).toBe(2);
+    expect(result.deleteSucceeded).toBe(0);
+    expect(result.deleteFailed).toBe(2);
+    expect(prisma.metaCatalogSyncItem.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("deliverFeed empty-inventory reconciliation", () => {
+  it("runs stale reconciliation when inventory is empty but tracked rows exist", async () => {
+    vi.mocked(prisma.dealer.findUnique).mockResolvedValue(API_DEALER as never);
+    // No active vehicles
+    vi.mocked(prisma.vehicle.findMany).mockResolvedValue([] as never);
+    // Tracked items exist
+    vi.mocked(prisma.metaCatalogSyncItem.count).mockResolvedValue(2 as never);
+    // Return stale items for reconciliation
+    vi.mocked(prisma.metaCatalogSyncItem.findMany).mockResolvedValue([
+      { id: "sync-1", catalogItemId: "old-item-A" },
+      { id: "sync-2", catalogItemId: "old-item-B" },
+    ] as never);
+
+    // Delete batch succeeds with clean response
+    vi.mocked(graphFetch).mockResolvedValue(
+      new Response(JSON.stringify({}), { status: 200 }) as never
+    );
+
+    const result = await deliverFeed(DEALER_ID);
+
+    expect(result.status).toBe("success");
+    if (result.status !== "success") throw new Error("unexpected");
+
+    expect(result.summary.deleteAttempted).toBe(2);
+    expect(result.summary.deleteSucceeded).toBe(2);
+    expect(result.summary.deleteFailed).toBe(0);
+
+    // Verify DELETE requests were sent to Meta
+    expect(graphFetch).toHaveBeenCalledTimes(1);
+    const [endpoint, opts] = vi.mocked(graphFetch).mock.calls[0];
+    expect(endpoint).toBe(`/${CATALOG_ID}/items_batch`);
+    const body = JSON.parse(opts.body as string);
+    expect(body.requests).toEqual([
+      { method: "DELETE", data: { id: "old-item-A" } },
+      { method: "DELETE", data: { id: "old-item-B" } },
+    ]);
+
+    // Verify sync rows were marked deleted
+    expect(prisma.metaCatalogSyncItem.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ["sync-1", "sync-2"] } },
+      data: { lastDeletedAt: expect.any(Date) },
+    });
+  });
+
+  it("still returns no_pushable_inventory when zero tracked rows and zero inventory", async () => {
+    vi.mocked(prisma.dealer.findUnique).mockResolvedValue(API_DEALER as never);
+    vi.mocked(prisma.vehicle.findMany).mockResolvedValue([] as never);
+    vi.mocked(prisma.metaCatalogSyncItem.count).mockResolvedValue(0 as never);
+
+    const result = await deliverFeed(DEALER_ID);
+
+    expect(result.status).toBe("error");
+    if (result.status !== "error") throw new Error("unexpected");
+    expect(result.error).toBe("no_pushable_inventory");
+    expect(graphFetch).not.toHaveBeenCalled();
+  });
 });

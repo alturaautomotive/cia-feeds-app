@@ -1398,7 +1398,21 @@ export default function ProfileClient({
                       });
                       if (!res.ok) {
                         const data = await res.json().catch(() => ({}));
-                        setDeliveryError(data.error ?? "Failed to save delivery method.");
+                        if (data.error === "api_delivery_not_ready" && Array.isArray(data.issues)) {
+                          const issueMessages: Record<string, string> = {
+                            api_delivery_unsupported_vertical: "API delivery is not supported for your vertical.",
+                            catalog_not_selected: "Please select a Meta catalog first.",
+                            meta_token_missing: "Please connect your Meta account first.",
+                            meta_token_decrypt_failed: "Your Meta token could not be verified. Please reconnect.",
+                            meta_token_expired: "Your Meta token has expired. Please reconnect.",
+                          };
+                          const msgs = (data.issues as string[])
+                            .map((i: string) => issueMessages[i] || i)
+                            .join(" ");
+                          setDeliveryError(msgs);
+                        } else {
+                          setDeliveryError(data.error ?? "Failed to save delivery method.");
+                        }
                         setDeliveryMethod(prev);
                         return;
                       }

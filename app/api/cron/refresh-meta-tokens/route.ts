@@ -1,10 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { encrypt } from "@/lib/crypto";
 import { decryptToken, refreshToken } from "@/lib/meta";
 import { prisma } from "@/lib/prisma";
 
-export async function GET() {
-  if (process.env.VERCEL_CRON !== "1") {
+export async function GET(request: NextRequest) {
+  const authHeader = request.headers.get("authorization");
+  if (!process.env.CRON_SECRET || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 

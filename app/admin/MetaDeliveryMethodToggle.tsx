@@ -40,7 +40,21 @@ export function MetaDeliveryMethodToggle({
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        alert(data.error ?? "Failed to update delivery method");
+        if (data.error === "api_delivery_not_ready" && Array.isArray(data.issues)) {
+          const issueMessages: Record<string, string> = {
+            api_delivery_unsupported_vertical: "API delivery is not supported for this vertical.",
+            catalog_not_selected: "Dealer has not selected a Meta catalog.",
+            meta_token_missing: "Dealer has not connected their Meta account.",
+            meta_token_decrypt_failed: "Meta token could not be verified.",
+            meta_token_expired: "Meta token has expired.",
+          };
+          const msgs = (data.issues as string[])
+            .map((i: string) => issueMessages[i] || i)
+            .join("\n");
+          alert(msgs);
+        } else {
+          alert(data.error ?? "Failed to update delivery method");
+        }
         return;
       }
       setMethod(next);

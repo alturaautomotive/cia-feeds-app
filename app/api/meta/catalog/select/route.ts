@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { authGuard, loadDealerToken } from "@/lib/meta";
+import { CATALOG_OWNERSHIP } from "@/lib/catalogOwnership";
 
 /**
  * POST /api/meta/catalog/select — Selects an existing catalog for the dealer.
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest) {
     data: {
       metaBusinessId: businessId,
       metaCatalogId: catalogId,
-      metaCatalogOwnership: "client_owned",
+      metaCatalogOwnership: CATALOG_OWNERSHIP.SELECTED,
       metaConnectedAt: new Date(),
     },
   });

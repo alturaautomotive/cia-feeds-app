@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { authGuard, loadDealerToken, graphFetch } from "@/lib/meta";
 import { VERTICAL_META_TYPE, type Vertical } from "@/lib/verticals";
+import { CATALOG_OWNERSHIP } from "@/lib/catalogOwnership";
 
 /**
  * POST /api/meta/catalog/create — Creates a new catalog under the business.
@@ -100,7 +101,7 @@ export async function POST(request: NextRequest) {
       data: {
         metaBusinessId: businessId,
         metaCatalogId: createData.id,
-        metaCatalogOwnership: "client_owned",
+        metaCatalogOwnership: CATALOG_OWNERSHIP.CREATED,
         metaConnectedAt: new Date(),
       },
     });

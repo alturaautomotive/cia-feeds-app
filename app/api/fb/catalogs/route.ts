@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { authGuard, loadDealerToken, graphFetch } from "@/lib/meta";
 import { VERTICAL_META_TYPE, type Vertical } from "@/lib/verticals";
+import { CATALOG_OWNERSHIP } from "@/lib/catalogOwnership";
 
 /**
  * GET /api/fb/catalogs?businessId=... — Lists the product catalogs owned by
@@ -105,7 +106,7 @@ export async function POST(request: NextRequest) {
       data: {
         metaBusinessId: businessId,
         metaCatalogId: catalogId,
-        metaCatalogOwnership: "existing",
+        metaCatalogOwnership: CATALOG_OWNERSHIP.SELECTED,
         metaConnectedAt: new Date(),
       },
     });
@@ -177,7 +178,7 @@ export async function POST(request: NextRequest) {
       data: {
         metaBusinessId: businessId,
         metaCatalogId: createData.id,
-        metaCatalogOwnership: "created",
+        metaCatalogOwnership: CATALOG_OWNERSHIP.CREATED,
         metaConnectedAt: new Date(),
       },
     });

@@ -5,6 +5,7 @@ import { getEffectiveDealerContext } from "@/lib/impersonation";
 import { decrypt } from "@/lib/crypto";
 import { VERTICAL_META_TYPE, VALID_VERTICALS, type Vertical } from "@/lib/verticals";
 import { API_SUPPORTED_VERTICALS } from "@/lib/metaDelivery";
+import { loadDealerToken } from "@/lib/meta";
 
 const VALID_CTA_PREFERENCES = ["sms", "whatsapp", "messenger"];
 const VALID_TRANSLATION_LANGS = ["en", "es-MX", "es-PR", "pt-BR", "ko-KR", "fr", "de"];
@@ -245,11 +246,33 @@ export async function PATCH(request: NextRequest) {
     if (raw === "api") {
       const dealer = await prisma.dealer.findUnique({
         where: { id: effectiveDealerId },
-        select: { vertical: true },
+        select: { vertical: true, metaCatalogId: true, metaAccessToken: true, metaTokenExpiresAt: true },
       });
-      if (!dealer || !API_SUPPORTED_VERTICALS.has(dealer.vertical)) {
+      if (!dealer) {
+        return NextResponse.json({ error: "dealer_not_found" }, { status: 404 });
+      }
+      const issues: string[] = [];
+      if (!API_SUPPORTED_VERTICALS.has(dealer.vertical)) {
+        issues.push("api_delivery_unsupported_vertical");
+      }
+      if (!dealer.metaCatalogId) {
+        issues.push("catalog_not_selected");
+      }
+      if (!dealer.metaAccessToken) {
+        issues.push("meta_token_missing");
+      } else {
+        try {
+          await loadDealerToken(effectiveDealerId);
+        } catch {
+          issues.push("meta_token_decrypt_failed");
+        }
+      }
+      if (dealer.metaTokenExpiresAt && dealer.metaTokenExpiresAt <= new Date()) {
+        issues.push("meta_token_expired");
+      }
+      if (issues.length > 0) {
         return NextResponse.json(
-          { error: "api_delivery_unsupported_vertical", allowed: Array.from(API_SUPPORTED_VERTICALS) },
+          { error: "api_delivery_not_ready", issues },
           { status: 400 }
         );
       }
