@@ -1,9 +1,10 @@
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { firecrawlClient } from "@/lib/firecrawl";
+import { dispatchFeedDeliveryInBackground } from "@/lib/metaDelivery";
 import {
   ECOMMERCE_EXTRACTION_SCHEMA,
   SERVICES_EXTRACTION_SCHEMA,
@@ -247,6 +248,8 @@ export async function POST(request: NextRequest) {
       fieldsExtracted: Object.keys(rawData).filter((k) => rawData[k] != null),
       missingFields,
     });
+
+    dispatchFeedDeliveryInBackground(dealerId as string, "listings/scrape", after);
 
     return NextResponse.json({ ok: true });
   } catch (err) {

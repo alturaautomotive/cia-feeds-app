@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ImpersonateButton } from "@/app/admin/ImpersonateButton";
 import { FeedRescrapeButton } from "@/app/admin/FeedRescrapeButton";
+import { MetaDeliveryMethodToggle } from "@/app/admin/MetaDeliveryMethodToggle";
 
 
 function getSubscriptionBadge(status: string | null): {
@@ -132,6 +133,11 @@ export default async function DealerDetailPage({
             <p className="text-sm text-gray-500 mt-0.5">
               Slug: <strong>{dealer.slug}</strong> &nbsp;|&nbsp; Vertical:{" "}
               <strong className="capitalize">{dealer.vertical}</strong>
+              &nbsp;|&nbsp; Delivery:{" "}
+              <MetaDeliveryMethodToggle
+                dealerId={dealer.id}
+                currentMethod={dealer.metaDeliveryMethod}
+              />
             </p>
             <p className="text-sm text-gray-500 mt-0.5">
               Joined:{" "}

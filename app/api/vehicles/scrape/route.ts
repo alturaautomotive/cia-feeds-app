@@ -1,10 +1,11 @@
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { scrapeVehicleUrl } from "@/lib/scrape";
 import { logScrapeStart, logScrapeEnd } from "@/lib/logger";
+import { dispatchFeedDeliveryInBackground } from "@/lib/metaDelivery";
 
 export async function POST(request: NextRequest) {
   const secret = request.headers.get("x-sync-secret");
@@ -97,6 +98,8 @@ export async function POST(request: NextRequest) {
       fieldsExtracted,
       missingFields: scraped.missingFields,
     });
+
+    dispatchFeedDeliveryInBackground(dealerId as string, "vehicles/scrape", after);
 
     return NextResponse.json({ ok: true });
   } catch (outerErr) {

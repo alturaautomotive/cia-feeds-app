@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { computeCompleteness } from "@/lib/vehicleCompleteness";
 import { Prisma } from "@prisma/client";
 import { checkSubscription } from "@/lib/checkSubscription";
 import { getEffectiveDealerId } from "@/lib/impersonation";
+import { dispatchFeedDeliveryInBackground } from "@/lib/metaDelivery";
 
 async function getVehicleForDealer(id: string, dealerId: string) {
   return prisma.vehicle.findFirst({
@@ -193,6 +194,8 @@ export async function PATCH(
     throw err;
   }
 
+  dispatchFeedDeliveryInBackground(effectiveDealerId, "vehicles/[id]/PATCH", after);
+
   return NextResponse.json({ vehicle: updated, missingFields });
 }
 
@@ -217,6 +220,8 @@ export async function DELETE(
   }
 
   await prisma.vehicle.delete({ where: { id } });
+
+  dispatchFeedDeliveryInBackground(effectiveDealerId, "vehicles/[id]/DELETE", after);
 
   return new NextResponse(null, { status: 204 });
 }

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -6,6 +6,7 @@ import { checkSubscription } from "@/lib/checkSubscription";
 import { rateLimit } from "@/lib/rateLimit";
 import { getEffectiveDealerId } from "@/lib/impersonation";
 import { firecrawlClient } from "@/lib/firecrawl";
+import { dispatchFeedDeliveryInBackground } from "@/lib/metaDelivery";
 import {
   ECOMMERCE_EXTRACTION_SCHEMA,
   SERVICES_EXTRACTION_SCHEMA,
@@ -303,6 +304,9 @@ export async function POST(request: NextRequest) {
             : {}),
         },
       });
+
+      // Inline fallback branch: dispatch Meta delivery after successful scrape
+      dispatchFeedDeliveryInBackground(dealerId, "listings/from-url/inline", after);
 
       inlineScrapeCompleted = true;
       inlineTitle = title;

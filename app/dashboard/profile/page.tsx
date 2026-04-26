@@ -79,6 +79,7 @@ export default async function ProfilePage() {
       metaCatalogId={dealer?.metaCatalogId ?? null}
       metaFeedId={dealer?.metaFeedId ?? null}
       metaPixelId={dealer?.metaPixelId ?? null}
+      metaDeliveryMethod={dealer?.metaDeliveryMethod ?? "csv"}
       subAccounts={subAccountsForClient}
     />
   );

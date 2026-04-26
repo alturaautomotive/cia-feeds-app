@@ -74,6 +74,7 @@ interface Props {
   metaCatalogId: string | null;
   metaFeedId: string | null;
   metaPixelId: string | null;
+  metaDeliveryMethod: string;
   subAccounts?: SubAccountItem[];
 }
 
@@ -100,6 +101,7 @@ export default function ProfileClient({
   metaCatalogId: initialMetaCatalogId,
   metaFeedId: initialMetaFeedId,
   metaPixelId: initialMetaPixelId,
+  metaDeliveryMethod: initialDeliveryMethod,
   subAccounts: initialSubAccounts = [],
 }: Props) {
   const router = useRouter();
@@ -163,6 +165,11 @@ export default function ProfileClient({
   const [savingPixelId, setSavingPixelId] = useState(false);
   const [pixelIdSaved, setPixelIdSaved] = useState(false);
   const [pixelIdError, setPixelIdError] = useState<string | null>(null);
+
+  const [deliveryMethod, setDeliveryMethod] = useState(initialDeliveryMethod);
+  const [savingDelivery, setSavingDelivery] = useState(false);
+  const [deliverySaved, setDeliverySaved] = useState(false);
+  const [deliveryError, setDeliveryError] = useState<string | null>(null);
 
   // SubAccounts state
   const [subAccountsList, setSubAccountsList] = useState<SubAccountItem[]>(initialSubAccounts);
@@ -1347,6 +1354,78 @@ export default function ProfileClient({
           )}
           {pixelIdError && (
             <p className="text-xs text-red-600 mt-2">{pixelIdError}</p>
+          )}
+        </div>
+
+        {/* Meta Delivery Method */}
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-4">
+          <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
+            Meta Delivery Method
+          </h2>
+          <p className="text-xs text-gray-400 mb-4">
+            Choose how inventory is delivered to your Meta catalog. CSV uses the scheduled feed URL.
+            API pushes changes directly via the Graph API.
+          </p>
+          <div className="space-y-2">
+            {([
+              { value: "csv", label: "CSV Feed", desc: "Meta pulls your feed CSV on a schedule (default)" },
+              { value: "api", label: "API Push", desc: "Changes are pushed to Meta in real-time via Graph API" },
+            ] as const).map((opt) => {
+              const selected = deliveryMethod === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  disabled={savingDelivery}
+                  onClick={async () => {
+                    if (deliveryMethod === opt.value) return;
+                    const prev = deliveryMethod;
+                    setDeliveryMethod(opt.value);
+                    setDeliverySaved(false);
+                    setDeliveryError(null);
+                    setSavingDelivery(true);
+                    try {
+                      const res = await fetch("/api/profile", {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ metaDeliveryMethod: opt.value }),
+                      });
+                      if (!res.ok) {
+                        const data = await res.json().catch(() => ({}));
+                        setDeliveryError(data.error ?? "Failed to save delivery method.");
+                        setDeliveryMethod(prev);
+                        return;
+                      }
+                      setDeliverySaved(true);
+                    } catch {
+                      setDeliveryError("Network error. Please try again.");
+                      setDeliveryMethod(prev);
+                    } finally {
+                      setSavingDelivery(false);
+                    }
+                  }}
+                  className={`w-full flex items-center gap-3 border rounded-lg px-4 py-3 text-left transition-colors ${
+                    selected
+                      ? "border-indigo-500 bg-indigo-50"
+                      : "border-gray-200 hover:border-indigo-300"
+                  } disabled:opacity-50`}
+                >
+                  <div className="flex-1">
+                    <span className="text-sm font-semibold text-gray-800">{opt.label}</span>
+                    <p className="text-xs text-gray-500">{opt.desc}</p>
+                  </div>
+                  {selected && (
+                    <span className="text-indigo-600 text-sm font-medium">&#10003;</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          {deliverySaved && (
+            <p className="text-xs text-green-600 mt-2">Delivery method saved.</p>
+          )}
+          {deliveryError && (
+            <p className="text-xs text-red-600 mt-2">{deliveryError}</p>
           )}
         </div>
 

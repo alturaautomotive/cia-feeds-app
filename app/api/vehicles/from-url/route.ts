@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -6,6 +6,7 @@ import { checkSubscription } from "@/lib/checkSubscription";
 import { rateLimit } from "@/lib/rateLimit";
 import { getEffectiveDealerId } from "@/lib/impersonation";
 import { scrapeVehicleUrl } from "@/lib/scrape";
+import { dispatchFeedDeliveryInBackground } from "@/lib/metaDelivery";
 
 function isValidUrl(url: string): boolean {
   try {
@@ -126,6 +127,9 @@ export async function POST(request: NextRequest) {
           scrapeStatus: "complete",
         },
       });
+
+      // Inline fallback branch: dispatch Meta delivery after successful scrape
+      dispatchFeedDeliveryInBackground(dealerId, "vehicles/from-url/inline", after);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error({ event: "inline_scrape_error", vehicleId, url, message });

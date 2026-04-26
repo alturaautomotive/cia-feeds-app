@@ -235,6 +235,15 @@ export async function PATCH(request: NextRequest) {
     batchData.feedUrlMode = b.feedUrlMode;
   }
 
+  // Handle metaDeliveryMethod update
+  if ("metaDeliveryMethod" in b) {
+    const raw = b.metaDeliveryMethod;
+    if (typeof raw !== "string" || (raw !== "csv" && raw !== "api")) {
+      return NextResponse.json({ error: "invalid_metaDeliveryMethod" }, { status: 400 });
+    }
+    batchData.metaDeliveryMethod = raw;
+  }
+
   // Handle metaPixelId update
   if ("metaPixelId" in b) {
     const rawPixelId = b.metaPixelId;

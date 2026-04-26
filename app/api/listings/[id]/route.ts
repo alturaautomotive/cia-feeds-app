@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { checkSubscription } from "@/lib/checkSubscription";
 import { getEffectiveDealerId } from "@/lib/impersonation";
+import { dispatchFeedDeliveryInBackground } from "@/lib/metaDelivery";
 import {
   computeCompletenessFromMerged,
   checkServicesCompleteness,
@@ -49,6 +50,8 @@ export async function DELETE(
   }
 
   await prisma.listing.delete({ where: { id } });
+
+  dispatchFeedDeliveryInBackground(effectiveDealerId, "listings/[id]/DELETE", after);
 
   return NextResponse.json({ success: true });
 }
@@ -319,6 +322,8 @@ export async function PATCH(
     where: { id },
     data: updateData,
   });
+
+  dispatchFeedDeliveryInBackground(dealerId, "listings/[id]/PATCH", after);
 
   return NextResponse.json({ listing: updated });
 }

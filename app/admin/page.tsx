@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import { ImpersonateButton } from "./ImpersonateButton";
 import { FeedRescrapeButton } from "./FeedRescrapeButton";
+import { MetaDeliveryMethodToggle } from "./MetaDeliveryMethodToggle";
 
 export default async function AdminPage() {
   const dealers = await prisma.dealer.findMany({
@@ -118,6 +119,7 @@ export default async function AdminPage() {
                   "Subscription",
                   "Vehicles",
                   "Complete",
+                  "Delivery",
                   "Joined",
                   "Feed",
                   "Actions",
@@ -157,6 +159,12 @@ export default async function AdminPage() {
                       {totalVehicles === 0
                         ? "—"
                         : `${completeCount} / ${totalVehicles}`}
+                    </td>
+                    <td className="px-4 py-3">
+                      <MetaDeliveryMethodToggle
+                        dealerId={dealer.id}
+                        currentMethod={dealer.metaDeliveryMethod}
+                      />
                     </td>
                     <td className="px-4 py-3 text-gray-500">
                       {new Date(dealer.createdAt).toLocaleDateString("en-US", {

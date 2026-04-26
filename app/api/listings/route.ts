@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -12,6 +12,7 @@ import {
   buildFieldSources,
   checkServicesCompleteness,
 } from "@/lib/serviceUrlValidator";
+import { dispatchFeedDeliveryInBackground } from "@/lib/metaDelivery";
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -179,6 +180,11 @@ export async function POST(request: NextRequest) {
         : {}),
     },
   });
+
+  // Dispatch Meta delivery for services vertical (only vertical using listings POST directly)
+  if (vertical === "services") {
+    dispatchFeedDeliveryInBackground(dealerId, "listings/POST", after);
+  }
 
   return NextResponse.json(
     { listing: { id: listing.id, title: listing.title, isComplete: listing.isComplete } },
