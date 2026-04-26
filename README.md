@@ -107,3 +107,82 @@ https://www.ciafeed.com/feeds/{dealer-slug}.csv
 ```
 
 Compatible with Meta Catalog Manager → Automotive Inventory Ads.
+
+## Operator Runbook: Dealer Meta Delivery Method Cutover
+
+This section covers enabling, monitoring, and rolling back the `metaDeliveryMethod` transition from CSV to API for a dealer.
+
+### Supported Verticals
+
+API delivery is only supported for **automotive** and **services** verticals. Attempting to enable API mode for other verticals (e.g. realestate, ecommerce) will be rejected by both the profile and admin endpoints.
+
+### Preflight Checklist
+
+Before switching a dealer to `api` mode:
+
+1. **Verify vertical** — Confirm the dealer's vertical is `automotive` or `services`.
+2. **Check Meta connection** — Dealer must have a valid `metaAccessToken`, `metaCatalogId`, and `metaBusinessId`. Use the status endpoint:
+   ```
+   GET /api/meta/inventory/status
+   ```
+   All `readiness` fields should be `true` before proceeding.
+3. **Validate CSV feed** — Ensure the current CSV feed is healthy by fetching:
+   ```
+   GET /feeds/{dealer-slug}.csv
+   ```
+   Confirm the feed returns a valid CSV with inventory rows.
+4. **Confirm token expiry** — Check `metaTokenExpiresAt` is not imminent (>14 days out). The refresh cron (`/api/cron/refresh-meta-tokens`) handles renewal, but verify it has been running successfully.
+5. **Inventory count** — The status endpoint returns `inventoryCount`. Ensure it is > 0.
+
+### Enablement
+
+Switch the dealer to API mode via the admin endpoint:
+
+```
+PATCH /api/admin/dealers/{dealerId}/meta-delivery
+Content-Type: application/json
+
+{ "metaDeliveryMethod": "api" }
+```
+
+Alternatively, use the toggle button in the admin dashboard (visible per-dealer).
+
+### Post-Enablement Verification
+
+1. **Trigger a manual push** to confirm the pipeline works end-to-end:
+   ```
+   POST /api/meta/inventory/push
+   ```
+   The response includes a `summary` with `itemsSucceeded`, `itemsFailed`, and batch `handles`.
+2. **Poll batch status** — Use the handle(s) returned:
+   ```
+   GET /api/meta/inventory/status?handle={handle}
+   ```
+3. **Monitor logs** — Look for `deliver_feed_success` / `deliver_feed_error` structured log events.
+
+### Rollback
+
+To revert a dealer back to CSV mode:
+
+```
+PATCH /api/admin/dealers/{dealerId}/meta-delivery
+Content-Type: application/json
+
+{ "metaDeliveryMethod": "csv" }
+```
+
+This immediately stops API pushes. The CSV feed at `/feeds/{dealer-slug}.csv` continues to serve inventory and Meta will resume pulling from it on its next scheduled fetch.
+
+### Disconnect Recovery
+
+If a dealer disconnects Meta entirely (`POST /api/fb/disconnect`), all Meta credentials are cleared and `metaDeliveryMethod` is automatically reset to `csv`. The dealer must re-complete the Meta Business Integration wizard before API mode can be re-enabled.
+
+### Ownership & Workflow Notes
+
+| Responsibility | Owner | Notes |
+|---|---|---|
+| Preflight checks & enablement | **Admin** (via admin dashboard or `PATCH /api/admin/dealers/{id}/meta-delivery`) | Only the `ADMIN_EMAIL` account can toggle delivery method for other dealers. |
+| Post-switch monitoring | **Admin / Support** | Watch for `deliver_feed_error` log events within the first 24 hours after cutover. |
+| Rollback decision | **Admin / Support** | If `itemsFailed` > 0 on the manual push or batch status shows errors, revert immediately to `csv`. |
+| Token refresh monitoring | **Admin** | The cron at `/api/cron/refresh-meta-tokens` must be running. If tokens expire, API pushes will fail silently and require a rollback to CSV until the dealer re-authenticates. |
+| Dealer self-service | **Dealer (Profile UI)** | Dealers on supported verticals (automotive, services) can toggle their own delivery method from Profile & Settings. Unsupported verticals see CSV-only with an explanatory message. |

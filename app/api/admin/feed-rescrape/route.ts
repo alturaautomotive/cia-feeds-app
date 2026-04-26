@@ -7,6 +7,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Vertical } from "@prisma/client";
 import { scrapeVehicleUrl } from "@/lib/scrape";
+import { dispatchFeedDeliveryInBackground } from "@/lib/metaDelivery";
 
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL ?? "").toLowerCase();
 
@@ -20,6 +21,8 @@ function sleep(ms: number): Promise<void> {
 async function rescrapeInBackground(
   vehicles: { id: string; url: string; dealerId: string }[]
 ): Promise<void> {
+  const changedDealerIds = new Set<string>();
+
   for (let i = 0; i < vehicles.length; i += RESCRAPE_BATCH_SIZE) {
     const batch = vehicles.slice(i, i + RESCRAPE_BATCH_SIZE);
     await Promise.all(
@@ -51,6 +54,7 @@ async function rescrapeInBackground(
               scrapeStatus: "complete",
             },
           });
+          changedDealerIds.add(vehicle.dealerId);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           console.error({
@@ -73,6 +77,11 @@ async function rescrapeInBackground(
     if (i + RESCRAPE_BATCH_SIZE < vehicles.length) {
       await sleep(RESCRAPE_BATCH_DELAY_MS);
     }
+  }
+
+  const immediateExec = (cb: () => Promise<void>) => { cb().catch(() => {}); };
+  for (const dId of changedDealerIds) {
+    dispatchFeedDeliveryInBackground(dId, "admin/feed-rescrape/POST", immediateExec);
   }
 }
 

@@ -137,6 +137,7 @@ export default async function DealerDetailPage({
               <MetaDeliveryMethodToggle
                 dealerId={dealer.id}
                 currentMethod={dealer.metaDeliveryMethod}
+                vertical={dealer.vertical}
               />
             </p>
             <p className="text-sm text-gray-500 mt-0.5">

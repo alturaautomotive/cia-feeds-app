@@ -1366,17 +1366,23 @@ export default function ProfileClient({
             Choose how inventory is delivered to your Meta catalog. CSV uses the scheduled feed URL.
             API pushes changes directly via the Graph API.
           </p>
+          {vertical !== "automotive" && vertical !== "services" && (
+            <p className="text-xs text-amber-600 mb-3">
+              CSV only for this vertical. API delivery is available for automotive and services verticals.
+            </p>
+          )}
           <div className="space-y-2">
             {([
               { value: "csv", label: "CSV Feed", desc: "Meta pulls your feed CSV on a schedule (default)" },
               { value: "api", label: "API Push", desc: "Changes are pushed to Meta in real-time via Graph API" },
             ] as const).map((opt) => {
               const selected = deliveryMethod === opt.value;
+              const apiDisabled = opt.value === "api" && vertical !== "automotive" && vertical !== "services";
               return (
                 <button
                   key={opt.value}
                   type="button"
-                  disabled={savingDelivery}
+                  disabled={savingDelivery || apiDisabled}
                   onClick={async () => {
                     if (deliveryMethod === opt.value) return;
                     const prev = deliveryMethod;
@@ -1407,7 +1413,9 @@ export default function ProfileClient({
                   className={`w-full flex items-center gap-3 border rounded-lg px-4 py-3 text-left transition-colors ${
                     selected
                       ? "border-indigo-500 bg-indigo-50"
-                      : "border-gray-200 hover:border-indigo-300"
+                      : apiDisabled
+                        ? "border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed"
+                        : "border-gray-200 hover:border-indigo-300"
                   } disabled:opacity-50`}
                 >
                   <div className="flex-1">

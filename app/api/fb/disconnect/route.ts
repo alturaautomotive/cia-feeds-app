@@ -27,6 +27,12 @@ export async function POST() {
       metaBusinessId: null,
       metaCatalogId: null,
       metaFeedId: null,
+      metaTokenType: null,
+      metaTokenExpiresAt: null,
+      metaCatalogOwnership: null,
+      metaAdAccountId: null,
+      metaConnectedAt: null,
+      metaDeliveryMethod: "csv",
     },
   });
 

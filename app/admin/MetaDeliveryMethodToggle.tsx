@@ -2,18 +2,30 @@
 
 import { useState } from "react";
 
+const API_SUPPORTED_VERTICALS = new Set(["automotive", "services"]);
+
 export function MetaDeliveryMethodToggle({
   dealerId,
   currentMethod,
+  vertical,
 }: {
   dealerId: string;
   currentMethod: string;
+  vertical: string;
 }) {
   const [method, setMethod] = useState(currentMethod);
   const [loading, setLoading] = useState(false);
 
+  const canToggleToApi = API_SUPPORTED_VERTICALS.has(vertical);
+
   async function toggle() {
     const next = method === "api" ? "csv" : "api";
+
+    if (next === "api" && !canToggleToApi) {
+      alert(`API delivery is not supported for the "${vertical}" vertical. Only automotive and services are supported.`);
+      return;
+    }
+
     const confirmed = window.confirm(
       `Switch delivery method to ${next.toUpperCase()} for this dealer?`
     );
@@ -40,16 +52,22 @@ export function MetaDeliveryMethodToggle({
   }
 
   return (
-    <button
-      onClick={toggle}
-      disabled={loading}
-      className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full cursor-pointer disabled:opacity-50 ${
-        method === "api"
-          ? "bg-blue-100 text-blue-800 hover:bg-blue-200"
-          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-      }`}
-    >
-      {loading ? "..." : method.toUpperCase()}
-    </button>
+    <span className="inline-flex items-center gap-1">
+      <button
+        onClick={toggle}
+        disabled={loading || (method === "csv" && !canToggleToApi)}
+        title={!canToggleToApi && method === "csv" ? `API mode unavailable for ${vertical} vertical` : undefined}
+        className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full cursor-pointer disabled:opacity-50 ${
+          method === "api"
+            ? "bg-blue-100 text-blue-800 hover:bg-blue-200"
+            : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+        }`}
+      >
+        {loading ? "..." : method.toUpperCase()}
+      </button>
+      {!canToggleToApi && method === "csv" && (
+        <span className="text-[10px] text-gray-400" title="API delivery requires automotive or services vertical">CSV only</span>
+      )}
+    </span>
   );
 }

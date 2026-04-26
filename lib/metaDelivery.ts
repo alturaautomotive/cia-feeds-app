@@ -10,6 +10,12 @@ import {
 const BATCH_SIZE = 100; // DB cursor batch
 const META_BATCH_LIMIT = 5000; // Meta items_batch max per request
 
+/** Verticals that support API delivery mode. Others must use CSV. */
+export const API_SUPPORTED_VERTICALS: ReadonlySet<string> = new Set([
+  "automotive",
+  "services",
+]);
+
 // Graph error codes that indicate token/permission failures
 const AUTH_ERROR_CODES = new Set([
   190, // Invalid/expired access token

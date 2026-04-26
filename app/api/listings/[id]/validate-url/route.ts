@@ -1,10 +1,11 @@
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getEffectiveDealerId } from "@/lib/impersonation";
 import { checkSubscription } from "@/lib/checkSubscription";
+import { dispatchFeedDeliveryInBackground } from "@/lib/metaDelivery";
 import { firecrawlClient } from "@/lib/firecrawl";
 import {
   SERVICES_EXTRACTION_SCHEMA,
@@ -138,6 +139,8 @@ export async function POST(
         } as Prisma.InputJsonValue,
       },
     });
+
+    dispatchFeedDeliveryInBackground(dealerId, "listings/[id]/validate-url/POST", after);
 
     return NextResponse.json({ score, verdict, publishStatus, isComplete, isHighQuality });
   } catch (err) {

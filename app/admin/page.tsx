@@ -164,6 +164,7 @@ export default async function AdminPage() {
                       <MetaDeliveryMethodToggle
                         dealerId={dealer.id}
                         currentMethod={dealer.metaDeliveryMethod}
+                        vertical={dealer.vertical}
                       />
                     </td>
                     <td className="px-4 py-3 text-gray-500">

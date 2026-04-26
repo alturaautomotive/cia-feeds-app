@@ -13,6 +13,7 @@ export async function GET() {
   const expiringDealers = await prisma.dealer.findMany({
     where: {
       metaDeliveryMethod: "api",
+      metaAccessToken: { not: null },
       metaTokenExpiresAt: { lt: threshold },
     },
     select: {
@@ -23,12 +24,23 @@ export async function GET() {
   });
 
   let refreshed = 0;
+  const skipped: string[] = [];
   const errors: string[] = [];
 
   for (const dealer of expiringDealers) {
+    if (!dealer.metaAccessToken) {
+      console.warn(`Skipping ${dealer.id}: metaAccessToken is null`);
+      skipped.push(dealer.id);
+      continue;
+    }
+    if (!dealer.metaTokenExpiresAt) {
+      console.warn(`Skipping ${dealer.id}: metaTokenExpiresAt is null`);
+      skipped.push(dealer.id);
+      continue;
+    }
     try {
       const { token: newToken, expiresAt } = await refreshToken(
-        decryptToken(dealer.metaAccessToken!)
+        decryptToken(dealer.metaAccessToken)
       );
       await prisma.dealer.update({
         where: { id: dealer.id },
@@ -45,5 +57,5 @@ export async function GET() {
     }
   }
 
-  return NextResponse.json({ refreshed, failed: errors.length });
+  return NextResponse.json({ refreshed, skipped: skipped.length, failed: errors.length });
 }

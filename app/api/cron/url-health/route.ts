@@ -1,8 +1,9 @@
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { dispatchFeedDeliveryInBackground } from "@/lib/metaDelivery";
 
 const BATCH_SIZE = 10;
 const BATCH_DELAY_MS = 1000;
@@ -125,12 +126,13 @@ export async function GET(request: NextRequest) {
       archivedAt: null,
       dealer: { urlHealthCheckEnabled: true },
     },
-    select: { id: true, url: true },
+    select: { id: true, url: true, dealerId: true },
   });
 
   let checked = 0;
   let archived = 0;
   let errors = 0;
+  const changedDealerIds = new Set<string>();
 
   for (let i = 0; i < vehicles.length; i += BATCH_SIZE) {
     const batch = vehicles.slice(i, i + BATCH_SIZE);
@@ -160,6 +162,7 @@ export async function GET(request: NextRequest) {
                 archivedAt: new Date(),
               },
             });
+            changedDealerIds.add(vehicle.dealerId);
             archived++;
           } else {
             await prisma.vehicle.update({
@@ -186,6 +189,10 @@ export async function GET(request: NextRequest) {
     if (i + BATCH_SIZE < vehicles.length) {
       await sleep(BATCH_DELAY_MS);
     }
+  }
+
+  for (const dId of changedDealerIds) {
+    dispatchFeedDeliveryInBackground(dId, "cron/url-health/GET", after);
   }
 
   return NextResponse.json({ checked, archived, errors });

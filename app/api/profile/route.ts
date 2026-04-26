@@ -4,6 +4,7 @@ import { checkSubscription } from "@/lib/checkSubscription";
 import { getEffectiveDealerContext } from "@/lib/impersonation";
 import { decrypt } from "@/lib/crypto";
 import { VERTICAL_META_TYPE, VALID_VERTICALS, type Vertical } from "@/lib/verticals";
+import { API_SUPPORTED_VERTICALS } from "@/lib/metaDelivery";
 
 const VALID_CTA_PREFERENCES = ["sms", "whatsapp", "messenger"];
 const VALID_TRANSLATION_LANGS = ["en", "es-MX", "es-PR", "pt-BR", "ko-KR", "fr", "de"];
@@ -241,6 +242,18 @@ export async function PATCH(request: NextRequest) {
     if (typeof raw !== "string" || (raw !== "csv" && raw !== "api")) {
       return NextResponse.json({ error: "invalid_metaDeliveryMethod" }, { status: 400 });
     }
+    if (raw === "api") {
+      const dealer = await prisma.dealer.findUnique({
+        where: { id: effectiveDealerId },
+        select: { vertical: true },
+      });
+      if (!dealer || !API_SUPPORTED_VERTICALS.has(dealer.vertical)) {
+        return NextResponse.json(
+          { error: "api_delivery_unsupported_vertical", allowed: Array.from(API_SUPPORTED_VERTICALS) },
+          { status: 400 }
+        );
+      }
+    }
     batchData.metaDeliveryMethod = raw;
   }
 
@@ -379,6 +392,8 @@ export async function PATCH(request: NextRequest) {
             vertical: newVertical,
             metaFeedId: null,
             metaCatalogId: newCatalogId ?? null,
+            // Auto-reset to CSV if new vertical doesn't support API delivery
+            ...(!API_SUPPORTED_VERTICALS.has(newVertical) ? { metaDeliveryMethod: "csv" } : {}),
           },
           select: SAFE_SELECT,
         });
