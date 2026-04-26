@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getEffectiveDealerId } from "@/lib/impersonation";
 import { checkSubscription } from "@/lib/checkSubscription";
-import { decrypt } from "@/lib/crypto";
+import { decryptToken, graphFetch } from "@/lib/meta";
 import { VERTICAL_META_TYPE, type Vertical } from "@/lib/verticals";
 
 async function loadDealerToken(dealerId: string): Promise<string | null> {
@@ -13,7 +13,7 @@ async function loadDealerToken(dealerId: string): Promise<string | null> {
     select: { metaAccessToken: true },
   });
   if (!dealer?.metaAccessToken) return null;
-  return decrypt(dealer.metaAccessToken);
+  return decryptToken(dealer.metaAccessToken);
 }
 
 async function authGuard(): Promise<
@@ -70,11 +70,10 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const res = await fetch(
-      `https://graph.facebook.com/v19.0/${encodeURIComponent(
-        businessId
-      )}/owned_product_catalogs?fields=id,name`,
-      { headers: { 'Authorization': 'Bearer ' + accessToken } }
+    const res = await graphFetch(
+      `/${encodeURIComponent(businessId)}/owned_product_catalogs?fields=id,name`,
+      {},
+      accessToken
     );
     if (!res.ok) {
       console.error({
@@ -164,21 +163,17 @@ export async function POST(request: NextRequest) {
     const metaVertical =
       VERTICAL_META_TYPE[(dealer?.vertical ?? "automotive") as Vertical] ?? "automotive_models";
 
-    const createRes = await fetch(
-      `https://graph.facebook.com/v19.0/${encodeURIComponent(
-        businessId
-      )}/owned_product_catalogs`,
+    const createRes = await graphFetch(
+      `/${encodeURIComponent(businessId)}/owned_product_catalogs`,
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "Bearer " + accessToken,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: catalogName,
           vertical: metaVertical,
         }),
-      }
+      },
+      accessToken
     );
     const createData = (await createRes.json()) as {
       id?: string;

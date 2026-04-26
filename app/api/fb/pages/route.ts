@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getEffectiveDealerId } from "@/lib/impersonation";
 import { checkSubscription } from "@/lib/checkSubscription";
-import { decrypt } from "@/lib/crypto";
+import { decryptToken, graphFetch } from "@/lib/meta";
 
 async function authGuard(): Promise<
   | { ok: true; dealerId: string }
@@ -55,12 +55,13 @@ export async function GET() {
   if (!encryptedToken) {
     return NextResponse.json({ error: "meta_not_connected" }, { status: 400 });
   }
-  const accessToken = decrypt(encryptedToken);
+  const accessToken = decryptToken(encryptedToken);
 
   try {
-    const res = await fetch(
-      `https://graph.facebook.com/v19.0/me/accounts?fields=id,name`,
-      { headers: { 'Authorization': 'Bearer ' + accessToken } }
+    const res = await graphFetch(
+      '/me/accounts?fields=id,name',
+      {},
+      accessToken
     );
     if (!res.ok) {
       console.error({
@@ -117,14 +118,15 @@ export async function POST(request: NextRequest) {
   if (!encryptedToken) {
     return NextResponse.json({ error: "meta_not_connected" }, { status: 400 });
   }
-  const accessToken = decrypt(encryptedToken);
+  const accessToken = decryptToken(encryptedToken);
 
   // Verify the selected page is actually one the dealer has access to, so we
   // never persist an arbitrary/attacker-supplied id.
   try {
-    const res = await fetch(
-      `https://graph.facebook.com/v19.0/me/accounts?fields=id`,
-      { headers: { 'Authorization': 'Bearer ' + accessToken } }
+    const res = await graphFetch(
+      '/me/accounts?fields=id',
+      {},
+      accessToken
     );
     if (!res.ok) {
       return NextResponse.json({ error: "meta_api_error" }, { status: 502 });

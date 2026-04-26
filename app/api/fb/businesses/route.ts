@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getEffectiveDealerId } from "@/lib/impersonation";
 import { checkSubscription } from "@/lib/checkSubscription";
-import { decrypt } from "@/lib/crypto";
+import { decryptToken, graphFetch } from "@/lib/meta";
 
 /**
  * GET /api/fb/businesses — Returns the Meta Business Managers the
@@ -36,12 +36,13 @@ export async function GET() {
     return NextResponse.json({ error: "meta_not_connected" }, { status: 400 });
   }
 
-  const accessToken = decrypt(encryptedToken);
+  const accessToken = decryptToken(encryptedToken);
 
   try {
-    const res = await fetch(
-      `https://graph.facebook.com/v19.0/me?fields=businesses{id,name}`,
-      { headers: { 'Authorization': 'Bearer ' + accessToken } }
+    const res = await graphFetch(
+      '/me?fields=businesses{id,name}',
+      {},
+      accessToken
     );
     if (!res.ok) {
       console.error({

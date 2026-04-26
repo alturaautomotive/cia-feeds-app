@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getEffectiveDealerId } from "@/lib/impersonation";
 import { checkSubscription } from "@/lib/checkSubscription";
-import { decrypt } from "@/lib/crypto";
+import { decryptToken, graphFetch } from "@/lib/meta";
 import * as dns from "node:dns/promises";
 import * as net from "node:net";
 
@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "meta_page_not_connected" }, { status: 400 });
   }
 
-  const accessToken = decrypt(encryptedToken);
+  const accessToken = decryptToken(encryptedToken);
 
   let reqBody: {
     adSetId?: string;
@@ -166,9 +166,10 @@ export async function POST(request: NextRequest) {
 
   try {
     // Step 0 — Derive ad account ID from the ad set
-    const adSetRes = await fetch(
-      `https://graph.facebook.com/v19.0/${encodeURIComponent(adSetId)}?fields=account_id`,
-      { headers: { 'Authorization': 'Bearer ' + accessToken } }
+    const adSetRes = await graphFetch(
+      `/${encodeURIComponent(adSetId)}?fields=account_id`,
+      {},
+      accessToken
     );
     if (!adSetRes.ok) {
       console.error({ event: "fb_adset_lookup_failed", status: adSetRes.status });
@@ -191,12 +192,12 @@ export async function POST(request: NextRequest) {
     const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
 
     const formData = new FormData();
-    formData.append("access_token", accessToken);
     formData.append("filename", new Blob([imageBuffer], { type: "image/jpeg" }), "ad_image.jpg");
 
-    const uploadRes = await fetch(
-      `https://graph.facebook.com/v19.0/${encodeURIComponent(adAccountId)}/adimages`,
-      { method: "POST", body: formData }
+    const uploadRes = await graphFetch(
+      `/${encodeURIComponent(adAccountId)}/adimages`,
+      { method: "POST", body: formData },
+      accessToken
     );
 
     if (!uploadRes.ok) {
@@ -214,13 +215,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 2 — Create ad creative
-    const creativeRes = await fetch(
-      `https://graph.facebook.com/v19.0/${encodeURIComponent(
-        adAccountId
-      )}/adcreatives`,
+    const creativeRes = await graphFetch(
+      `/${encodeURIComponent(adAccountId)}/adcreatives`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + accessToken },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: headline,
           object_story_spec: {
@@ -237,7 +236,8 @@ export async function POST(request: NextRequest) {
             },
           },
         }),
-      }
+      },
+      accessToken
     );
 
     if (!creativeRes.ok) {
@@ -253,20 +253,19 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 3 — Create ad
-    const adRes = await fetch(
-      `https://graph.facebook.com/v19.0/${encodeURIComponent(
-        adSetId
-      )}/ads`,
+    const adRes = await graphFetch(
+      `/${encodeURIComponent(adSetId)}/ads`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + accessToken },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: headline,
           adset_id: adSetId,
           creative: { creative_id: creativeId },
           status: "PAUSED",
         }),
-      }
+      },
+      accessToken
     );
 
     if (!adRes.ok) {

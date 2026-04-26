@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { getEffectiveDealerId } from "@/lib/impersonation";
 import { prisma } from "@/lib/prisma";
 import crypto from "crypto";
+import { GRAPH_VERSION } from "@/lib/meta";
 
 /**
  * GET /api/fb/oauth — Redirects the dealer to Facebook's OAuth consent screen.
@@ -53,6 +54,6 @@ export async function GET() {
     response_type: "code",
   });
 
-  const oauthUrl = `https://www.facebook.com/v19.0/dialog/oauth?${params.toString()}`;
+  const oauthUrl = `https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth?${params.toString()}`;
   return NextResponse.redirect(oauthUrl);
 }

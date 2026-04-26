@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getEffectiveDealerId } from "@/lib/impersonation";
 import { checkSubscription } from "@/lib/checkSubscription";
-import { decrypt } from "@/lib/crypto";
+import { decryptToken, graphFetch } from "@/lib/meta";
 
 /**
  * POST /api/fb/campaigns — Creates a Meta catalog-sales campaign and ad set.
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "meta_not_connected" }, { status: 400 });
   }
 
-  const accessToken = decrypt(encryptedToken);
+  const accessToken = decryptToken(encryptedToken);
 
   let body: { name?: string; adAccountId?: string; catalogId?: string };
   try {
@@ -56,20 +56,19 @@ export async function POST(request: NextRequest) {
 
   try {
     // Step 1 — Create Campaign
-    const campaignRes = await fetch(
-      `https://graph.facebook.com/v19.0/${encodeURIComponent(
-        adAccountId
-      )}/campaigns`,
+    const campaignRes = await graphFetch(
+      `/${encodeURIComponent(adAccountId)}/campaigns`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + accessToken },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name,
           objective: "CATALOG_SALES",
           status: "PAUSED",
           special_ad_categories: [],
         }),
-      }
+      },
+      accessToken
     );
 
     if (!campaignRes.ok) {
@@ -88,13 +87,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 2 — Create Ad Set
-    const adSetRes = await fetch(
-      `https://graph.facebook.com/v19.0/${encodeURIComponent(
-        adAccountId
-      )}/adsets`,
+    const adSetRes = await graphFetch(
+      `/${encodeURIComponent(adAccountId)}/adsets`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + accessToken },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name,
           campaign_id: campaignId,
@@ -107,7 +104,8 @@ export async function POST(request: NextRequest) {
           status: "PAUSED",
           optimization_goal: "LINK_CLICKS",
         }),
-      }
+      },
+      accessToken
     );
 
     if (!adSetRes.ok) {

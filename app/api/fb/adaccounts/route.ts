@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getEffectiveDealerId } from "@/lib/impersonation";
 import { checkSubscription } from "@/lib/checkSubscription";
-import { decrypt } from "@/lib/crypto";
+import { decryptToken, graphFetch } from "@/lib/meta";
 
 /**
  * GET /api/fb/adaccounts — Returns the ad accounts owned by the
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "meta_not_connected" }, { status: 400 });
   }
 
-  const accessToken = decrypt(encryptedToken);
+  const accessToken = decryptToken(encryptedToken);
   const businessId =
     request.nextUrl.searchParams.get("businessId") ??
     request.nextUrl.searchParams.get("state") ??
@@ -47,11 +47,10 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const res = await fetch(
-      `https://graph.facebook.com/v19.0/${encodeURIComponent(
-        businessId
-      )}/owned_ad_accounts?fields=id,name,account_status`,
-      { headers: { 'Authorization': 'Bearer ' + accessToken } }
+    const res = await graphFetch(
+      `/${encodeURIComponent(businessId)}/owned_ad_accounts?fields=id,name,account_status`,
+      {},
+      accessToken
     );
     if (!res.ok) {
       console.error({

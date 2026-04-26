@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { rateLimit } from "@/lib/rateLimit";
+import { decryptToken, graphFetch } from "@/lib/meta";
 
 export async function POST(request: NextRequest) {
   const ip = (request.headers.get("x-forwarded-for") ?? "unknown").split(",")[0].trim();
@@ -51,13 +52,18 @@ export async function POST(request: NextRequest) {
   };
 
   try {
-    const res = await fetch(
-      `https://graph.facebook.com/v20.0/${pixelId}/events?access_token=${dealer?.metaAccessToken || process.env.META_PUBLIC_ACCESS_TOKEN}`,
+    const token = dealer.metaAccessToken
+      ? decryptToken(dealer.metaAccessToken)
+      : process.env.META_PUBLIC_ACCESS_TOKEN!;
+
+    const res = await graphFetch(
+      `/${encodeURIComponent(pixelId)}/events`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
-      }
+      },
+      token
     );
 
     if (!res.ok) {

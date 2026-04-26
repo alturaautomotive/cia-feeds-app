@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getEffectiveDealerId } from "@/lib/impersonation";
 import { checkSubscription } from "@/lib/checkSubscription";
-import { decrypt } from "@/lib/crypto";
+import { decryptToken, graphFetch } from "@/lib/meta";
 import { VERTICAL_FEED_TYPE } from "@/lib/verticals";
 
 /**
@@ -43,7 +43,7 @@ export async function POST() {
   if (!dealer) {
     return NextResponse.json({ error: "dealer_not_found" }, { status: 404 });
   }
-  const accessToken = dealer.metaAccessToken ? decrypt(dealer.metaAccessToken) : null;
+  const accessToken = dealer.metaAccessToken ? decryptToken(dealer.metaAccessToken) : null;
   const catalogId = dealer.metaCatalogId;
   if (!accessToken) {
     return NextResponse.json({ error: "meta_not_connected" }, { status: 400 });
@@ -71,10 +71,8 @@ export async function POST() {
   }
 
   try {
-    const res = await fetch(
-      `https://graph.facebook.com/v19.0/${encodeURIComponent(
-        catalogId
-      )}/product_feeds`,
+    const res = await graphFetch(
+      `/${encodeURIComponent(catalogId)}/product_feeds`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -86,9 +84,9 @@ export async function POST() {
             url: feedUrl,
             hour: 0,
           },
-          access_token: accessToken,
         }),
-      }
+      },
+      accessToken
     );
     const data = (await res.json()) as {
       id?: string;

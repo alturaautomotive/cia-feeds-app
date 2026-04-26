@@ -13,6 +13,9 @@
     },
     "app/api/cron/url-health/route.ts": {
       "maxDuration": 300
+    },
+    "app/api/cron/refresh-meta-tokens/route.ts": {
+      "maxDuration": 300
     }
   },
   "crons": [
@@ -23,6 +26,10 @@
     {
       "path": "/api/cron/url-health",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/refresh-meta-tokens",
+      "schedule": "0 0 * * 0"
     }
   ]
 }
