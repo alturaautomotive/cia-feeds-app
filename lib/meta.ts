@@ -5,9 +5,33 @@ import { getEffectiveDealerId } from "@/lib/impersonation";
 import { checkSubscription } from "@/lib/checkSubscription";
 import { decrypt } from "@/lib/crypto";
 import { prisma } from "@/lib/prisma";
+import { resolveMetaAppCredentials } from "@/lib/env";
 
 export const GRAPH_VERSION = "v19.0";
 export const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
+
+export const META_OAUTH_SCOPES =
+  "pages_show_list,business_management,catalog_management,ads_management";
+
+/**
+ * Return Meta app credentials via the centralized resolver (FB_* preferred, META_* fallback).
+ */
+export function getMetaAppCredentials() {
+  return resolveMetaAppCredentials();
+}
+
+/**
+ * Build the OAuth callback URI for a given namespace.
+ */
+export function buildCallbackUri(namespace: "fb" | "meta"): string {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (!appUrl) {
+    throw new Error("NEXT_PUBLIC_APP_URL is not set");
+  }
+  return namespace === "fb"
+    ? `${appUrl}/api/fb/callback`
+    : `${appUrl}/api/meta/callback`;
+}
 
 /**
  * Shared auth guard: validates session, dealer, and subscription.
@@ -69,10 +93,11 @@ export function decryptToken(encryptedToken: string): string {
 export async function exchangeShortToLongLived(
   shortToken: string
 ): Promise<{ token: string; expiresAt: Date }> {
+  const { appId, appSecret } = getMetaAppCredentials();
   const params = new URLSearchParams({
     grant_type: "fb_exchange_token",
-    client_id: process.env.FB_APP_ID!,
-    client_secret: process.env.FB_APP_SECRET!,
+    client_id: appId,
+    client_secret: appSecret,
     fb_exchange_token: shortToken,
   });
   const res = await fetch(

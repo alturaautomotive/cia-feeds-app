@@ -79,10 +79,12 @@ async function rescrapeInBackground(
     }
   }
 
-  const immediateExec = (cb: () => Promise<void>) => { cb().catch(() => {}); };
+  const deliveryPromises: Promise<void>[] = [];
+  const trackedExec = (cb: () => Promise<void>) => { deliveryPromises.push(cb()); };
   for (const dId of changedDealerIds) {
-    dispatchFeedDeliveryInBackground(dId, "admin/feed-rescrape/POST", immediateExec);
+    dispatchFeedDeliveryInBackground(dId, "admin/feed-rescrape/POST", trackedExec);
   }
+  await Promise.allSettled(deliveryPromises);
 }
 
 export async function POST(request: NextRequest) {

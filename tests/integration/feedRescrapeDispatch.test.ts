@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Set ADMIN_EMAIL before module loads (captured at import time)
-process.env.ADMIN_EMAIL = "admin@test.com";
+// Set ADMIN_EMAIL before any module loads — vi.hoisted runs before vi.mock factories
+vi.hoisted(() => {
+  process.env.ADMIN_EMAIL = "admin@test.com";
+});
 
 // Mock prisma
 vi.mock("@/lib/prisma", () => ({
@@ -36,22 +38,26 @@ vi.mock("@/lib/scrape", () => ({
   scrapeVehicleUrl: vi.fn(),
 }));
 
-// Mock metaDelivery
+// Track dispatch calls directly — rescrapeInBackground calls dispatch
+// with its own immediateExec wrapper so we just need to verify call count
 vi.mock("@/lib/metaDelivery", () => ({
   dispatchFeedDeliveryInBackground: vi.fn(),
 }));
 
-// Capture after() callbacks so we can execute them synchronously in tests
+// Mock after() to capture and allow synchronous execution in tests
 const afterCallbacks: (() => Promise<void>)[] = [];
-vi.mock("next/server", async () => {
-  const actual = await vi.importActual<typeof import("next/server")>("next/server");
-  return {
-    ...actual,
-    after: (cb: () => Promise<void>) => {
-      afterCallbacks.push(cb);
-    },
-  };
-});
+vi.mock("next/server", () => ({
+  NextRequest: class NextRequest extends Request {},
+  NextResponse: {
+    json: (body: unknown, init?: ResponseInit) => new Response(JSON.stringify(body), {
+      ...init,
+      headers: { "content-type": "application/json", ...(init?.headers || {}) },
+    }),
+  },
+  after: (cb: () => Promise<void>) => {
+    afterCallbacks.push(cb);
+  },
+}));
 
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
@@ -100,14 +106,15 @@ function makeScrapeResult(vehicleId: string, dealerId: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   afterCallbacks.length = 0;
-  process.env.ADMIN_EMAIL = ADMIN_EMAIL;
 
   vi.mocked(getServerSession).mockResolvedValue({
     user: { email: ADMIN_EMAIL },
   } as never);
   vi.mocked(prisma.dealer.findUnique).mockResolvedValue({ id: "dealer-A" } as never);
+  vi.mocked(prisma.vehicle.findMany).mockResolvedValue([] as never);
   vi.mocked(prisma.vehicle.updateMany).mockResolvedValue({ count: 0 } as never);
   vi.mocked(prisma.vehicle.update).mockResolvedValue({} as never);
+  vi.mocked(dispatchFeedDeliveryInBackground).mockImplementation(() => {});
 });
 
 describe("POST /api/admin/feed-rescrape — dispatch", () => {

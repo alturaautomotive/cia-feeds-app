@@ -105,6 +105,8 @@ export async function POST(request: NextRequest) {
       data: {
         metaBusinessId: businessId,
         metaCatalogId: catalogId,
+        metaCatalogOwnership: "existing",
+        metaConnectedAt: new Date(),
       },
     });
     return NextResponse.json({ catalogId });
@@ -175,6 +177,8 @@ export async function POST(request: NextRequest) {
       data: {
         metaBusinessId: businessId,
         metaCatalogId: createData.id,
+        metaCatalogOwnership: "created",
+        metaConnectedAt: new Date(),
       },
     });
 

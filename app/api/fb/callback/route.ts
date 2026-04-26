@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { encrypt } from "@/lib/crypto";
-import { GRAPH_BASE, exchangeShortToLongLived } from "@/lib/meta";
+import {
+  GRAPH_BASE,
+  exchangeShortToLongLived,
+  getMetaAppCredentials,
+  buildCallbackUri,
+} from "@/lib/meta";
 
 /**
  * GET /api/fb/callback — Handles the Facebook OAuth callback.
@@ -33,9 +38,18 @@ export async function GET(request: NextRequest) {
     return errorRedirect;
   }
 
-  const appId = process.env.FB_APP_ID;
-  const appSecret = process.env.FB_APP_SECRET;
-  if (!appId || !appSecret || !appUrl) {
+  let appId: string;
+  let appSecret: string;
+  let redirectUri: string;
+  try {
+    ({ appId, appSecret } = getMetaAppCredentials());
+    redirectUri = buildCallbackUri("fb");
+  } catch {
+    console.error({ event: "fb_callback_missing_env" });
+    return errorRedirect;
+  }
+
+  if (!appUrl) {
     console.error({ event: "fb_callback_missing_env" });
     return errorRedirect;
   }
@@ -51,8 +65,6 @@ export async function GET(request: NextRequest) {
 
   // Delete the used state record
   await prisma.oAuthState.delete({ where: { state } });
-
-  const redirectUri = `${appUrl}/api/fb/callback`;
 
   try {
     // 1. Exchange code → short-lived access token
@@ -85,14 +97,15 @@ export async function GET(request: NextRequest) {
     const { token: longLivedToken, expiresAt } =
       await exchangeShortToLongLived(shortLivedToken);
 
-    // 2. Persist the long-lived access token on the Dealer record. The user
-    // will pick their Facebook Page explicitly in the wizard — we do NOT
-    // auto-assign the first returned Page here.
+    // 2. Persist the long-lived access token on the Dealer record with
+    // consistent metadata (parity with /api/meta/callback).
     await prisma.dealer.update({
       where: { id: dealerId },
       data: {
         metaAccessToken: encrypt(longLivedToken),
         metaTokenExpiresAt: expiresAt,
+        metaTokenType: "user_token",
+        metaConnectedAt: new Date(),
       },
     });
 

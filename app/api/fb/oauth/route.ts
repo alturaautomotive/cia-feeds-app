@@ -4,7 +4,12 @@ import { authOptions } from "@/lib/auth";
 import { getEffectiveDealerId } from "@/lib/impersonation";
 import { prisma } from "@/lib/prisma";
 import crypto from "crypto";
-import { GRAPH_VERSION } from "@/lib/meta";
+import {
+  GRAPH_VERSION,
+  META_OAUTH_SCOPES,
+  getMetaAppCredentials,
+  buildCallbackUri,
+} from "@/lib/meta";
 
 /**
  * GET /api/fb/oauth — Redirects the dealer to Facebook's OAuth consent screen.
@@ -23,9 +28,12 @@ export async function GET() {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const appId = process.env.FB_APP_ID;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
-  if (!appId || !appUrl) {
+  let appId: string;
+  let redirectUri: string;
+  try {
+    ({ appId } = getMetaAppCredentials());
+    redirectUri = buildCallbackUri("fb");
+  } catch {
     return NextResponse.json(
       { error: "facebook_not_configured" },
       { status: 500 }
@@ -45,11 +53,10 @@ export async function GET() {
   // Fire-and-forget cleanup of expired state records
   prisma.oAuthState.deleteMany({ where: { expiresAt: { lt: new Date() } } }).catch(() => {});
 
-  const redirectUri = `${appUrl}/api/fb/callback`;
   const params = new URLSearchParams({
     client_id: appId,
     redirect_uri: redirectUri,
-    scope: "pages_show_list,business_management,catalog_management,ads_management",
+    scope: META_OAUTH_SCOPES,
     state,
     response_type: "code",
   });

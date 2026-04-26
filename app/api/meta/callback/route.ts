@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { encrypt } from "@/lib/crypto";
-import { GRAPH_BASE, exchangeShortToLongLived } from "@/lib/meta";
+import {
+  GRAPH_BASE,
+  exchangeShortToLongLived,
+  getMetaAppCredentials,
+  buildCallbackUri,
+} from "@/lib/meta";
 
 /**
  * GET /api/meta/callback — Handles the Facebook OAuth callback for the
@@ -23,9 +28,18 @@ export async function GET(request: NextRequest) {
     return errorRedirect;
   }
 
-  const appId = process.env.FB_APP_ID;
-  const appSecret = process.env.FB_APP_SECRET;
-  if (!appId || !appSecret || !appUrl) {
+  let appId: string;
+  let appSecret: string;
+  let redirectUri: string;
+  try {
+    ({ appId, appSecret } = getMetaAppCredentials());
+    redirectUri = buildCallbackUri("meta");
+  } catch {
+    console.error({ event: "meta_callback_missing_env" });
+    return errorRedirect;
+  }
+
+  if (!appUrl) {
     console.error({ event: "meta_callback_missing_env" });
     return errorRedirect;
   }
@@ -41,8 +55,6 @@ export async function GET(request: NextRequest) {
 
   // Delete the used state record
   await prisma.oAuthState.delete({ where: { state } });
-
-  const redirectUri = `${appUrl}/api/meta/callback`;
 
   try {
     // 1. Exchange code -> short-lived access token
