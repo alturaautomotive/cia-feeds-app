@@ -4,91 +4,30 @@ import { authGuard, loadDealerToken, graphFetch } from "@/lib/meta";
 import { VERTICAL_META_TYPE, type Vertical } from "@/lib/verticals";
 
 /**
- * GET /api/fb/catalogs?businessId=... — Lists the product catalogs owned by
- * the given Meta Business Manager.
- */
-export async function GET(request: NextRequest) {
-  const guard = await authGuard();
-  if (!guard.ok) return guard.response;
-
-  const { searchParams } = new URL(request.url);
-  const businessId = searchParams.get("businessId");
-  if (!businessId) {
-    return NextResponse.json(
-      { error: "businessId_required" },
-      { status: 400 }
-    );
-  }
-
-  const accessToken = await loadDealerToken(guard.dealerId);
-  if (!accessToken) {
-    return NextResponse.json({ error: "meta_not_connected" }, { status: 400 });
-  }
-
-  try {
-    const res = await graphFetch(
-      `/${encodeURIComponent(businessId)}/owned_product_catalogs?fields=id,name`,
-      {},
-      accessToken
-    );
-    if (!res.ok) {
-      console.error({
-        event: "fb_catalogs_list_failed",
-        status: res.status,
-      });
-      return NextResponse.json(
-        { error: "meta_api_error" },
-        { status: 502 }
-      );
-    }
-    const data = (await res.json()) as {
-      data?: Array<{ id?: string; name?: string }>;
-    };
-    const catalogs = (data.data ?? [])
-      .filter((c): c is { id: string; name: string } =>
-        typeof c.id === "string" && typeof c.name === "string"
-      )
-      .map((c) => ({ id: c.id, name: c.name }));
-
-    return NextResponse.json({ catalogs });
-  } catch (err) {
-    console.error({
-      event: "fb_catalogs_list_error",
-      message: err instanceof Error ? err.message : String(err),
-    });
-    return NextResponse.json({ error: "meta_api_error" }, { status: 502 });
-  }
-}
-
-/**
- * POST /api/fb/catalogs — Selects an existing catalog OR creates a new one.
- * Body: { businessId, catalogId? , catalogName? }
+ * POST /api/meta/catalog/create — Creates a new catalog under the business.
+ * Body: { businessId, catalogName }
  */
 export async function POST(request: NextRequest) {
   const guard = await authGuard();
   if (!guard.ok) return guard.response;
 
-  let body: {
-    businessId?: string;
-    catalogId?: string;
-    catalogName?: string;
-  };
+  let body: { businessId?: string; catalogName?: string };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
 
-  const { businessId, catalogId, catalogName } = body;
+  const { businessId, catalogName } = body;
   if (!businessId) {
     return NextResponse.json(
       { error: "businessId_required" },
       { status: 400 }
     );
   }
-  if (!catalogId && !catalogName) {
+  if (!catalogName) {
     return NextResponse.json(
-      { error: "catalogId_or_catalogName_required" },
+      { error: "catalogName_required" },
       { status: 400 }
     );
   }
@@ -98,19 +37,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "meta_not_connected" }, { status: 400 });
   }
 
-  // Case 1 — select existing catalog
-  if (catalogId) {
-    await prisma.dealer.update({
-      where: { id: guard.dealerId },
-      data: {
-        metaBusinessId: businessId,
-        metaCatalogId: catalogId,
-      },
-    });
-    return NextResponse.json({ catalogId });
-  }
-
-  // Case 2 — create new catalog
   try {
     const dealer = await prisma.dealer.findUnique({
       where: { id: guard.dealerId },
@@ -140,13 +66,12 @@ export async function POST(request: NextRequest) {
       const errMsg = createData.error?.message ?? "";
       const errCode = createData.error?.code;
       console.error({
-        event: "fb_catalog_create_failed",
+        event: "meta_catalog_create_failed",
         status: createRes.status,
         code: errCode,
         message: errMsg,
       });
 
-      // Common TOS / permission signals from Graph API
       const tosSignals = [
         "terms",
         "tos",
@@ -175,13 +100,15 @@ export async function POST(request: NextRequest) {
       data: {
         metaBusinessId: businessId,
         metaCatalogId: createData.id,
+        metaCatalogOwnership: "client_owned",
+        metaConnectedAt: new Date(),
       },
     });
 
     return NextResponse.json({ catalogId: createData.id });
   } catch (err) {
     console.error({
-      event: "fb_catalog_create_error",
+      event: "meta_catalog_create_error",
       message: err instanceof Error ? err.message : String(err),
     });
     return NextResponse.json({ error: "meta_api_error" }, { status: 502 });

@@ -1,7 +1,59 @@
+import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { getEffectiveDealerId } from "@/lib/impersonation";
+import { checkSubscription } from "@/lib/checkSubscription";
 import { decrypt } from "@/lib/crypto";
+import { prisma } from "@/lib/prisma";
 
 export const GRAPH_VERSION = "v19.0";
 export const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
+
+/**
+ * Shared auth guard: validates session, dealer, and subscription.
+ */
+export async function authGuard(): Promise<
+  | { ok: true; dealerId: string }
+  | { ok: false; response: NextResponse }
+> {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "unauthorized" }, { status: 401 }),
+    };
+  }
+  const dealerId = await getEffectiveDealerId();
+  if (!dealerId) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "unauthorized" }, { status: 401 }),
+    };
+  }
+  const isSubscribed = await checkSubscription(dealerId);
+  if (!isSubscribed) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "subscription_required" },
+        { status: 402 }
+      ),
+    };
+  }
+  return { ok: true, dealerId };
+}
+
+/**
+ * Load and decrypt a dealer's Meta access token.
+ */
+export async function loadDealerToken(dealerId: string): Promise<string | null> {
+  const dealer = await prisma.dealer.findUnique({
+    where: { id: dealerId },
+    select: { metaAccessToken: true },
+  });
+  if (!dealer?.metaAccessToken) return null;
+  return decryptToken(dealer.metaAccessToken);
+}
 
 /**
  * Decrypt an encrypted Meta access token.
