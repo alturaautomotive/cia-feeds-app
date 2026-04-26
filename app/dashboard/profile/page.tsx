@@ -43,6 +43,12 @@ export default async function ProfilePage() {
       metaCatalogId: true,
       metaFeedId: true,
       metaPixelId: true,
+      metaTokenType: true,
+      metaTokenExpiresAt: true,
+      metaCatalogOwnership: true,
+      metaAdAccountId: true,
+      metaConnectedAt: true,
+      metaDeliveryMethod: true,
       subAccounts: {
         orderBy: { createdAt: "asc" },
         select: { id: true, name: true, vertical: true, createdAt: true },

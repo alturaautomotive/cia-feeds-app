@@ -27,6 +27,12 @@ const SAFE_SELECT = {
   latitude: true,
   longitude: true,
   metaPixelId: true,
+  metaTokenType: true,
+  metaTokenExpiresAt: true,
+  metaCatalogOwnership: true,
+  metaAdAccountId: true,
+  metaConnectedAt: true,
+  metaDeliveryMethod: true,
   feedUrlMode: true,
 } as const;
 
@@ -263,6 +269,12 @@ export async function PATCH(request: NextRequest) {
         metaFeedId: true,
         metaCatalogId: true,
         metaBusinessId: true,
+        metaTokenType: true,
+        metaTokenExpiresAt: true,
+        metaCatalogOwnership: true,
+        metaAdAccountId: true,
+        metaConnectedAt: true,
+        metaDeliveryMethod: true,
       },
     });
 

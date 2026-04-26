@@ -46,6 +46,12 @@ model Dealer {
   metaCatalogId        String?
   metaFeedId           String?
   metaPixelId          String?
+  metaTokenType        String?
+  metaTokenExpiresAt   DateTime?
+  metaCatalogOwnership String?
+  metaAdAccountId      String?
+  metaConnectedAt      DateTime?
+  metaDeliveryMethod   String    @default("csv")
   address              String?
   phone                String?
   customDomain         String?
