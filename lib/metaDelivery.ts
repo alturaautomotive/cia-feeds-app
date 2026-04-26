@@ -9,6 +9,7 @@ import {
 
 const BATCH_SIZE = 100; // DB cursor batch
 const META_BATCH_LIMIT = 5000; // Meta items_batch max per request
+const DELETE_BATCH_LIMIT = 5000; // Meta delete batch max per request
 
 /** Verticals that support API delivery mode. Others must use CSV. */
 export const API_SUPPORTED_VERTICALS: ReadonlySet<string> = new Set([
@@ -42,6 +43,9 @@ export type PushSummary = {
   handles: string[];
   warnings: string[];
   errors: string[];
+  deleteAttempted?: number;
+  deleteSucceeded?: number;
+  deleteFailed?: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -83,6 +87,9 @@ export function dispatchFeedDeliveryInBackground(
           itemsAttempted: result.summary.itemsAttempted,
           itemsSucceeded: result.summary.itemsSucceeded,
           itemsFailed: result.summary.itemsFailed,
+          deleteAttempted: result.summary.deleteAttempted,
+          deleteSucceeded: result.summary.deleteSucceeded,
+          deleteFailed: result.summary.deleteFailed,
         }));
       }
     } catch (err) {
@@ -118,6 +125,25 @@ export function isServicesPushable(listing: {
 }): boolean {
   const firstImage = listing.imageUrls[0];
   return !!firstImage && firstImage !== "https://placehold.co/600x400?text=No+Image";
+}
+
+// ---------------------------------------------------------------------------
+// Catalog item ID resolver — extracts the identifier sent to Meta
+// ---------------------------------------------------------------------------
+
+function resolveCatalogItemId(
+  row: Record<string, unknown>,
+  vertical: string
+): string | null {
+  if (vertical === "automotive") {
+    const vid = row["vehicle_id"];
+    return typeof vid === "string" && vid ? vid : null;
+  }
+  if (vertical === "services") {
+    const id = row["id"];
+    return typeof id === "string" && id ? id : null;
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -205,6 +231,32 @@ export async function deliverFeed(
     }));
 
   if ((feedItems as unknown[]).length === 0) {
+    // Safety guard: only allow reconciliation to delete tracked items when
+    // there are already tracked sync items (i.e. this is not a brand-new or
+    // truly empty catalog). This prevents catastrophic catalog wipes from
+    // transient empty-inventory states (e.g. all vehicles archived at once).
+    const trackedCount = await prisma.metaCatalogSyncItem.count({
+      where: { dealerId, metaCatalogId: dealer.metaCatalogId, lastDeletedAt: null },
+    });
+
+    if (trackedCount === 0) {
+      // Brand-new dealer or truly empty catalog — nothing to reconcile
+      return {
+        mode: "api",
+        status: "error",
+        error: "no_pushable_inventory",
+      };
+    }
+
+    // There are tracked items but zero current inventory — skip reconciliation
+    // to avoid wiping the entire catalog from a transient empty state.
+    console.warn({
+      event: "reconciliation_skipped_empty_inventory",
+      dealerId,
+      metaCatalogId: dealer.metaCatalogId,
+      trackedCount,
+      reason: "Zero pushable inventory with existing tracked items; skipping stale reconciliation as safety measure.",
+    });
     return {
       mode: "api",
       status: "error",
@@ -212,17 +264,68 @@ export async function deliverFeed(
     };
   }
 
-  return sendBatchesToMeta(
+  const typedItems = feedItems as Record<string, unknown>[];
+
+  // Collect active catalog item IDs for sync state tracking
+  const activeItemIds = new Set<string>();
+  for (const row of typedItems) {
+    const itemId = resolveCatalogItemId(row, vertical);
+    if (itemId) activeItemIds.add(itemId);
+  }
+
+  // Send upsert batches
+  const result = await sendBatchesToMeta(
     dealer.metaCatalogId,
     token,
-    feedItems as Record<string, unknown>[]
+    typedItems
   );
+
+  // After fully successful upsert, persist sync state and reconcile stale items.
+  // On partial success we skip sync/reconcile because sendBatchesToMeta does not
+  // return per-item success info, so we cannot safely mark items as "seen".
+  if (result.status === "success") {
+    await persistSyncState(dealerId, dealer.metaCatalogId, vertical, activeItemIds);
+
+    const deleteSummary = await reconcileStaleItems(
+      dealerId,
+      dealer.metaCatalogId,
+      vertical,
+      activeItemIds,
+      token
+    );
+
+    result.summary.deleteAttempted = deleteSummary.deleteAttempted;
+    result.summary.deleteSucceeded = deleteSummary.deleteSucceeded;
+    result.summary.deleteFailed = deleteSummary.deleteFailed;
+  } else if (result.status === "error" && result.partialSummary && result.partialSummary.itemsSucceeded > 0) {
+    console.warn({
+      event: "reconciliation_skipped_partial_success",
+      dealerId,
+      metaCatalogId: dealer.metaCatalogId,
+      itemsSucceeded: result.partialSummary.itemsSucceeded,
+      itemsFailed: result.partialSummary.itemsFailed,
+      reason: "Sync state persistence and reconciliation skipped due to partial batch failure.",
+    });
+  }
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------
 // pushInventoryToMeta — dealer-based public API (Comment 5)
 // ---------------------------------------------------------------------------
 
+/**
+ * Lower-level escape hatch that sends caller-supplied items to Meta without
+ * managing sync state. Unlike `deliverFeed`, this function does NOT call
+ * `persistSyncState` or `reconcileStaleItems`, so:
+ *
+ * - Stale items will not be tracked or cleaned up for items pushed via this path.
+ * - The returned `PushSummary` will not contain meaningful `deleteAttempted`,
+ *   `deleteSucceeded`, or `deleteFailed` values (they will be 0 or undefined).
+ *
+ * Callers that need full sync-state lifecycle should use `deliverFeed` instead.
+ */
 export async function pushInventoryToMeta(
   dealerId: string,
   items: Record<string, unknown>[]
@@ -356,8 +459,175 @@ async function extractServicesInventory(
 }
 
 // ---------------------------------------------------------------------------
+// Sync state persistence
+// ---------------------------------------------------------------------------
+
+const SYNC_BATCH_SIZE = 50;
+
+async function persistSyncState(
+  dealerId: string,
+  metaCatalogId: string,
+  entityType: string,
+  activeItemIds: Set<string>
+): Promise<void> {
+  const now = new Date();
+  const items = [...activeItemIds];
+
+  for (let i = 0; i < items.length; i += SYNC_BATCH_SIZE) {
+    const chunk = items.slice(i, i + SYNC_BATCH_SIZE);
+    const results = await Promise.allSettled(
+      chunk.map((catalogItemId) =>
+        prisma.metaCatalogSyncItem.upsert({
+          where: {
+            dealerId_metaCatalogId_catalogItemId: {
+              dealerId,
+              metaCatalogId,
+              catalogItemId,
+            },
+          },
+          create: {
+            dealerId,
+            metaCatalogId,
+            entityType,
+            catalogItemId,
+            lastSeenAt: now,
+            lastDeletedAt: null,
+          },
+          update: {
+            lastSeenAt: now,
+            lastDeletedAt: null, // Clear deletion mark if item reappears
+            entityType,
+          },
+        })
+      )
+    );
+
+    for (let j = 0; j < results.length; j++) {
+      const r = results[j];
+      if (r.status === "rejected") {
+        console.error({
+          event: "sync_state_persist_error",
+          dealerId,
+          catalogItemId: chunk[j],
+          message: r.reason instanceof Error ? r.reason.message : String(r.reason),
+        });
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Stale item reconciliation — detect + delete from Meta
+// ---------------------------------------------------------------------------
+
+export async function reconcileStaleItems(
+  dealerId: string,
+  metaCatalogId: string,
+  entityType: string,
+  activeItemIds: Set<string>,
+  token: string
+): Promise<{ deleteAttempted: number; deleteSucceeded: number; deleteFailed: number }> {
+  const result = { deleteAttempted: 0, deleteSucceeded: 0, deleteFailed: 0 };
+
+  // Find tracked items that are NOT in the current active set and NOT already deleted
+  const staleItems = await prisma.metaCatalogSyncItem.findMany({
+    where: {
+      dealerId,
+      metaCatalogId,
+      entityType,
+      lastDeletedAt: null,
+      ...(activeItemIds.size > 0
+        ? { catalogItemId: { notIn: [...activeItemIds] } }
+        : {}),
+    },
+    select: { id: true, catalogItemId: true },
+  });
+
+  if (staleItems.length === 0) return result;
+
+  // Batch delete requests to Meta
+  for (let i = 0; i < staleItems.length; i += DELETE_BATCH_LIMIT) {
+    const batch = staleItems.slice(i, i + DELETE_BATCH_LIMIT);
+    result.deleteAttempted += batch.length;
+
+    const payload = {
+      requests: batch.map((item) => ({
+        method: "DELETE",
+        data: { id: item.catalogItemId },
+      })),
+    };
+
+    try {
+      const res = await graphFetch(
+        `/${metaCatalogId}/items_batch`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+        token
+      );
+
+      if (res.ok) {
+        // Mark all items in this batch as deleted
+        const now = new Date();
+        const deletedIds = batch.map((item) => item.id);
+        await prisma.metaCatalogSyncItem.updateMany({
+          where: { id: { in: deletedIds } },
+          data: { lastDeletedAt: now },
+        });
+        result.deleteSucceeded += batch.length;
+      } else {
+        // Try to parse error for logging
+        let errorDetail: string;
+        try {
+          const errorBody = await res.json();
+          errorDetail = errorBody?.error?.message || JSON.stringify(errorBody);
+        } catch {
+          errorDetail = `HTTP ${res.status}`;
+        }
+        console.error({
+          event: "meta_delete_batch_error",
+          dealerId,
+          metaCatalogId,
+          batchSize: batch.length,
+          error: errorDetail,
+        });
+        result.deleteFailed += batch.length;
+      }
+    } catch (err) {
+      console.error({
+        event: "meta_delete_batch_network_error",
+        dealerId,
+        metaCatalogId,
+        batchSize: batch.length,
+        message: err instanceof Error ? err.message : String(err),
+      });
+      result.deleteFailed += batch.length;
+    }
+  }
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // sendBatchesToMeta — internal items_batch engine (Comment 1 + 5)
 // ---------------------------------------------------------------------------
+
+function makeEmptySummary(): PushSummary {
+  return {
+    batches: 0,
+    itemsAttempted: 0,
+    itemsSucceeded: 0,
+    itemsFailed: 0,
+    handles: [],
+    warnings: [],
+    errors: [],
+    deleteAttempted: 0,
+    deleteSucceeded: 0,
+    deleteFailed: 0,
+  };
+}
 
 function isGraphAuthError(body: { error?: { code?: number; error_subcode?: number } }): boolean {
   const code = body?.error?.code;
@@ -370,15 +640,7 @@ async function sendBatchesToMeta(
   token: string,
   items: Record<string, unknown>[]
 ): Promise<DeliveryResult> {
-  const summary: PushSummary = {
-    batches: 0,
-    itemsAttempted: 0,
-    itemsSucceeded: 0,
-    itemsFailed: 0,
-    handles: [],
-    warnings: [],
-    errors: [],
-  };
+  const summary = makeEmptySummary();
 
   // Chunk items into META_BATCH_LIMIT-sized batches
   const chunks: Record<string, unknown>[][] = [];

@@ -7,6 +7,7 @@ vi.mock("@/lib/prisma", () => ({
       findUnique: vi.fn(),
       findMany: vi.fn(),
       create: vi.fn(),
+      update: vi.fn(),
     },
     vehicle: {
       findMany: vi.fn(),
@@ -22,6 +23,11 @@ vi.mock("@/lib/prisma", () => ({
       update: vi.fn(),
       delete: vi.fn(),
       count: vi.fn(),
+    },
+    metaCatalogSyncItem: {
+      upsert: vi.fn(),
+      findMany: vi.fn(),
+      updateMany: vi.fn(),
     },
   },
 }));

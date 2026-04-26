@@ -69,6 +69,7 @@ model Dealer {
   leads                Lead[]
   subAccounts          SubAccount[]   @relation("DealerSubAccounts")
   teamUsers            TeamUser[]
+  metaCatalogSyncItems MetaCatalogSyncItem[]
 }
 
 model SubAccount {
@@ -253,6 +254,23 @@ model TeamUser {
   @@unique([dealerId, email])
   @@index([dealerId])
   @@index([subAccountId])
+}
+
+model MetaCatalogSyncItem {
+  id             String    @id @default(uuid())
+  dealerId       String
+  dealer         Dealer    @relation(fields: [dealerId], references: [id], onDelete: Cascade)
+  metaCatalogId  String
+  entityType     String    // "automotive" | "services"
+  catalogItemId  String    // The exact ID value sent to Meta (vehicle_id or listing id)
+  lastSeenAt     DateTime  @default(now())
+  lastDeletedAt  DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([dealerId, metaCatalogId, catalogItemId])
+  @@index([dealerId, metaCatalogId, lastDeletedAt])
+  @@index([dealerId])
 }
 
 model TeamInvite {
