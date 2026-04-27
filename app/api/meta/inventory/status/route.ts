@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { authGuard, loadDealerToken, graphFetch } from "@/lib/meta";
 import { prisma } from "@/lib/prisma";
-import { isAutomotivePushable, isServicesPushable } from "@/lib/metaDelivery";
+import { isAutomotivePushable, isServicesPushable, sanitizeErrorText } from "@/lib/metaDelivery";
 
-export async function GET(request: NextRequest) {
+export async function GET(request: Request) {
   const guard = await authGuard();
   if (!guard.ok) return guard.response;
 
@@ -69,10 +69,106 @@ export async function GET(request: NextRequest) {
   }
   readiness.hasInventory = inventoryCount > 0;
 
+  // Queue state — latest active/due job
+  const activeJob = await prisma.metaDeliveryJob.findFirst({
+    where: {
+      dealerId: guard.dealerId,
+      status: { in: ["queued", "processing", "retry"] },
+    },
+    orderBy: { updatedAt: "desc" },
+    select: {
+      id: true,
+      status: true,
+      nextRunAt: true,
+      attemptCount: true,
+      coalescedCount: true,
+    },
+  });
+
+  const queue = activeJob
+    ? {
+        jobId: activeJob.id,
+        status: activeJob.status,
+        nextRunAt: activeJob.nextRunAt,
+        attemptCount: activeJob.attemptCount,
+        coalescedCount: activeJob.coalescedCount,
+      }
+    : null;
+
+  // Last-run health — most recent job that has actually executed
+  const lastRunJob = await prisma.metaDeliveryJob.findFirst({
+    where: {
+      dealerId: guard.dealerId,
+      lastRunAt: { not: null },
+    },
+    orderBy: { lastRunAt: "desc" },
+    select: {
+      lastRunAt: true,
+      lastRunStatus: true,
+      lastErrorCode: true,
+      lastErrorMessage: true,
+      lastItemsAttempted: true,
+      lastItemsSucceeded: true,
+      lastItemsFailed: true,
+      lastDeleteAttempted: true,
+      lastDeleteSucceeded: true,
+      lastDeleteFailed: true,
+    },
+  });
+
+  const lastRun = lastRunJob
+    ? {
+        lastRunAt: lastRunJob.lastRunAt,
+        lastRunStatus: lastRunJob.lastRunStatus,
+        lastErrorCode: lastRunJob.lastErrorCode
+          ? sanitizeErrorText(lastRunJob.lastErrorCode)
+          : null,
+        lastErrorMessage: lastRunJob.lastErrorMessage
+          ? sanitizeErrorText(lastRunJob.lastErrorMessage)
+          : null,
+        itemsAttempted: lastRunJob.lastItemsAttempted,
+        itemsSucceeded: lastRunJob.lastItemsSucceeded,
+        itemsFailed: lastRunJob.lastItemsFailed,
+        deleteAttempted: lastRunJob.lastDeleteAttempted,
+        deleteSucceeded: lastRunJob.lastDeleteSucceeded,
+        deleteFailed: lastRunJob.lastDeleteFailed,
+      }
+    : null;
+
+  // Circuit breaker — check for any currently blocked job
+  const blockedJob = await prisma.metaDeliveryJob.findFirst({
+    where: { dealerId: guard.dealerId, status: "blocked" },
+    orderBy: { updatedAt: "desc" },
+    select: {
+      blockedAt: true,
+      blockedReason: true,
+      consecutiveAuthFailures: true,
+    },
+  });
+
+  const circuit = blockedJob
+    ? {
+        blocked: true,
+        needsReconnect: true,
+        blockedAt: blockedJob.blockedAt,
+        reason: blockedJob.blockedReason
+          ? sanitizeErrorText(blockedJob.blockedReason)
+          : null,
+        consecutiveAuthFailures: blockedJob.consecutiveAuthFailures,
+      }
+    : {
+        blocked: false,
+        needsReconnect: false,
+      };
+
+  // Fold circuit state into readiness — blocked dealers are never ready
+  const notBlocked = !circuit.blocked;
+  readiness.notBlocked = notBlocked;
   const ready = Object.values(readiness).every(Boolean);
 
   // Optional: poll a specific batch handle (Comment 2 — use catalog status edge)
-  const handle = request.nextUrl.searchParams.get("handle");
+  const url = new URL(request.url);
+  const handle = url.searchParams.get("handle");
   let batchStatus: unknown = null;
 
   if (handle && dealer.metaCatalogId && tokenValid) {
@@ -117,6 +213,9 @@ export async function GET(request: NextRequest) {
     inventoryCount,
     vertical: dealer.vertical,
     deliveryMethod: dealer.metaDeliveryMethod,
+    queue,
+    lastRun,
+    circuit,
     ...(batchStatus ? { batchStatus } : {}),
   });
 }

@@ -6,11 +6,19 @@ import {
   type VehicleForCSV,
   type FeedUrlOpts,
 } from "@/lib/csv";
+import { randomUUID } from "crypto";
 
 const BATCH_SIZE = 100; // DB cursor batch
 const META_BATCH_LIMIT = 5000; // Meta items_batch max per request
 const DELETE_BATCH_LIMIT = 5000; // Meta delete batch max per request
 const STALE_MIN_AGE_MS = 60 * 60 * 1000; // 1 hour — items must be unseen for at least this long before deletion
+
+// Queue constants
+const LEASE_DURATION_MS = 8 * 60 * 1000; // 8 minutes — above Vercel function max runtime (300s)
+const DRAIN_BATCH_SIZE = 10; // max jobs per drain run
+const MAX_ATTEMPTS = 5;
+const BASE_BACKOFF_MS = 30_000; // 30s base for exponential backoff
+const AUTH_FAILURE_THRESHOLD = 3; // consecutive auth failures before blocking
 
 /** Verticals that support API delivery mode. Others must use CSV. */
 export const API_SUPPORTED_VERTICALS: ReadonlySet<string> = new Set([
@@ -49,8 +57,467 @@ export type PushSummary = {
   deleteFailed?: number;
 };
 
+export type EnqueueResult =
+  | { outcome: "queued"; jobId: string }
+  | { outcome: "coalesced"; jobId: string; coalescedCount: number }
+  | { outcome: "blocked"; reason: string }
+  | { outcome: "skipped"; reason: string };
+
+export type DrainSummary = {
+  processed: number;
+  succeeded: number;
+  retried: number;
+  blocked: number;
+  skipped: number;
+  errors: number;
+};
+
 // ---------------------------------------------------------------------------
-// Shared after() dispatch helper — logs non-exception failures
+// Queue: enqueue / coalesce
+// ---------------------------------------------------------------------------
+
+const ACTIVE_STATUSES = ["queued", "processing", "retry"];
+
+export async function enqueueDeliveryJob(
+  dealerId: string,
+  trigger: string
+): Promise<EnqueueResult> {
+  // Check dealer delivery method — CSV dealers get no-op
+  const dealer = await prisma.dealer.findUnique({
+    where: { id: dealerId },
+    select: { metaDeliveryMethod: true },
+  });
+
+  if (!dealer) {
+    return { outcome: "skipped", reason: "dealer_not_found" };
+  }
+
+  if (dealer.metaDeliveryMethod === "csv") {
+    return { outcome: "skipped", reason: "dealer_mode_csv" };
+  }
+
+  // Check for blocked job — but gate on current reconnect state.
+  // If the dealer has reconnected (valid token + metaConnectedAt after blockedAt),
+  // clear stale blocked rows so enqueue can proceed.
+  const blockedJob = await prisma.metaDeliveryJob.findFirst({
+    where: { dealerId, status: "blocked" },
+    orderBy: { updatedAt: "desc" },
+  });
+
+  if (blockedJob) {
+    const dealerMeta = await prisma.dealer.findUnique({
+      where: { id: dealerId },
+      select: { metaAccessToken: true, metaTokenExpiresAt: true, metaConnectedAt: true },
+    });
+
+    const hasValidToken =
+      !!dealerMeta?.metaAccessToken &&
+      (!dealerMeta.metaTokenExpiresAt || dealerMeta.metaTokenExpiresAt > new Date());
+
+    const reconnectedAfterBlock =
+      hasValidToken &&
+      !!dealerMeta?.metaConnectedAt &&
+      !!blockedJob.blockedAt &&
+      dealerMeta.metaConnectedAt > blockedJob.blockedAt;
+
+    if (reconnectedAfterBlock) {
+      // Dealer reconnected after the block — clear all blocked rows for this dealer
+      await prisma.metaDeliveryJob.updateMany({
+        where: { dealerId, status: "blocked" },
+        data: { status: "failed", lastErrorCode: "unblocked_reconnect" },
+      });
+    } else {
+      return { outcome: "blocked", reason: blockedJob.blockedReason ?? "auth_failure" };
+    }
+  }
+
+  // Coalesce if an active job already exists for this dealer
+  // Exclude processing jobs with expired leases — they are effectively stuck
+  const now = new Date();
+  const existingJob = await prisma.metaDeliveryJob.findFirst({
+    where: {
+      dealerId,
+      status: { in: ACTIVE_STATUSES },
+      OR: [
+        { status: { in: ["queued", "retry"] } },
+        { status: "processing", leaseExpiresAt: { gte: now } },
+      ],
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (existingJob) {
+    const updated = await prisma.metaDeliveryJob.update({
+      where: { id: existingJob.id },
+      data: { coalescedCount: { increment: 1 } },
+    });
+    return { outcome: "coalesced", jobId: updated.id, coalescedCount: updated.coalescedCount };
+  }
+
+  // Create new job — handle unique constraint violation from concurrent creates
+  try {
+    const job = await prisma.metaDeliveryJob.create({
+      data: {
+        dealerId,
+        trigger,
+        status: "queued",
+        nextRunAt: new Date(),
+      },
+    });
+    return { outcome: "queued", jobId: job.id };
+  } catch (err: unknown) {
+    // Prisma unique constraint violation code: P2002
+    if (
+      err &&
+      typeof err === "object" &&
+      "code" in err &&
+      (err as { code: string }).code === "P2002"
+    ) {
+      // Another concurrent create won the race — coalesce onto it
+      const raceWinner = await prisma.metaDeliveryJob.findFirst({
+        where: { dealerId, status: { in: ACTIVE_STATUSES } },
+        orderBy: { createdAt: "desc" },
+      });
+      if (raceWinner) {
+        const updated = await prisma.metaDeliveryJob.update({
+          where: { id: raceWinner.id },
+          data: { coalescedCount: { increment: 1 } },
+        });
+        return { outcome: "coalesced", jobId: updated.id, coalescedCount: updated.coalescedCount };
+      }
+    }
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Queue: unblock dealer — explicit reset after reconnect
+// ---------------------------------------------------------------------------
+
+export async function unblockDealerJobs(dealerId: string): Promise<number> {
+  const result = await prisma.metaDeliveryJob.updateMany({
+    where: { dealerId, status: "blocked" },
+    data: { status: "failed", lastErrorCode: "unblocked_manual" },
+  });
+  return result.count;
+}
+
+// ---------------------------------------------------------------------------
+// Queue: claim due jobs with lease
+// ---------------------------------------------------------------------------
+
+export async function claimDueJobs(
+  limit: number = DRAIN_BATCH_SIZE
+): Promise<{ id: string; dealerId: string; leaseToken: string }[]> {
+  const now = new Date();
+  const leaseToken = randomUUID();
+  const leaseExpiresAt = new Date(now.getTime() + LEASE_DURATION_MS);
+
+  // Recovery step: transition expired processing leases back to retry
+  await prisma.metaDeliveryJob.updateMany({
+    where: {
+      status: "processing",
+      leaseExpiresAt: { lt: now },
+    },
+    data: {
+      status: "retry",
+      leaseToken: null,
+      leaseExpiresAt: null,
+      nextRunAt: now,
+    },
+  });
+
+  // Find due jobs: (queued or retry) with nextRunAt <= now, no active lease
+  const dueJobs = await prisma.metaDeliveryJob.findMany({
+    where: {
+      status: { in: ["queued", "retry"] },
+      nextRunAt: { lte: now },
+      OR: [
+        { leaseExpiresAt: null },
+        { leaseExpiresAt: { lt: now } },
+      ],
+    },
+    orderBy: { nextRunAt: "asc" },
+    take: limit,
+    select: { id: true, dealerId: true },
+  });
+
+  if (dueJobs.length === 0) return [];
+
+  // Claim each job with a lease — skip if already claimed by another worker
+  const claimed: { id: string; dealerId: string; leaseToken: string }[] = [];
+  const seenDealers = new Set<string>();
+
+  for (const job of dueJobs) {
+    // One active execution per dealer
+    if (seenDealers.has(job.dealerId)) continue;
+
+    try {
+      // Optimistic claim: update only if lease is still free and status is expected
+      const claimResult = await prisma.metaDeliveryJob.updateMany({
+        where: {
+          id: job.id,
+          status: { in: ["queued", "retry"] },
+          OR: [
+            { leaseExpiresAt: null },
+            { leaseExpiresAt: { lt: now } },
+          ],
+        },
+        data: {
+          status: "processing",
+          leaseToken,
+          leaseExpiresAt,
+        },
+      });
+      // Only consider claimed if updateMany actually modified a row
+      if (claimResult.count === 1) {
+        claimed.push({ ...job, leaseToken });
+        seenDealers.add(job.dealerId);
+      }
+    } catch {
+      // Concurrent claim — skip
+    }
+  }
+
+  return claimed;
+}
+
+// ---------------------------------------------------------------------------
+// Queue: drain worker loop
+// ---------------------------------------------------------------------------
+
+/**
+ * Lease-guarded job update: uses updateMany with both id and leaseToken
+ * in the where clause. Returns true if the update succeeded (lease still
+ * owned), false if the lease was lost (another worker reclaimed the job).
+ */
+async function leaseGuardedUpdate(
+  jobId: string,
+  leaseToken: string,
+  data: Record<string, unknown>
+): Promise<boolean> {
+  const result = await prisma.metaDeliveryJob.updateMany({
+    where: { id: jobId, leaseToken },
+    data: { ...data, leaseToken: null, leaseExpiresAt: null },
+  });
+  return result.count > 0;
+}
+
+export async function drainDeliveryQueue(): Promise<DrainSummary> {
+  const summary: DrainSummary = {
+    processed: 0,
+    succeeded: 0,
+    retried: 0,
+    blocked: 0,
+    skipped: 0,
+    errors: 0,
+  };
+
+  const jobs = await claimDueJobs(DRAIN_BATCH_SIZE);
+
+  for (const job of jobs) {
+    summary.processed++;
+
+    // Re-check dealer mode before execution
+    const dealer = await prisma.dealer.findUnique({
+      where: { id: job.dealerId },
+      select: { metaDeliveryMethod: true },
+    });
+
+    if (!dealer || dealer.metaDeliveryMethod === "csv") {
+      const owned = await leaseGuardedUpdate(job.id, job.leaseToken, {
+        status: "skipped",
+        lastRunAt: new Date(),
+        lastRunStatus: "skipped",
+        lastErrorCode: dealer ? "dealer_mode_csv" : "dealer_not_found",
+      });
+      if (!owned) continue; // lease lost — stop processing this job
+      summary.skipped++;
+      continue;
+    }
+
+    try {
+      const result = await deliverFeed(job.dealerId);
+      const now = new Date();
+
+      if (result.status === "success" && result.mode === "api") {
+        const s = result.summary;
+        const owned = await leaseGuardedUpdate(job.id, job.leaseToken, {
+          status: "success",
+          lastRunAt: now,
+          lastRunStatus: "success",
+          lastErrorCode: null,
+          lastErrorMessage: null,
+          lastItemsAttempted: s.itemsAttempted,
+          lastItemsSucceeded: s.itemsSucceeded,
+          lastItemsFailed: s.itemsFailed,
+          lastDeleteAttempted: s.deleteAttempted ?? 0,
+          lastDeleteSucceeded: s.deleteSucceeded ?? 0,
+          lastDeleteFailed: s.deleteFailed ?? 0,
+          consecutiveAuthFailures: 0,
+        });
+        if (owned) summary.succeeded++;
+      } else if (result.status === "skipped") {
+        const owned = await leaseGuardedUpdate(job.id, job.leaseToken, {
+          status: "skipped",
+          lastRunAt: now,
+          lastRunStatus: "skipped",
+          lastErrorCode: result.reason,
+        });
+        if (owned) summary.skipped++;
+      } else if (result.status === "error") {
+        const isAuthError = isAuthRelatedError(result.error);
+        const currentJob = await prisma.metaDeliveryJob.findFirst({
+          where: { id: job.id, leaseToken: job.leaseToken },
+          select: { attemptCount: true, maxAttempts: true, consecutiveAuthFailures: true },
+        });
+
+        if (!currentJob) continue; // lease lost
+
+        const attemptCount = currentJob.attemptCount + 1;
+        const authFailures = isAuthError
+          ? currentJob.consecutiveAuthFailures + 1
+          : 0;
+        const maxAttempts = currentJob.maxAttempts;
+
+        const sanitizedError = sanitizeErrorText(result.error);
+        const sanitizedMessage = result.partialSummary
+          ? sanitizeErrorText(result.partialSummary.errors?.slice(0, 3).join("; ") ?? result.error)
+          : sanitizedError;
+
+        // Circuit breaker: block after threshold auth failures
+        if (authFailures >= AUTH_FAILURE_THRESHOLD) {
+          const owned = await leaseGuardedUpdate(job.id, job.leaseToken, {
+            status: "blocked",
+            attemptCount,
+            consecutiveAuthFailures: authFailures,
+            blockedAt: now,
+            blockedReason: sanitizeErrorText(`auth_failure: ${result.error}`),
+            lastRunAt: now,
+            lastRunStatus: "error",
+            lastErrorCode: sanitizedError,
+            lastErrorMessage: sanitizedMessage,
+          });
+          if (owned) summary.blocked++;
+          continue;
+        }
+
+        // Retry with backoff or fail permanently
+        if (attemptCount < maxAttempts) {
+          const jitter = Math.random() * 5000;
+          const backoffMs = BASE_BACKOFF_MS * Math.pow(2, attemptCount - 1) + jitter;
+          const nextRunAt = new Date(now.getTime() + backoffMs);
+
+          const owned = await leaseGuardedUpdate(job.id, job.leaseToken, {
+            status: "retry",
+            attemptCount,
+            consecutiveAuthFailures: authFailures,
+            nextRunAt,
+            lastRunAt: now,
+            lastRunStatus: "error",
+            lastErrorCode: sanitizedError,
+            lastErrorMessage: sanitizedMessage,
+          });
+          if (owned) summary.retried++;
+        } else {
+          const owned = await leaseGuardedUpdate(job.id, job.leaseToken, {
+            status: "failed",
+            attemptCount,
+            consecutiveAuthFailures: authFailures,
+            lastRunAt: now,
+            lastRunStatus: "error",
+            lastErrorCode: sanitizedError,
+            lastErrorMessage: sanitizedMessage,
+          });
+          if (owned) summary.errors++;
+        }
+      }
+    } catch (err) {
+      const now = new Date();
+      const currentJob = await prisma.metaDeliveryJob.findFirst({
+        where: { id: job.id, leaseToken: job.leaseToken },
+        select: { attemptCount: true, maxAttempts: true },
+      });
+
+      if (!currentJob) continue; // lease lost
+
+      const attemptCount = currentJob.attemptCount + 1;
+      const maxAttempts = currentJob.maxAttempts;
+      const sanitizedMessage = sanitizeErrorText(
+        err instanceof Error ? err.message : String(err)
+      );
+
+      if (attemptCount < maxAttempts) {
+        const jitter = Math.random() * 5000;
+        const backoffMs = BASE_BACKOFF_MS * Math.pow(2, attemptCount - 1) + jitter;
+        const owned = await leaseGuardedUpdate(job.id, job.leaseToken, {
+          status: "retry",
+          attemptCount,
+          nextRunAt: new Date(now.getTime() + backoffMs),
+          lastRunAt: now,
+          lastRunStatus: "error",
+          lastErrorCode: "exception",
+          lastErrorMessage: sanitizedMessage,
+        });
+        if (owned) summary.retried++;
+      } else {
+        const owned = await leaseGuardedUpdate(job.id, job.leaseToken, {
+          status: "failed",
+          attemptCount,
+          lastRunAt: now,
+          lastRunStatus: "error",
+          lastErrorCode: "exception",
+          lastErrorMessage: sanitizedMessage,
+        });
+        if (owned) summary.errors++;
+      }
+    }
+  }
+
+  return summary;
+}
+
+// ---------------------------------------------------------------------------
+// Error text sanitization — strip tokens, URLs, and sensitive details
+// ---------------------------------------------------------------------------
+
+/** Redact token-like substrings, full URLs with query params, and long hex strings. */
+export function sanitizeErrorText(text: string): string {
+  if (!text) return text;
+  let s = text;
+  // Strip Bearer/access tokens (long alphanumeric strings often prefixed)
+  s = s.replace(/\b(EAA[A-Za-z0-9]{20,})\b/g, "[REDACTED_TOKEN]");
+  // Strip generic long hex/base64 tokens (40+ chars)
+  s = s.replace(/\b[A-Za-z0-9+/]{40,}={0,2}\b/g, "[REDACTED]");
+  // Strip full URLs with query params (keep scheme+host, drop path/query)
+  s = s.replace(/https?:\/\/[^\s"']+\?[^\s"']*/g, (match) => {
+    try {
+      const u = new URL(match);
+      return `${u.origin}/[REDACTED_PATH]`;
+    } catch {
+      return "[REDACTED_URL]";
+    }
+  });
+  // Strip remaining URLs with paths that might contain sensitive info
+  s = s.replace(/https?:\/\/graph\.facebook\.com\/[^\s"']*/g, "https://graph.facebook.com/[REDACTED_PATH]");
+  return s;
+}
+
+// ---------------------------------------------------------------------------
+// Auth error classification for circuit breaker
+// ---------------------------------------------------------------------------
+
+function isAuthRelatedError(error: string): boolean {
+  const authPatterns = [
+    "auth", "permission", "token", "unauthorized", "forbidden",
+    "meta_token_missing", "meta_token_expired", "meta_token_decrypt_failed",
+  ];
+  const lower = error.toLowerCase();
+  return authPatterns.some((p) => lower.includes(p));
+}
+
+// ---------------------------------------------------------------------------
+// Shared after() dispatch helper — now uses enqueue semantics
 // ---------------------------------------------------------------------------
 
 export function dispatchFeedDeliveryInBackground(
@@ -60,42 +527,18 @@ export function dispatchFeedDeliveryInBackground(
 ): void {
   afterFn(async () => {
     try {
-      const result = await deliverFeed(dealerId);
-      if (result.status === "error") {
-        console.error(JSON.stringify({
-          event: "deliver_feed_error",
-          dealerId,
-          trigger,
-          mode: result.mode,
-          error: result.error,
-          partialSummary: "partialSummary" in result ? result.partialSummary : undefined,
-        }));
-      } else if (result.status === "skipped") {
-        console.warn(JSON.stringify({
-          event: "deliver_feed_skipped",
-          dealerId,
-          trigger,
-          mode: result.mode,
-          reason: result.reason,
-        }));
-      } else if (result.status === "success") {
-        console.log(JSON.stringify({
-          event: "deliver_feed_success",
-          dealerId,
-          trigger,
-          mode: result.mode,
-          batches: result.summary.batches,
-          itemsAttempted: result.summary.itemsAttempted,
-          itemsSucceeded: result.summary.itemsSucceeded,
-          itemsFailed: result.summary.itemsFailed,
-          deleteAttempted: result.summary.deleteAttempted,
-          deleteSucceeded: result.summary.deleteSucceeded,
-          deleteFailed: result.summary.deleteFailed,
-        }));
-      }
+      const result = await enqueueDeliveryJob(dealerId, trigger);
+      console.log(JSON.stringify({
+        event: "delivery_job_enqueued",
+        dealerId,
+        trigger,
+        outcome: result.outcome,
+        ...("jobId" in result ? { jobId: result.jobId } : {}),
+        ...("reason" in result ? { reason: result.reason } : {}),
+      }));
     } catch (err) {
       console.error(JSON.stringify({
-        event: "deliver_feed_exception",
+        event: "delivery_job_enqueue_exception",
         dealerId,
         trigger,
         message: err instanceof Error ? err.message : String(err),

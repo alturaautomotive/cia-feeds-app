@@ -70,6 +70,7 @@ model Dealer {
   subAccounts          SubAccount[]   @relation("DealerSubAccounts")
   teamUsers            TeamUser[]
   metaCatalogSyncItems MetaCatalogSyncItem[]
+  metaDeliveryJobs     MetaDeliveryJob[]
 }
 
 model SubAccount {
@@ -271,6 +272,53 @@ model MetaCatalogSyncItem {
   @@unique([dealerId, metaCatalogId, catalogItemId])
   @@index([dealerId, metaCatalogId, lastDeletedAt])
   @@index([dealerId])
+}
+
+model MetaDeliveryJob {
+  id                       String    @id @default(uuid())
+  dealerId                 String
+  dealer                   Dealer    @relation(fields: [dealerId], references: [id], onDelete: Cascade)
+
+  // Lifecycle
+  status                   String    @default("queued") // queued | processing | retry | success | failed | blocked | skipped
+
+  // Dedupe
+  trigger                  String    @default("manual")
+  coalescedCount           Int       @default(0)
+
+  // Retry
+  attemptCount             Int       @default(0)
+  maxAttempts              Int       @default(5)
+  nextRunAt                DateTime  @default(now())
+
+  // Lease (prevents overlapping workers)
+  leaseToken               String?
+  leaseExpiresAt           DateTime?
+
+  // Circuit breaker
+  consecutiveAuthFailures  Int       @default(0)
+  blockedAt                DateTime?
+  blockedReason            String?
+
+  // Last-run health snapshot
+  lastRunAt                DateTime?
+  lastRunStatus            String?   // success | error | skipped
+  lastErrorCode            String?
+  lastErrorMessage         String?
+  lastItemsAttempted       Int?
+  lastItemsSucceeded       Int?
+  lastItemsFailed          Int?
+  lastDeleteAttempted      Int?
+  lastDeleteSucceeded      Int?
+  lastDeleteFailed         Int?
+
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  @@index([status, nextRunAt])
+  @@index([dealerId, status])
+  // Partial unique index enforced via raw SQL migration:
+  // CREATE UNIQUE INDEX ... ON "MetaDeliveryJob" ("dealerId") WHERE "status" IN ('queued','processing','retry')
 }
 
 model TeamInvite {

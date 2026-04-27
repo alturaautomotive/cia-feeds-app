@@ -11,17 +11,19 @@ vi.mock("@/lib/prisma", () => ({
     dealer: { findUnique: vi.fn() },
     vehicle: { findMany: vi.fn() },
     listing: { findMany: vi.fn() },
+    metaDeliveryJob: { findFirst: vi.fn() },
   },
 }));
 
 vi.mock("@/lib/metaDelivery", () => ({
   isAutomotivePushable: vi.fn(),
   isServicesPushable: vi.fn(),
+  sanitizeErrorText: vi.fn((text: string) => text),
 }));
 
 import { authGuard, loadDealerToken, graphFetch } from "@/lib/meta";
 import { prisma } from "@/lib/prisma";
-import { isAutomotivePushable, isServicesPushable } from "@/lib/metaDelivery";
+import { isAutomotivePushable, isServicesPushable, sanitizeErrorText } from "@/lib/metaDelivery";
 import { GET } from "@/app/api/meta/inventory/status/route";
 
 const DEALER_ID = "dealer-status-001";
@@ -49,6 +51,9 @@ beforeEach(() => {
   vi.mocked(prisma.dealer.findUnique).mockResolvedValue(READY_DEALER as never);
   vi.mocked(prisma.vehicle.findMany).mockResolvedValue([{ imageUrl: "img.jpg", images: [], url: "https://example.com/car" }] as never);
   vi.mocked(prisma.listing.findMany).mockResolvedValue([] as never);
+  // Default: all three findFirst calls (queue, lastRun, circuit) return null.
+  // Tests that need specific queue/lastRun/circuit data must reset and re-seed.
+  vi.mocked(prisma.metaDeliveryJob.findFirst).mockResolvedValue(null as never);
   vi.mocked(isAutomotivePushable).mockReturnValue(true);
   vi.mocked(isServicesPushable).mockReturnValue(false);
 });
@@ -205,5 +210,105 @@ describe("GET /api/meta/inventory/status", () => {
     const body = await res.json();
     expect(body.batchStatus).toBeDefined();
     expect(body.batchStatus.error).toContain("network failure");
+  });
+
+  // Queue state and last-run health tests
+  it("includes queue state when a delivery job exists", async () => {
+    vi.mocked(prisma.metaDeliveryJob.findFirst).mockReset();
+    // queue findFirst — active job
+    vi.mocked(prisma.metaDeliveryJob.findFirst).mockResolvedValueOnce({
+      id: "job-001",
+      status: "queued",
+      nextRunAt: new Date("2026-04-26T12:00:00Z"),
+      attemptCount: 0,
+      coalescedCount: 2,
+    } as never);
+    // lastRun findFirst — no completed job
+    vi.mocked(prisma.metaDeliveryJob.findFirst).mockResolvedValueOnce(null as never);
+    // circuit findFirst — not blocked
+    vi.mocked(prisma.metaDeliveryJob.findFirst).mockResolvedValueOnce(null as never);
+
+    const res = await GET(makeRequest());
+    const body = await res.json();
+    expect(body.queue).toBeDefined();
+    expect(body.queue.jobId).toBe("job-001");
+    expect(body.queue.status).toBe("queued");
+    expect(body.queue.coalescedCount).toBe(2);
+    expect(body.lastRun).toBeNull();
+    expect(body.circuit.blocked).toBe(false);
+  });
+
+  it("includes last-run health when job has run", async () => {
+    vi.mocked(prisma.metaDeliveryJob.findFirst).mockReset();
+    // queue findFirst — no active job
+    vi.mocked(prisma.metaDeliveryJob.findFirst).mockResolvedValueOnce(null as never);
+    // lastRun findFirst — completed job with stats
+    vi.mocked(prisma.metaDeliveryJob.findFirst).mockResolvedValueOnce({
+      lastRunAt: new Date("2026-04-26T11:55:00Z"),
+      lastRunStatus: "success",
+      lastErrorCode: null,
+      lastErrorMessage: null,
+      lastItemsAttempted: 50,
+      lastItemsSucceeded: 48,
+      lastItemsFailed: 2,
+      lastDeleteAttempted: 3,
+      lastDeleteSucceeded: 3,
+      lastDeleteFailed: 0,
+    } as never);
+    // circuit findFirst — not blocked
+    vi.mocked(prisma.metaDeliveryJob.findFirst).mockResolvedValueOnce(null as never);
+
+    const res = await GET(makeRequest());
+    const body = await res.json();
+    expect(body.lastRun).toBeDefined();
+    expect(body.lastRun.lastRunStatus).toBe("success");
+    expect(body.lastRun.itemsAttempted).toBe(50);
+    expect(body.lastRun.itemsSucceeded).toBe(48);
+    expect(body.lastRun.deleteSucceeded).toBe(3);
+  });
+
+  it("includes circuit breaker info when dealer is blocked", async () => {
+    vi.mocked(prisma.metaDeliveryJob.findFirst).mockReset();
+    // queue findFirst — no active job
+    vi.mocked(prisma.metaDeliveryJob.findFirst).mockResolvedValueOnce(null as never);
+    // lastRun findFirst — last run had error
+    vi.mocked(prisma.metaDeliveryJob.findFirst).mockResolvedValueOnce({
+      lastRunAt: new Date("2026-04-26T11:50:00Z"),
+      lastRunStatus: "error",
+      lastErrorCode: "Auth/permission failure",
+      lastErrorMessage: "Token expired",
+      lastItemsAttempted: 0,
+      lastItemsSucceeded: 0,
+      lastItemsFailed: 0,
+      lastDeleteAttempted: 0,
+      lastDeleteSucceeded: 0,
+      lastDeleteFailed: 0,
+    } as never);
+    // circuit findFirst — blocked job
+    vi.mocked(prisma.metaDeliveryJob.findFirst).mockResolvedValueOnce({
+      blockedAt: new Date("2026-04-26T11:50:00Z"),
+      blockedReason: "auth_failure: token expired",
+      consecutiveAuthFailures: 3,
+    } as never);
+
+    const res = await GET(makeRequest());
+    const body = await res.json();
+    expect(body.circuit.blocked).toBe(true);
+    expect(body.circuit.needsReconnect).toBe(true);
+    expect(body.circuit.reason).toContain("auth_failure");
+    expect(body.circuit.consecutiveAuthFailures).toBe(3);
+    // blocked dealer should not be ready
+    expect(body.ready).toBe(false);
+    expect(body.readiness.notBlocked).toBe(false);
+  });
+
+  it("returns null queue when no delivery jobs exist", async () => {
+    // All three findFirst calls return null (already set in beforeEach via mockResolvedValueOnce)
+    const res = await GET(makeRequest());
+    const body = await res.json();
+    expect(body.queue).toBeNull();
+    expect(body.lastRun).toBeNull();
+    expect(body.circuit.blocked).toBe(false);
+    expect(body.circuit.needsReconnect).toBe(false);
   });
 });
