@@ -1,39 +1,58 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { API_SUPPORTED_VERTICALS } from "@/lib/metaDelivery";
 import { loadDealerToken } from "@/lib/meta";
-
-const ADMIN_EMAIL = (process.env.ADMIN_EMAIL ?? "").toLowerCase();
+import { adminGuard } from "@/lib/auth";
+import { durableRateLimit } from "@/lib/rateLimit";
+import { adminMetaDeliverySchema, adminMetaDeliveryParamSchema } from "@/lib/requestSchemas";
+import { writeAuditLog } from "@/lib/adminAudit";
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email || session.user.email.toLowerCase() !== ADMIN_EMAIL) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  // Rate limit
+  const ip = (request.headers.get("x-forwarded-for") ?? "unknown").split(",")[0].trim();
+  const rl = await durableRateLimit(`admin-meta-delivery:${ip}`, 20, 60_000);
+  if (!rl.allowed) {
+    return NextResponse.json({ error: "rate_limited", retryAfterMs: rl.retryAfterMs }, { status: 429 });
   }
 
-  const { id } = await params;
+  // Admin authorization (allowlist + legacy fallback)
+  const auth = await adminGuard("manage_delivery");
+  if (!auth.ok) return auth.response!;
 
-  let body: unknown;
+  // Validate path param
+  const rawParams = await params;
+  const paramParsed = adminMetaDeliveryParamSchema.safeParse(rawParams);
+  if (!paramParsed.success) {
+    return NextResponse.json(
+      { error: "validation_error", issues: paramParsed.error.flatten().fieldErrors },
+      { status: 400 }
+    );
+  }
+  const { id } = paramParsed.data;
+
+  // Validate request body
+  let rawBody: unknown;
   try {
-    body = await request.json();
+    rawBody = await request.json();
   } catch {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
 
-  const { metaDeliveryMethod } = body as Record<string, unknown>;
-
-  if (typeof metaDeliveryMethod !== "string" || (metaDeliveryMethod !== "csv" && metaDeliveryMethod !== "api")) {
-    return NextResponse.json({ error: "invalid_metaDeliveryMethod", allowed: ["csv", "api"] }, { status: 400 });
+  const bodyParsed = adminMetaDeliverySchema.safeParse(rawBody);
+  if (!bodyParsed.success) {
+    return NextResponse.json(
+      { error: "validation_error", issues: bodyParsed.error.flatten().fieldErrors },
+      { status: 400 }
+    );
   }
+  const { metaDeliveryMethod } = bodyParsed.data;
 
   const dealer = await prisma.dealer.findUnique({
     where: { id },
-    select: { id: true, vertical: true, metaCatalogId: true, metaAccessToken: true, metaTokenExpiresAt: true },
+    select: { id: true, vertical: true, metaCatalogId: true, metaAccessToken: true, metaTokenExpiresAt: true, metaDeliveryMethod: true },
   });
   if (!dealer) {
     return NextResponse.json({ error: "dealer_not_found" }, { status: 404 });
@@ -67,10 +86,25 @@ export async function PATCH(
     }
   }
 
-  const updated = await prisma.dealer.update({
-    where: { id },
-    data: { metaDeliveryMethod },
-    select: { id: true, metaDeliveryMethod: true },
+  // Transactional update + audit write
+  const previousMethod = dealer.metaDeliveryMethod;
+  const updated = await prisma.$transaction(async (tx) => {
+    const result = await tx.dealer.update({
+      where: { id },
+      data: { metaDeliveryMethod },
+      select: { id: true, metaDeliveryMethod: true },
+    });
+
+    await writeAuditLog({
+      action: "admin.meta_delivery.update",
+      actorEmail: auth.email,
+      actorRole: auth.role,
+      targetDealerId: id,
+      beforeState: { metaDeliveryMethod: previousMethod },
+      afterState: { metaDeliveryMethod },
+    }, tx);
+
+    return result;
   });
 
   return NextResponse.json({ ok: true, dealer: updated });

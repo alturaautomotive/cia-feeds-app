@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { authGuard, loadDealerToken, graphFetch } from "@/lib/meta";
 import { VERTICAL_META_TYPE, type Vertical } from "@/lib/verticals";
 import { CATALOG_OWNERSHIP } from "@/lib/catalogOwnership";
+import { durableRateLimit } from "@/lib/rateLimit";
+import { metaCatalogCreateSchema } from "@/lib/requestSchemas";
 
 /**
  * POST /api/meta/catalog/create — Creates a new catalog under the business.
@@ -12,26 +14,26 @@ export async function POST(request: NextRequest) {
   const guard = await authGuard();
   if (!guard.ok) return guard.response;
 
-  let body: { businessId?: string; catalogName?: string };
+  const rl = await durableRateLimit(`meta-catalog-create:${guard.dealerId}`, 10, 60_000);
+  if (!rl.allowed) {
+    return NextResponse.json({ error: "rate_limited", retryAfterMs: rl.retryAfterMs }, { status: 429 });
+  }
+
+  let rawBody: unknown;
   try {
-    body = await request.json();
+    rawBody = await request.json();
   } catch {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
 
-  const { businessId, catalogName } = body;
-  if (!businessId) {
+  const parsed = metaCatalogCreateSchema.safeParse(rawBody);
+  if (!parsed.success) {
     return NextResponse.json(
-      { error: "businessId_required" },
+      { error: "validation_error", issues: parsed.error.flatten().fieldErrors },
       { status: 400 }
     );
   }
-  if (!catalogName) {
-    return NextResponse.json(
-      { error: "catalogName_required" },
-      { status: 400 }
-    );
-  }
+  const { businessId, catalogName } = parsed.data;
 
   const accessToken = await loadDealerToken(guard.dealerId);
   if (!accessToken) {

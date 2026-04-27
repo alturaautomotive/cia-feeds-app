@@ -17,6 +17,18 @@ vi.mock("@/lib/prisma", () => ({
       updateMany: vi.fn(),
       update: vi.fn(),
     },
+    adminAllowlist: {
+      findUnique: vi.fn(),
+      findFirst: vi.fn(),
+    },
+    adminAuditLog: {
+      create: vi.fn(),
+    },
+    rateLimitBucket: {
+      upsert: vi.fn().mockResolvedValue({
+        count: 1, windowStart: new Date(), windowMs: 60000, expiresAt: new Date(Date.now() + 120000),
+      }),
+    },
   },
 }));
 
@@ -28,10 +40,11 @@ vi.mock("next-auth", () => ({
   }),
 }));
 
-// Mock auth options
-vi.mock("@/lib/auth", () => ({
-  authOptions: {},
-}));
+// Mock auth — import actual to get adminGuard, override authOptions
+vi.mock("@/lib/auth", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth")>();
+  return { ...actual, authOptions: {} };
+});
 
 // Mock scrape module
 vi.mock("@/lib/scrape", () => ({
@@ -110,19 +123,25 @@ beforeEach(() => {
   vi.mocked(getServerSession).mockResolvedValue({
     user: { email: ADMIN_EMAIL },
   } as never);
-  vi.mocked(prisma.dealer.findUnique).mockResolvedValue({ id: "dealer-A" } as never);
+  vi.mocked(prisma.dealer.findUnique).mockResolvedValue({ id: "00000000-0000-0000-0000-00000000000a" } as never);
   vi.mocked(prisma.vehicle.findMany).mockResolvedValue([] as never);
   vi.mocked(prisma.vehicle.updateMany).mockResolvedValue({ count: 0 } as never);
   vi.mocked(prisma.vehicle.update).mockResolvedValue({} as never);
   vi.mocked(dispatchFeedDeliveryInBackground).mockImplementation(() => {});
+  // Security mocks: allow legacy admin, no allowlist entry
+  (prisma as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>).adminAllowlist.findFirst.mockResolvedValue(null);
+  (prisma as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>).adminAuditLog.create.mockResolvedValue({});
+  (prisma as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>).rateLimitBucket.upsert.mockResolvedValue({
+    count: 1, windowStart: new Date(), windowMs: 60000, expiresAt: new Date(Date.now() + 120000),
+  });
 });
 
 describe("POST /api/admin/feed-rescrape — dispatch", () => {
   it("dispatches once per dealer after successful rescrape of multiple vehicles", async () => {
     const vehicles = [
-      { id: "v1", url: "https://example.com/v1", dealerId: "dealer-A" },
-      { id: "v2", url: "https://example.com/v2", dealerId: "dealer-A" },
-      { id: "v3", url: "https://example.com/v3", dealerId: "dealer-B" },
+      { id: "v1", url: "https://example.com/v1", dealerId: "00000000-0000-0000-0000-00000000000a" },
+      { id: "v2", url: "https://example.com/v2", dealerId: "00000000-0000-0000-0000-00000000000a" },
+      { id: "v3", url: "https://example.com/v3", dealerId: "00000000-0000-0000-0000-00000000000b" },
     ];
     vi.mocked(prisma.vehicle.findMany).mockResolvedValue(vehicles as never);
 
@@ -130,7 +149,7 @@ describe("POST /api/admin/feed-rescrape — dispatch", () => {
       Promise.resolve(makeScrapeResult("v-x", dealerId!) as never)
     );
 
-    const res = await POST(makeRequest({ dealerId: "dealer-A" }));
+    const res = await POST(makeRequest({ dealerId: "00000000-0000-0000-0000-00000000000a" }));
     expect(res.status).toBe(200);
 
     // Execute after() callbacks (rescrapeInBackground)
@@ -144,7 +163,7 @@ describe("POST /api/admin/feed-rescrape — dispatch", () => {
     const calledDealerIds = vi.mocked(dispatchFeedDeliveryInBackground).mock.calls.map(
       (c) => c[0]
     );
-    expect(calledDealerIds.sort()).toEqual(["dealer-A", "dealer-B"]);
+    expect(calledDealerIds.sort()).toEqual(["00000000-0000-0000-0000-00000000000a", "00000000-0000-0000-0000-00000000000b"]);
 
     // Trigger label should match
     expect(dispatchFeedDeliveryInBackground).toHaveBeenCalledWith(
@@ -156,12 +175,12 @@ describe("POST /api/admin/feed-rescrape — dispatch", () => {
 
   it("does not dispatch when all scrapes fail", async () => {
     const vehicles = [
-      { id: "v1", url: "https://example.com/v1", dealerId: "dealer-A" },
+      { id: "v1", url: "https://example.com/v1", dealerId: "00000000-0000-0000-0000-00000000000a" },
     ];
     vi.mocked(prisma.vehicle.findMany).mockResolvedValue(vehicles as never);
     vi.mocked(scrapeVehicleUrl).mockRejectedValue(new Error("scrape failed"));
 
-    const res = await POST(makeRequest({ dealerId: "dealer-A" }));
+    const res = await POST(makeRequest({ dealerId: "00000000-0000-0000-0000-00000000000a" }));
     expect(res.status).toBe(200);
 
     for (const cb of afterCallbacks) {
@@ -176,7 +195,7 @@ describe("POST /api/admin/feed-rescrape — dispatch", () => {
       user: { email: "notadmin@test.com" },
     } as never);
 
-    const res = await POST(makeRequest({ dealerId: "dealer-A" }));
+    const res = await POST(makeRequest({ dealerId: "00000000-0000-0000-0000-00000000000a" }));
     expect(res.status).toBe(403);
 
     expect(dispatchFeedDeliveryInBackground).not.toHaveBeenCalled();
@@ -184,28 +203,28 @@ describe("POST /api/admin/feed-rescrape — dispatch", () => {
 
   it("dispatches only for dealers with at least one successful update", async () => {
     const vehicles = [
-      { id: "v1", url: "https://example.com/v1", dealerId: "dealer-A" },
-      { id: "v2", url: "https://example.com/v2", dealerId: "dealer-B" },
+      { id: "v1", url: "https://example.com/v1", dealerId: "00000000-0000-0000-0000-00000000000a" },
+      { id: "v2", url: "https://example.com/v2", dealerId: "00000000-0000-0000-0000-00000000000b" },
     ];
     vi.mocked(prisma.vehicle.findMany).mockResolvedValue(vehicles as never);
 
-    // dealer-A succeeds, dealer-B fails
+    // 00000000-0000-0000-0000-00000000000a succeeds, 00000000-0000-0000-0000-00000000000b fails
     vi.mocked(scrapeVehicleUrl).mockImplementation((url) => {
-      if (url.includes("v1")) return Promise.resolve(makeScrapeResult("v1", "dealer-A") as never);
+      if (url.includes("v1")) return Promise.resolve(makeScrapeResult("v1", "00000000-0000-0000-0000-00000000000a") as never);
       return Promise.reject(new Error("scrape failed"));
     });
 
-    const res = await POST(makeRequest({ dealerId: "dealer-A" }));
+    const res = await POST(makeRequest({ dealerId: "00000000-0000-0000-0000-00000000000a" }));
     expect(res.status).toBe(200);
 
     for (const cb of afterCallbacks) {
       await cb();
     }
 
-    // Only dealer-A should get dispatch
+    // Only 00000000-0000-0000-0000-00000000000a should get dispatch
     expect(dispatchFeedDeliveryInBackground).toHaveBeenCalledTimes(1);
     expect(dispatchFeedDeliveryInBackground).toHaveBeenCalledWith(
-      "dealer-A",
+      "00000000-0000-0000-0000-00000000000a",
       "admin/feed-rescrape/POST",
       expect.any(Function)
     );

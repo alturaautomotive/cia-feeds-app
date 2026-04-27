@@ -1,10 +1,16 @@
 import { NextResponse } from "next/server";
 import { authGuard } from "@/lib/meta";
 import { enqueueDeliveryJob } from "@/lib/metaDelivery";
+import { durableRateLimit } from "@/lib/rateLimit";
 
 export async function POST() {
   const guard = await authGuard();
   if (!guard.ok) return guard.response;
+
+  const rl = await durableRateLimit(`meta-inventory-push:${guard.dealerId}`, 10, 60_000);
+  if (!rl.allowed) {
+    return NextResponse.json({ error: "rate_limited", retryAfterMs: rl.retryAfterMs }, { status: 429 });
+  }
 
   const result = await enqueueDeliveryJob(guard.dealerId, "api_push");
 

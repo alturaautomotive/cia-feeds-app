@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { authGuard, loadDealerToken } from "@/lib/meta";
 import { CATALOG_OWNERSHIP } from "@/lib/catalogOwnership";
+import { durableRateLimit } from "@/lib/rateLimit";
+import { metaCatalogSelectSchema } from "@/lib/requestSchemas";
 
 /**
  * POST /api/meta/catalog/select — Selects an existing catalog for the dealer.
@@ -11,26 +13,26 @@ export async function POST(request: NextRequest) {
   const guard = await authGuard();
   if (!guard.ok) return guard.response;
 
-  let body: { businessId?: string; catalogId?: string };
+  const rl = await durableRateLimit(`meta-catalog-select:${guard.dealerId}`, 10, 60_000);
+  if (!rl.allowed) {
+    return NextResponse.json({ error: "rate_limited", retryAfterMs: rl.retryAfterMs }, { status: 429 });
+  }
+
+  let rawBody: unknown;
   try {
-    body = await request.json();
+    rawBody = await request.json();
   } catch {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
 
-  const { businessId, catalogId } = body;
-  if (!businessId) {
+  const parsed = metaCatalogSelectSchema.safeParse(rawBody);
+  if (!parsed.success) {
     return NextResponse.json(
-      { error: "businessId_required" },
+      { error: "validation_error", issues: parsed.error.flatten().fieldErrors },
       { status: 400 }
     );
   }
-  if (!catalogId) {
-    return NextResponse.json(
-      { error: "catalogId_required" },
-      { status: 400 }
-    );
-  }
+  const { businessId, catalogId } = parsed.data;
 
   const accessToken = await loadDealerToken(guard.dealerId);
   if (!accessToken) {

@@ -1,4 +1,6 @@
 import { NextAuthOptions } from "next-auth";
+import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
@@ -116,3 +118,63 @@ export const authOptions: NextAuthOptions = {
     signIn: "/login",
   },
 };
+
+const ADMIN_EMAIL_LEGACY = (process.env.ADMIN_EMAIL ?? "").toLowerCase();
+
+export type AdminCapability = "manage_delivery" | "trigger_rescrape" | "view_audit";
+
+const ROLE_CAPABILITIES: Record<string, AdminCapability[]> = {
+  super_admin: ["manage_delivery", "trigger_rescrape", "view_audit"],
+  admin: ["manage_delivery", "trigger_rescrape", "view_audit"],
+  viewer: ["view_audit"],
+};
+
+export interface AdminGuardResult {
+  ok: boolean;
+  email: string;
+  role: string;
+  response?: NextResponse;
+}
+
+/**
+ * Shared admin capability guard.
+ * 1. Checks session email against AdminAllowlist (role + isActive).
+ * 2. Falls back to legacy ADMIN_EMAIL env var during rollout.
+ * Returns { ok: true, email, role } or { ok: false, response: 403 }.
+ */
+export async function adminGuard(
+  requiredCapability: AdminCapability
+): Promise<AdminGuardResult> {
+  const session = await getServerSession(authOptions);
+  const email = session?.user?.email?.toLowerCase();
+
+  if (!email) {
+    return { ok: false, email: "", role: "", response: NextResponse.json({ error: "forbidden" }, { status: 403 }) };
+  }
+
+  // Check AdminAllowlist first (case-insensitive to handle mixed-case stored emails)
+  try {
+    const entry = await prisma.adminAllowlist.findFirst({
+      where: { email: { equals: email, mode: "insensitive" } },
+    });
+    if (entry && entry.isActive) {
+      const capabilities = ROLE_CAPABILITIES[entry.role] ?? [];
+      if (capabilities.includes(requiredCapability)) {
+        return { ok: true, email, role: entry.role };
+      }
+      return { ok: false, email, role: entry.role, response: NextResponse.json({ error: "forbidden", detail: "insufficient_role" }, { status: 403 }) };
+    }
+  } catch (err) {
+    console.error("[adminGuard] allowlist lookup failed, trying legacy fallback:", err);
+  }
+
+  // Legacy fallback: ADMIN_EMAIL env var gets super_admin capabilities
+  if (ADMIN_EMAIL_LEGACY && email === ADMIN_EMAIL_LEGACY) {
+    const legacyCaps = ROLE_CAPABILITIES["super_admin"] ?? [];
+    if (legacyCaps.includes(requiredCapability)) {
+      return { ok: true, email, role: "super_admin" };
+    }
+  }
+
+  return { ok: false, email, role: "", response: NextResponse.json({ error: "forbidden" }, { status: 403 }) };
+}

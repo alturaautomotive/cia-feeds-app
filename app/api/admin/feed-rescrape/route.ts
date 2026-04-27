@@ -2,14 +2,14 @@ export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse, after } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Vertical } from "@prisma/client";
 import { scrapeVehicleUrl } from "@/lib/scrape";
 import { dispatchFeedDeliveryInBackground } from "@/lib/metaDelivery";
-
-const ADMIN_EMAIL = (process.env.ADMIN_EMAIL ?? "").toLowerCase();
+import { adminGuard } from "@/lib/auth";
+import { durableRateLimit } from "@/lib/rateLimit";
+import { adminFeedRescrapeBodySchema, adminFeedRescrapeQuerySchema } from "@/lib/requestSchemas";
+import { writeAuditLog } from "@/lib/adminAudit";
 
 const RESCRAPE_BATCH_SIZE = 5;
 const RESCRAPE_BATCH_DELAY_MS = 500;
@@ -88,15 +88,34 @@ async function rescrapeInBackground(
 }
 
 export async function POST(request: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email || session.user.email.toLowerCase() !== ADMIN_EMAIL) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  // Rate limit
+  const ip = (request.headers.get("x-forwarded-for") ?? "unknown").split(",")[0].trim();
+  const rl = await durableRateLimit(`admin-feed-rescrape:${ip}`, 5, 60_000);
+  if (!rl.allowed) {
+    return NextResponse.json({ error: "rate_limited", retryAfterMs: rl.retryAfterMs }, { status: 429 });
   }
 
-  const { dealerId, vertical } = (await request.json()) as {
-    dealerId?: string;
-    vertical?: string;
-  };
+  // Admin authorization
+  const auth = await adminGuard("trigger_rescrape");
+  if (!auth.ok) return auth.response!;
+
+  // Validate body
+  let rawBody: unknown;
+  try {
+    rawBody = await request.json();
+  } catch {
+    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+  }
+
+  const parsed = adminFeedRescrapeBodySchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "validation_error", issues: parsed.error.flatten().fieldErrors },
+      { status: 400 }
+    );
+  }
+
+  const { dealerId, vertical } = parsed.data;
   const verticalFilter: Vertical = (vertical ?? "automotive") as Vertical;
 
   let dealerIds: string[];
@@ -132,6 +151,30 @@ export async function POST(request: NextRequest) {
     after(() => rescrapeInBackground(vehicles));
   }
 
+  // Audit log — await to guarantee persistence before response
+  await writeAuditLog({
+    action: "admin.feed_rescrape.trigger",
+    actorEmail: auth.email,
+    actorRole: auth.role,
+    targetDealerId: dealerId ?? null,
+    beforeState: {
+      dealerId: dealerId ?? null,
+      vertical: verticalFilter,
+      scope: dealerId ? "single_dealer" : "bulk_vertical",
+    },
+    afterState: {
+      dealerCount: dealerIds.length,
+      vehicleCount: vehicles.length,
+      status: "rescraping",
+    },
+    metadata: {
+      scope: dealerId ? "single_dealer" : "bulk_vertical",
+      vertical: verticalFilter,
+      dealerCount: dealerIds.length,
+      vehicleCount: vehicles.length,
+    },
+  });
+
   return NextResponse.json({
     dealerCount: dealerIds.length,
     vehicleCount: vehicles.length,
@@ -140,12 +183,20 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email || session.user.email.toLowerCase() !== ADMIN_EMAIL) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  // Admin authorization
+  const auth = await adminGuard("trigger_rescrape");
+  if (!auth.ok) return auth.response!;
+
+  const rawDealerId = request.nextUrl.searchParams.get("dealerId") ?? undefined;
+  const queryParsed = adminFeedRescrapeQuerySchema.safeParse({ dealerId: rawDealerId });
+  if (!queryParsed.success) {
+    return NextResponse.json(
+      { error: "validation_error", issues: queryParsed.error.flatten().fieldErrors },
+      { status: 400 }
+    );
   }
 
-  const dealerId = request.nextUrl.searchParams.get("dealerId");
+  const dealerId = queryParsed.data.dealerId;
 
   const pendingCount = await prisma.vehicle.count({
     where: {
