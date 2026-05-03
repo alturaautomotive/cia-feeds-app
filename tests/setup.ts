@@ -5,12 +5,15 @@ import { vi } from "vitest";
 const mockPrisma: Record<string, unknown> = {
   dealer: {
     findUnique: vi.fn(),
+    findFirst: vi.fn(),
     findMany: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
   },
   subAccount: {
     create: vi.fn(),
+    findMany: vi.fn(),
+    findUnique: vi.fn(),
   },
   vehicle: {
     findMany: vi.fn(),
@@ -40,6 +43,7 @@ const mockPrisma: Record<string, unknown> = {
   },
   adminAllowlist: {
     findUnique: vi.fn(),
+    findFirst: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
@@ -47,13 +51,55 @@ const mockPrisma: Record<string, unknown> = {
   adminAuditLog: {
     create: vi.fn(),
     findMany: vi.fn(),
+    count: vi.fn(),
   },
   rateLimitBucket: {
     upsert: vi.fn(),
     deleteMany: vi.fn(),
   },
+  teamUser: {
+    findUnique: vi.fn(),
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+  },
+  teamInvite: {
+    findUnique: vi.fn(),
+    findFirst: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    deleteMany: vi.fn(),
+  },
+  metaDeliveryJob: {
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
+    count: vi.fn(),
+    update: vi.fn(),
+    updateMany: vi.fn(),
+  },
+  stripeWebhookEvent: {
+    findUnique: vi.fn(),
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+  },
 };
-mockPrisma.$transaction = vi.fn((fn: (tx: unknown) => Promise<unknown>) => fn(mockPrisma));
+
+// Polymorphic $transaction: supports both function and array call shapes
+mockPrisma.$transaction = vi.fn((arg: unknown) => {
+  if (typeof arg === "function") {
+    return (arg as (tx: unknown) => Promise<unknown>)(mockPrisma);
+  }
+  if (Array.isArray(arg)) {
+    return Promise.all(arg);
+  }
+  return Promise.resolve(arg);
+});
 
 vi.mock("@/lib/prisma", () => ({
   prisma: mockPrisma,

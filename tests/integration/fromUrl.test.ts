@@ -148,6 +148,24 @@ describe("POST /api/vehicles/from-url", () => {
   });
 });
 
+describe("POST /api/vehicles/from-url — error handling", () => {
+  it("returns 502 with error 'scrape_failed' when Firecrawl throws", async () => {
+    vi.mocked(firecrawlClient.scrapeUrl).mockRejectedValue(new Error("Network timeout"));
+
+    const req = new Request("http://localhost:3000/api/vehicles/from-url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: "https://example.com/vehicle-error" }),
+    });
+
+    const res = await POST(req as Parameters<typeof POST>[0]);
+    const data = await res.json();
+
+    expect(res.status).toBe(502);
+    expect(data.error).toBe("scrape_failed");
+  });
+});
+
 describe("POST /api/vehicles/from-url — idempotency", () => {
   it("updates existing vehicle instead of creating a duplicate", async () => {
     vi.mocked(firecrawlClient.scrapeUrl).mockResolvedValue(
