@@ -1,17 +1,13 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { adminGuard } from "@/lib/auth";
 import { signImpersonationToken, IMPERSONATION_COOKIE } from "@/lib/impersonation";
+import { writeAuditLog } from "@/lib/adminAudit";
 import { cookies } from "next/headers";
 
-const ADMIN_EMAIL = (process.env.ADMIN_EMAIL ?? "").toLowerCase();
-
 export async function POST(request: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email || session.user.email.toLowerCase() !== ADMIN_EMAIL) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  }
+  const auth = await adminGuard("manage_delivery");
+  if (!auth.ok) return auth.response!;
 
   const { dealerId } = (await request.json()) as { dealerId?: string };
   if (!dealerId) {
@@ -28,14 +24,26 @@ export async function POST(request: Request) {
 
   const token = await signImpersonationToken(dealerId);
 
+  await writeAuditLog({
+    action: "admin.impersonate.start",
+    actorEmail: auth.email,
+    actorRole: auth.role,
+    targetDealerId: dealerId,
+    metadata: { source: "admin_panel" },
+  });
+
   return NextResponse.json({ token });
 }
 
 export async function DELETE() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email || session.user.email.toLowerCase() !== ADMIN_EMAIL) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  }
+  const auth = await adminGuard("manage_delivery");
+  if (!auth.ok) return auth.response!;
+
+  await writeAuditLog({
+    action: "admin.impersonate.stop",
+    actorEmail: auth.email,
+    actorRole: auth.role,
+  });
 
   const cookieStore = await cookies();
   cookieStore.delete(IMPERSONATION_COOKIE);

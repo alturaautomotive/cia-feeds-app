@@ -69,6 +69,10 @@ export const adminFeedRescrapeQuerySchema = z.strictObject({
   dealerId: z.string().uuid("invalid dealerId").optional(),
 });
 
+export const adminMetaDeliveryUnblockSchema = z.strictObject({
+  dealerId: z.string().uuid("invalid dealerId"),
+});
+
 // --- Team accept schema ---
 
 export const teamAcceptBodySchema = z.strictObject({
