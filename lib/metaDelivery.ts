@@ -6,7 +6,10 @@ import {
   type VehicleForCSV,
   type FeedUrlOpts,
 } from "@/lib/csv";
+import { API_SUPPORTED_VERTICALS } from "@/lib/verticals";
 import { randomUUID } from "crypto";
+
+export { API_SUPPORTED_VERTICALS };
 
 const BATCH_SIZE = 100; // DB cursor batch
 const META_BATCH_LIMIT = 5000; // Meta items_batch max per request
@@ -19,12 +22,6 @@ const DRAIN_BATCH_SIZE = 10; // max jobs per drain run
 const MAX_ATTEMPTS = 5;
 const BASE_BACKOFF_MS = 30_000; // 30s base for exponential backoff
 const AUTH_FAILURE_THRESHOLD = 3; // consecutive auth failures before blocking
-
-/** Verticals that support API delivery mode. Others must use CSV. */
-export const API_SUPPORTED_VERTICALS: ReadonlySet<string> = new Set([
-  "automotive",
-  "services",
-]);
 
 // Graph error codes that indicate token/permission failures
 const AUTH_ERROR_CODES = new Set([
@@ -1372,7 +1369,7 @@ async function sendBatchesToMeta(
     const payload = {
       allow_upsert: true,
       requests: chunk.map((item) => ({
-        method: "UPDATE",
+        method: "UPSERT",
         data: item,
       })),
     };

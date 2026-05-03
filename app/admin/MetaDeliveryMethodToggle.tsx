@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-
-const API_SUPPORTED_VERTICALS = new Set(["automotive", "services"]);
+import { API_SUPPORTED_VERTICALS } from "@/lib/verticals";
 
 export function MetaDeliveryMethodToggle({
   dealerId,

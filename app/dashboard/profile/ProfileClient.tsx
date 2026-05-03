@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { API_SUPPORTED_VERTICALS } from "@/lib/verticals";
 
 const CTA_OPTIONS = [
   { value: "", label: "Auto", icon: "🔄", desc: "Show all available contact options" },
@@ -76,6 +77,7 @@ interface Props {
   metaPixelId: string | null;
   metaDeliveryMethod: string;
   subAccounts?: SubAccountItem[];
+  isImpersonating?: boolean;
 }
 
 type MetaStep =
@@ -103,6 +105,7 @@ export default function ProfileClient({
   metaPixelId: initialMetaPixelId,
   metaDeliveryMethod: initialDeliveryMethod,
   subAccounts: initialSubAccounts = [],
+  isImpersonating = false,
 }: Props) {
   const router = useRouter();
   const [photoUrl, setPhotoUrl] = useState<string | null>(initialPhotoUrl);
@@ -181,6 +184,16 @@ export default function ProfileClient({
   const [editingSubAccountId, setEditingSubAccountId] = useState<string | null>(null);
   const [editNewVertical, setEditNewVertical] = useState("automotive");
   const [resettingSub, setResettingSub] = useState(false);
+
+  // Billing state
+  const [billingStatus, setBillingStatus] = useState<string | null>(null);
+  const [billingPriceLabel, setBillingPriceLabel] = useState<string | null>(null);
+  const [billingPeriodEnd, setBillingPeriodEnd] = useState<string | null>(null);
+  const [billingHasCustomer, setBillingHasCustomer] = useState(false);
+  const [billingIsImpersonating, setBillingIsImpersonating] = useState(false);
+  const [billingLoading, setBillingLoading] = useState(true);
+  const [billingPortalLoading, setBillingPortalLoading] = useState(false);
+  const [billingError, setBillingError] = useState<string | null>(null);
 
   // Team Members state
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -312,9 +325,47 @@ export default function ProfileClient({
     }
   }
 
-  // Load team members on mount
+  async function loadBilling() {
+    setBillingLoading(true);
+    try {
+      const res = await fetch("/api/subscription/me");
+      if (res.ok) {
+        const data = await res.json();
+        setBillingStatus(data.status);
+        setBillingPriceLabel(data.priceLabel);
+        setBillingPeriodEnd(data.currentPeriodEnd);
+        setBillingHasCustomer(data.hasCustomer);
+        setBillingIsImpersonating(data.isImpersonating ?? false);
+      }
+    } catch {
+      // silent
+    } finally {
+      setBillingLoading(false);
+    }
+  }
+
+  async function handleBillingPortal() {
+    setBillingPortalLoading(true);
+    setBillingError(null);
+    try {
+      const res = await fetch("/api/stripe/portal", { method: "POST" });
+      const data = await res.json();
+      if (res.ok && data.url) {
+        window.location.href = data.url;
+      } else {
+        setBillingError(data.error || "Could not open billing portal.");
+      }
+    } catch {
+      setBillingError("Network error. Please try again.");
+    } finally {
+      setBillingPortalLoading(false);
+    }
+  }
+
+  // Load team members and billing on mount
   useEffect(() => {
     loadTeamMembers();
+    loadBilling();
   }, []);
 
   async function handleDisconnect() {
@@ -632,6 +683,26 @@ export default function ProfileClient({
       <div className="max-w-[560px] mx-auto px-6 py-8">
         <h1 className="text-xl font-bold text-gray-900 mb-6">Profile &amp; Settings</h1>
 
+        {billingStatus && ["past_due", "unpaid", "canceled"].includes(billingStatus) && (
+          <div className="rounded-md bg-red-50 p-3 mb-4">
+            <p className="text-sm text-red-600 font-medium">
+              {billingStatus === "past_due" && "Your last payment failed."}
+              {billingStatus === "unpaid" && "Your subscription payment is overdue."}
+              {billingStatus === "canceled" && "Your subscription was canceled."}
+            </p>
+            {!isImpersonating && (
+              <button
+                type="button"
+                onClick={handleBillingPortal}
+                disabled={billingPortalLoading}
+                className="mt-1 text-sm font-medium text-indigo-600 hover:text-indigo-700 underline disabled:opacity-50"
+              >
+                Update payment method
+              </button>
+            )}
+          </div>
+        )}
+
         {error && (
           <div className="rounded-md bg-red-50 p-3 mb-4">
             <p className="text-sm text-red-600">{error}</p>
@@ -690,6 +761,85 @@ export default function ProfileClient({
           <p className="text-xs text-gray-400 mt-2">
             Best results: standing pose, plain background, good lighting. Max 5 MB.
           </p>
+        </div>
+
+        {/* Billing */}
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-4">
+          <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">
+            Billing
+          </h2>
+          {billingLoading ? (
+            <p className="text-xs text-gray-400">Loading billing info...</p>
+          ) : !billingHasCustomer ? (
+            <div>
+              <p className="text-sm text-gray-500 mb-2">No billing account set up yet.</p>
+              <a
+                href="/subscribe"
+                className="text-sm font-medium text-indigo-600 hover:text-indigo-700 underline"
+              >
+                Set up billing
+              </a>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-gray-500">Status:</span>
+                <span
+                  className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                    billingStatus === "active"
+                      ? "bg-green-100 text-green-800"
+                      : billingStatus === "past_due" || billingStatus === "unpaid"
+                        ? "bg-red-100 text-red-800"
+                        : billingStatus === "canceled"
+                          ? "bg-gray-100 text-gray-600"
+                          : "bg-gray-100 text-gray-500"
+                  }`}
+                >
+                  {billingStatus === "active" && "Active"}
+                  {billingStatus === "past_due" && "Past Due"}
+                  {billingStatus === "unpaid" && "Unpaid"}
+                  {billingStatus === "canceled" && "Canceled"}
+                  {!billingStatus && "Unknown"}
+                  {billingStatus && !["active", "past_due", "unpaid", "canceled"].includes(billingStatus) && billingStatus}
+                </span>
+              </div>
+              {billingPriceLabel && (
+                <div>
+                  <span className="text-xs font-medium text-gray-500">Plan:</span>{" "}
+                  <span className="text-sm text-gray-900">{billingPriceLabel}</span>
+                </div>
+              )}
+              {billingPeriodEnd && (
+                <div>
+                  <span className="text-xs font-medium text-gray-500">Renews on:</span>{" "}
+                  <span className="text-sm text-gray-900">
+                    {new Date(billingPeriodEnd).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    })}
+                  </span>
+                </div>
+              )}
+              {isImpersonating || billingIsImpersonating ? (
+                <p className="text-xs text-gray-400">
+                  Billing actions disabled while impersonating.
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleBillingPortal}
+                  disabled={billingPortalLoading}
+                  className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {billingPortalLoading ? "Loading..." : "Manage Billing"}
+                </button>
+              )}
+              {billingError && (
+                <p className="text-xs text-red-600">{billingError}</p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Business Address — visible for all verticals */}
@@ -1366,7 +1516,7 @@ export default function ProfileClient({
             Choose how inventory is delivered to your Meta catalog. CSV uses the scheduled feed URL.
             API pushes changes directly via the Graph API.
           </p>
-          {vertical !== "automotive" && vertical !== "services" && (
+          {!API_SUPPORTED_VERTICALS.has(vertical) && (
             <p className="text-xs text-amber-600 mb-3">
               CSV only for this vertical. API delivery is available for automotive and services verticals.
             </p>
@@ -1377,7 +1527,7 @@ export default function ProfileClient({
               { value: "api", label: "API Push", desc: "Changes are pushed to Meta in real-time via Graph API" },
             ] as const).map((opt) => {
               const selected = deliveryMethod === opt.value;
-              const apiDisabled = opt.value === "api" && vertical !== "automotive" && vertical !== "services";
+              const apiDisabled = opt.value === "api" && !API_SUPPORTED_VERTICALS.has(vertical);
               return (
                 <button
                   key={opt.value}

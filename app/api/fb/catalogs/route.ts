@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { authGuard, loadDealerToken, graphFetch } from "@/lib/meta";
 import { VERTICAL_META_TYPE, type Vertical } from "@/lib/verticals";
 import { CATALOG_OWNERSHIP } from "@/lib/catalogOwnership";
+import { fbCatalogPostSchema } from "@/lib/requestSchemas";
 
 /**
  * GET /api/fb/catalogs?businessId=... — Lists the product catalogs owned by
@@ -69,30 +70,22 @@ export async function POST(request: NextRequest) {
   const guard = await authGuard();
   if (!guard.ok) return guard.response;
 
-  let body: {
-    businessId?: string;
-    catalogId?: string;
-    catalogName?: string;
-  };
+  let rawBody: unknown;
   try {
-    body = await request.json();
+    rawBody = await request.json();
   } catch {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
 
-  const { businessId, catalogId, catalogName } = body;
-  if (!businessId) {
+  const parsed = fbCatalogPostSchema.safeParse(rawBody);
+  if (!parsed.success) {
     return NextResponse.json(
-      { error: "businessId_required" },
+      { error: "validation_error", details: parsed.error.flatten().fieldErrors },
       { status: 400 }
     );
   }
-  if (!catalogId && !catalogName) {
-    return NextResponse.json(
-      { error: "catalogId_or_catalogName_required" },
-      { status: 400 }
-    );
-  }
+
+  const { businessId, catalogId, catalogName } = parsed.data;
 
   const accessToken = await loadDealerToken(guard.dealerId);
   if (!accessToken) {

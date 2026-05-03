@@ -11,3 +11,14 @@ export const stripeClient =
   });
 
 if (process.env.NODE_ENV !== "production") globalForStripe.stripeClient = stripeClient;
+
+export function formatPriceLabel(price: Stripe.Price): string | null {
+  if (price.unit_amount == null) return null;
+  const amount = (price.unit_amount / 100).toLocaleString("en-US", {
+    style: "currency",
+    currency: price.currency.toUpperCase(),
+    minimumFractionDigits: 0,
+  });
+  const interval = price.recurring?.interval ?? "month";
+  return `${amount} / ${interval}`;
+}

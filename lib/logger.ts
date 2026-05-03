@@ -68,3 +68,15 @@ export interface ImageValidationPayload {
 export function logServiceImageValidation(payload: ImageValidationPayload): void {
   console.log({ event: "service_image_validation", ...payload });
 }
+
+export function logStripeWebhookReceived(payload: { eventId: string; type: string }): void {
+  console.log({ event: "stripe_webhook_received", ...payload });
+}
+
+export function logStripeWebhookProcessed(payload: { eventId: string; type: string; dealerId?: string; durationMs: number; [key: string]: unknown }): void {
+  console.log({ event: "stripe_webhook_processed", ...payload });
+}
+
+export function logStripeWebhookError(payload: { eventId: string; type: string; dealerId?: string; errorMessage: string }): void {
+  console.log({ event: "stripe_webhook_error", ...payload });
+}

@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { checkSubscription } from "@/lib/checkSubscription";
-import { rateLimit } from "@/lib/rateLimit";
+import { criticalDurableRateLimit } from "@/lib/rateLimit";
 import { getEffectiveDealerId } from "@/lib/impersonation";
 import { scrapeVehicleUrl } from "@/lib/scrape";
 import { dispatchFeedDeliveryInBackground } from "@/lib/metaDelivery";
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "subscription_required" }, { status: 403 });
   }
 
-  const rl = rateLimit(`scrape:${dealerId}`, 10, 60_000);
+  const rl = await criticalDurableRateLimit(`scrape:${dealerId}`, 10, 60_000);
   if (!rl.allowed) {
     return NextResponse.json({ error: "rate_limited", retryAfterMs: rl.retryAfterMs }, { status: 429 });
   }

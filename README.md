@@ -74,6 +74,8 @@ npm test
    - `NEXTAUTH_URL` — production domain (e.g. `https://www.ciafeed.com`)
    - `NEXT_PUBLIC_APP_URL` — production domain (e.g. `https://www.ciafeed.com`)
    - `FIRECRAWL_API_KEY` — your Firecrawl API key
+
+   > **Note on Sensitive variables:** Variables marked as **Sensitive** in Vercel (e.g. `DATABASE_URL`, `DIRECT_URL`) will appear as empty strings in `.env.production.local` after running `vercel env pull`. This is expected behavior, not a sign that variables are missing. To verify they are correctly set, run `vercel env ls` and confirm the variables appear with the correct scope (Production, Preview).
 4. Run `npx prisma migrate deploy` against the production DB (one-time, from local with production `DATABASE_URL`).
 5. Deploy — Vercel will automatically run `prisma generate && next build`.
 
@@ -185,6 +187,8 @@ Content-Type: application/json
 This immediately stops API pushes. The CSV feed at `/feeds/{dealer-slug}.csv` continues to serve inventory and Meta will resume pulling from it on its next scheduled fetch.
 
 #### Emergency Rollback Verification Checklist
+
+> **Env Var Verification:** When verifying environment variables during an incident, do not rely on `vercel env pull` — variables marked Sensitive (such as `DATABASE_URL` and `DIRECT_URL`) will appear as empty strings in the pulled file. Instead, run `vercel env ls` to confirm the variables exist with the correct scope (Production, Preview).
 
 After issuing a rollback, verify each point before closing the incident:
 

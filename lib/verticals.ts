@@ -1,4 +1,10 @@
 export const VALID_VERTICALS = ["automotive", "services", "realestate", "ecommerce"] as const;
+
+/** Verticals that support API delivery mode. Others must use CSV. */
+export const API_SUPPORTED_VERTICALS: ReadonlySet<string> = new Set([
+  "automotive",
+  "services",
+]);
 export type Vertical = (typeof VALID_VERTICALS)[number];
 
 export const VERTICAL_LABELS: Record<Vertical, string> = {

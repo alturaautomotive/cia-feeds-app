@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { checkSubscription } from "@/lib/checkSubscription";
-import { rateLimit } from "@/lib/rateLimit";
+import { criticalDurableRateLimit } from "@/lib/rateLimit";
 import { getEffectiveDealerId } from "@/lib/impersonation";
 import OpenAI from "openai";
 
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "subscription_required" }, { status: 403 });
   }
 
-  const rl = rateLimit(`transcribe:${dealerId}`, 60, 60_000);
+  const rl = await criticalDurableRateLimit(`transcribe:${dealerId}`, 60, 60_000);
   if (!rl.allowed) {
     return NextResponse.json(
       { error: "rate_limited", retryAfterMs: rl.retryAfterMs },

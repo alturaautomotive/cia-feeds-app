@@ -1,19 +1,73 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 
 interface Props {
   canceled: boolean;
   priceLabel: string | null;
+  success: boolean;
+  sessionId: string | null;
+  currentStatus: string | null;
 }
 
-export function SubscribeClient({ canceled, priceLabel }: Props) {
+export function SubscribeClient({ canceled, priceLabel, success, sessionId, currentStatus }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [promoCode, setPromoCode] = useState("");
   const [promoStatus, setPromoStatus] = useState<"idle" | "loading" | "valid" | "invalid">("idle");
   const [promoLabel, setPromoLabel] = useState<string | null>(null);
   const [promotionCodeId, setPromotionCodeId] = useState<string | null>(null);
+
+  const [activating, setActivating] = useState(success);
+  const [activationTimedOut, setActivationTimedOut] = useState(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (!activating) return;
+
+    const startTime = Date.now();
+
+    intervalRef.current = setInterval(async () => {
+      try {
+        const res = await fetch("/api/subscription/me");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status === "active") {
+            if (intervalRef.current) clearInterval(intervalRef.current);
+            window.location.href = "/dashboard";
+            return;
+          }
+        }
+      } catch {
+        // Retry on next interval
+      }
+
+      if (Date.now() - startTime > 30000) {
+        if (intervalRef.current) clearInterval(intervalRef.current);
+        setActivationTimedOut(true);
+        setActivating(false);
+      }
+    }, 2000);
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [activating]);
+
+  async function handlePortalRedirect() {
+    setError(null);
+    try {
+      const res = await fetch("/api/stripe/portal", { method: "POST" });
+      const data = await res.json();
+      if (res.ok && data.url) {
+        window.location.href = data.url;
+      } else {
+        setError(data.error || "Could not open billing portal.");
+      }
+    } catch {
+      setError("Network error. Please try again.");
+    }
+  }
 
   async function handleApplyPromo() {
     if (!promoCode.trim()) return;
@@ -63,6 +117,39 @@ export function SubscribeClient({ canceled, priceLabel }: Props) {
     }
   }
 
+  // Activating state
+  if (activating) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-md w-full bg-white rounded-xl shadow-md p-8 space-y-6 text-center">
+          <span className="font-bold text-2xl text-indigo-600">CIAfeeds</span>
+          <h1 className="mt-4 text-2xl font-bold text-gray-900">
+            Activating your subscription...
+          </h1>
+          <div className="flex justify-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-200 border-t-indigo-600" />
+          </div>
+          {sessionId && (
+            <p className="text-xs text-gray-400">
+              Session: {sessionId.slice(0, 20)}...
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const showStatusBanner =
+    !success &&
+    currentStatus &&
+    ["past_due", "unpaid", "canceled"].includes(currentStatus);
+
+  const statusMessages: Record<string, string> = {
+    past_due: "Your last payment failed.",
+    unpaid: "Your subscription payment is overdue.",
+    canceled: "Your subscription was canceled.",
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full bg-white rounded-xl shadow-md p-8 space-y-6">
@@ -76,11 +163,41 @@ export function SubscribeClient({ canceled, priceLabel }: Props) {
           </p>
         </div>
 
-        {canceled && (
+        {showStatusBanner && (
+          <div className="rounded-md bg-red-50 border border-red-200 p-4">
+            <p className="text-sm text-red-700 font-medium">
+              {statusMessages[currentStatus!] ?? "There is an issue with your subscription."}
+            </p>
+            <button
+              type="button"
+              onClick={handlePortalRedirect}
+              className="mt-2 text-sm font-medium text-indigo-600 hover:text-indigo-700 underline"
+            >
+              Update payment method
+            </button>
+          </div>
+        )}
+
+        {canceled && !showStatusBanner && (
           <div className="rounded-md bg-yellow-50 border border-yellow-200 p-4">
             <p className="text-sm text-yellow-800">
               Payment was canceled. You can try again below.
             </p>
+          </div>
+        )}
+
+        {activationTimedOut && (
+          <div className="rounded-md bg-yellow-50 border border-yellow-200 p-4">
+            <p className="text-sm text-yellow-800">
+              This is taking longer than expected. Refresh or check your inbox for confirmation.
+            </p>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="mt-2 text-sm font-medium text-indigo-600 hover:text-indigo-700 underline"
+            >
+              Refresh
+            </button>
           </div>
         )}
 
@@ -115,13 +232,13 @@ export function SubscribeClient({ canceled, priceLabel }: Props) {
             </button>
           </div>
           {promoStatus === "valid" && (
-            <p className="text-sm text-green-600">✓ {promoLabel} applied!</p>
+            <p className="text-sm text-green-600">&#10003; {promoLabel} applied!</p>
           )}
           {promoStatus === "invalid" && (
             <p className="text-sm text-red-600">Invalid or expired promo code.</p>
           )}
           {promoStatus === "loading" && (
-            <p className="text-sm text-gray-500">Checking…</p>
+            <p className="text-sm text-gray-500">Checking...</p>
           )}
         </div>
 
@@ -136,7 +253,7 @@ export function SubscribeClient({ canceled, priceLabel }: Props) {
           disabled={loading}
           className="w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {loading ? "Loading…" : "Subscribe with Stripe →"}
+          {loading ? "Loading..." : "Subscribe with Stripe \u2192"}
         </button>
 
         <p className="text-center text-xs text-gray-400">

@@ -64,7 +64,7 @@ export async function POST(request: Request) {
       mode: "subscription",
       customer: dealer.stripeCustomerId!,
       line_items: [{ price: process.env.STRIPE_PRICE_ID!, quantity: 1 }],
-      success_url: `${appUrl}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
+      success_url: `${appUrl}/subscribe?success=true&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appUrl}/subscribe?canceled=true`,
       ...(promoCodeId
         ? { discounts: [{ promotion_code: promoCodeId }] }

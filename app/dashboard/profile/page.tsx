@@ -12,7 +12,7 @@ export default async function ProfilePage() {
     redirect("/login");
   }
 
-  const { effectiveDealerId } =
+  const { effectiveDealerId, isImpersonating } =
     await getEffectiveDealerContext();
 
   if (!effectiveDealerId) {
@@ -81,6 +81,7 @@ export default async function ProfilePage() {
       metaPixelId={dealer?.metaPixelId ?? null}
       metaDeliveryMethod={dealer?.metaDeliveryMethod ?? "csv"}
       subAccounts={subAccountsForClient}
+      isImpersonating={isImpersonating}
     />
   );
 }

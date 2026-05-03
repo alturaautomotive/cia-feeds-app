@@ -69,21 +69,51 @@ export async function GET(request: Request) {
   }
   readiness.hasInventory = inventoryCount > 0;
 
-  // Queue state — latest active/due job
-  const activeJob = await prisma.metaDeliveryJob.findFirst({
-    where: {
-      dealerId: guard.dealerId,
-      status: { in: ["queued", "processing", "retry"] },
-    },
-    orderBy: { updatedAt: "desc" },
-    select: {
-      id: true,
-      status: true,
-      nextRunAt: true,
-      attemptCount: true,
-      coalescedCount: true,
-    },
-  });
+  // Queue state, last-run health, and circuit breaker — run in parallel
+  const [activeJob, lastRunJob, blockedJob] = await Promise.all([
+    prisma.metaDeliveryJob.findFirst({
+      where: {
+        dealerId: guard.dealerId,
+        status: { in: ["queued", "processing", "retry"] },
+      },
+      orderBy: { updatedAt: "desc" },
+      select: {
+        id: true,
+        status: true,
+        nextRunAt: true,
+        attemptCount: true,
+        coalescedCount: true,
+      },
+    }),
+    prisma.metaDeliveryJob.findFirst({
+      where: {
+        dealerId: guard.dealerId,
+        lastRunAt: { not: null },
+      },
+      orderBy: { lastRunAt: "desc" },
+      select: {
+        lastRunAt: true,
+        lastRunStatus: true,
+        lastErrorCode: true,
+        lastErrorMessage: true,
+        lastItemsAttempted: true,
+        lastItemsSucceeded: true,
+        lastItemsFailed: true,
+        lastDeleteAttempted: true,
+        lastDeleteSucceeded: true,
+        lastDeleteFailed: true,
+      },
+    }),
+    prisma.metaDeliveryJob.findFirst({
+      where: { dealerId: guard.dealerId, status: "blocked" },
+      orderBy: { updatedAt: "desc" },
+      select: {
+        blockedAt: true,
+        blockedReason: true,
+        consecutiveAuthFailures: true,
+      },
+    }),
+  ]);
 
   const queue = activeJob
     ? {
@@ -94,27 +124,6 @@ export async function GET(request: Request) {
         coalescedCount: activeJob.coalescedCount,
       }
     : null;
-
-  // Last-run health — most recent job that has actually executed
-  const lastRunJob = await prisma.metaDeliveryJob.findFirst({
-    where: {
-      dealerId: guard.dealerId,
-      lastRunAt: { not: null },
-    },
-    orderBy: { lastRunAt: "desc" },
-    select: {
-      lastRunAt: true,
-      lastRunStatus: true,
-      lastErrorCode: true,
-      lastErrorMessage: true,
-      lastItemsAttempted: true,
-      lastItemsSucceeded: true,
-      lastItemsFailed: true,
-      lastDeleteAttempted: true,
-      lastDeleteSucceeded: true,
-      lastDeleteFailed: true,
-    },
-  });
 
   const lastRun = lastRunJob
     ? {
@@ -134,17 +143,6 @@ export async function GET(request: Request) {
         deleteFailed: lastRunJob.lastDeleteFailed,
       }
     : null;
-
-  // Circuit breaker — check for any currently blocked job
-  const blockedJob = await prisma.metaDeliveryJob.findFirst({
-    where: { dealerId: guard.dealerId, status: "blocked" },
-    orderBy: { updatedAt: "desc" },
-    select: {
-      blockedAt: true,
-      blockedReason: true,
-      consecutiveAuthFailures: true,
-    },
-  });
 
   const circuit = blockedJob
     ? {

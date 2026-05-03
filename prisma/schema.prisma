@@ -360,6 +360,12 @@ model AdminAuditLog {
   @@index([actorEmail, createdAt])
 }
 
+model StripeWebhookEvent {
+  id          String   @id // Stripe event id
+  type        String
+  processedAt DateTime @default(now())
+}
+
 model RateLimitBucket {
   id          String   @id @default(uuid())
   key         String
