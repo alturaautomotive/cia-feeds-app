@@ -137,9 +137,15 @@ export interface AdminGuardResult {
 }
 
 /**
- * Shared admin capability guard.
- * 1. Checks session email against AdminAllowlist (role + isActive).
- * 2. Falls back to legacy ADMIN_EMAIL env var during rollout.
+ * Shared admin capability guard — allowlist/capability-authoritative.
+ *
+ * Authorization precedence:
+ * 1. AdminAllowlist DB entry with isActive=true and matching role capability.
+ * 2. Legacy ADMIN_EMAIL env fallback ONLY when the allowlist DB lookup itself
+ *    throws (e.g. DB unreachable). This ensures privileged access is governed
+ *    by the durable allowlist under normal operation, and the env fallback
+ *    exists only as a break-glass recovery path.
+ *
  * Returns { ok: true, email, role } or { ok: false, response: 403 }.
  */
 export async function adminGuard(
@@ -152,11 +158,14 @@ export async function adminGuard(
     return { ok: false, email: "", role: "", response: NextResponse.json({ error: "forbidden" }, { status: 403 }) };
   }
 
-  // Check AdminAllowlist first (case-insensitive to handle mixed-case stored emails)
+  // Check AdminAllowlist (authoritative source for privilege decisions)
+  let allowlistLookupSucceeded = false;
   try {
     const entry = await prisma.adminAllowlist.findFirst({
       where: { email: { equals: email, mode: "insensitive" } },
     });
+    allowlistLookupSucceeded = true;
+
     if (entry && entry.isActive) {
       const capabilities = ROLE_CAPABILITIES[entry.role] ?? [];
       if (capabilities.includes(requiredCapability)) {
@@ -164,12 +173,16 @@ export async function adminGuard(
       }
       return { ok: false, email, role: entry.role, response: NextResponse.json({ error: "forbidden", detail: "insufficient_role" }, { status: 403 }) };
     }
+
+    // Entry not found or inactive — if allowlist lookup succeeded, do NOT
+    // fall through to legacy env. The allowlist is authoritative.
   } catch (err) {
     console.error("[adminGuard] allowlist lookup failed, trying legacy fallback:", err);
   }
 
-  // Legacy fallback: ADMIN_EMAIL env var gets super_admin capabilities
-  if (ADMIN_EMAIL_LEGACY && email === ADMIN_EMAIL_LEGACY) {
+  // Legacy fallback: ONLY used when the DB allowlist lookup itself failed.
+  // This is a break-glass path for when the database is unreachable.
+  if (!allowlistLookupSucceeded && ADMIN_EMAIL_LEGACY && email === ADMIN_EMAIL_LEGACY) {
     const legacyCaps = ROLE_CAPABILITIES["super_admin"] ?? [];
     if (legacyCaps.includes(requiredCapability)) {
       return { ok: true, email, role: "super_admin" };

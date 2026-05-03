@@ -1,27 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendPasswordResetEmail } from "@/lib/email";
-import { durableRateLimit } from "@/lib/rateLimit";
+import { criticalDurableRateLimit } from "@/lib/rateLimit";
+import { forgotPasswordBodySchema } from "@/lib/requestSchemas";
 
 export async function POST(request: NextRequest) {
   const ip = (request.headers.get("x-forwarded-for") ?? "unknown").split(",")[0].trim();
-  const rl = await durableRateLimit(`forgot:${ip}`, 3, 60_000);
+  const rl = await criticalDurableRateLimit(`forgot:${ip}`, 3, 60_000);
   if (!rl.allowed) {
     return NextResponse.json({ error: "rate_limited", retryAfterMs: rl.retryAfterMs }, { status: 429 });
   }
 
-  let body: unknown;
+  let rawBody: unknown;
   try {
-    body = await request.json();
+    rawBody = await request.json();
   } catch {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
 
-  const { email } = body as Record<string, unknown>;
-
-  if (!email || typeof email !== "string") {
-    return NextResponse.json({ error: "email is required" }, { status: 400 });
+  const parsed = forgotPasswordBodySchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "validation_error", issues: parsed.error.flatten().fieldErrors },
+      { status: 400 }
+    );
   }
+
+  const { email } = parsed.data;
 
   try {
     const dealer = await prisma.dealer.findUnique({ where: { email } });

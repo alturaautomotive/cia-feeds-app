@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { API_SUPPORTED_VERTICALS } from "@/lib/metaDelivery";
 import { loadDealerToken } from "@/lib/meta";
 import { adminGuard } from "@/lib/auth";
-import { durableRateLimit } from "@/lib/rateLimit";
+import { criticalDurableRateLimit } from "@/lib/rateLimit";
 import { adminMetaDeliverySchema, adminMetaDeliveryParamSchema } from "@/lib/requestSchemas";
 import { writeAuditLog } from "@/lib/adminAudit";
 
@@ -11,9 +11,9 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  // Rate limit
+  // Rate limit (critical: fail-closed, keyed on IP + route for unauthenticated phase)
   const ip = (request.headers.get("x-forwarded-for") ?? "unknown").split(",")[0].trim();
-  const rl = await durableRateLimit(`admin-meta-delivery:${ip}`, 20, 60_000);
+  const rl = await criticalDurableRateLimit(`admin-meta-delivery:${ip}`, 20, 60_000);
   if (!rl.allowed) {
     return NextResponse.json({ error: "rate_limited", retryAfterMs: rl.retryAfterMs }, { status: 429 });
   }
@@ -21,6 +21,16 @@ export async function PATCH(
   // Admin authorization (allowlist + legacy fallback)
   const auth = await adminGuard("manage_delivery");
   if (!auth.ok) return auth.response!;
+
+  // Post-auth actor-scoped rate limit (identity-aware abuse control)
+  const actorRl = await criticalDurableRateLimit(
+    `admin-meta-delivery:actor:${auth.email}:${ip}`,
+    20,
+    60_000
+  );
+  if (!actorRl.allowed) {
+    return NextResponse.json({ error: "rate_limited", retryAfterMs: actorRl.retryAfterMs }, { status: 429 });
+  }
 
   // Validate path param
   const rawParams = await params;

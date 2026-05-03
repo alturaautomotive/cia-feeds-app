@@ -116,23 +116,22 @@ This section covers enabling, monitoring, and rolling back the `metaDeliveryMeth
 
 API delivery is only supported for **automotive** and **services** verticals. Attempting to enable API mode for other verticals (e.g. realestate, ecommerce) will be rejected by both the profile and admin endpoints.
 
-### Preflight Checklist
+### Go / No-Go Checklist
 
-Before switching a dealer to `api` mode:
+Before switching a dealer to `api` mode, **every** item below must pass. If any item fails, do **not** proceed.
 
-1. **Verify vertical** — Confirm the dealer's vertical is `automotive` or `services`.
-2. **Check Meta connection** — Dealer must have a valid `metaAccessToken`, `metaCatalogId`, and `metaBusinessId`. Use the status endpoint:
-   ```
-   GET /api/meta/inventory/status
-   ```
-   All `readiness` fields should be `true` before proceeding.
-3. **Validate CSV feed** — Ensure the current CSV feed is healthy by fetching:
-   ```
-   GET /feeds/{dealer-slug}.csv
-   ```
-   Confirm the feed returns a valid CSV with inventory rows.
-4. **Confirm token expiry** — Check `metaTokenExpiresAt` is not imminent (>14 days out). The refresh cron (`/api/cron/refresh-meta-tokens`) handles renewal, but verify it has been running successfully.
-5. **Inventory count** — The status endpoint returns `inventoryCount`. Ensure it is > 0.
+| # | Check | How to verify | Pass threshold |
+|---|---|---|---|
+| 1 | Vertical is supported | `GET /api/meta/inventory/status` — `readiness.supportedVertical` | `true` |
+| 2 | Meta token present & valid | `readiness.tokenPresent` AND `readiness.tokenValid` | Both `true` |
+| 3 | Token expiry headroom | `metaTokenExpiresAt` (from profile or status endpoint) | > 14 days from now |
+| 4 | Catalog selected | `readiness.catalogSelected` | `true` |
+| 5 | Pushable inventory exists | `inventoryCount` from status endpoint | > 0 |
+| 6 | Circuit breaker clear | `circuit.blocked` from status endpoint | `false` |
+| 7 | No active blocked jobs | `circuit.needsReconnect` from status endpoint | `false` |
+| 8 | Queue healthy | `queue` from status endpoint — no stuck `processing` jobs | `queue` is `null` or `status` is `queued`/`retry` |
+| 9 | CSV feed healthy | `GET /feeds/{dealer-slug}.csv` returns valid CSV with rows | HTTP 200, non-empty body |
+| 10 | Refresh cron running | Check `/api/cron/refresh-meta-tokens` recent execution logs | Last success < 24h ago |
 
 ### Enablement
 
@@ -153,12 +152,24 @@ Alternatively, use the toggle button in the admin dashboard (visible per-dealer)
    ```
    POST /api/meta/inventory/push
    ```
-   The response includes a `summary` with `itemsSucceeded`, `itemsFailed`, and batch `handles`.
-2. **Poll batch status** — Use the handle(s) returned:
+   This is a queue trigger. The response returns job acceptance metadata (`summary.accepted`, `summary.jobId`), not immediate delivery results. If a job is already pending, the trigger is coalesced and the response includes `summary.coalescedCount`.
+2. **Verify outcomes via the status endpoint** — Check delivery results through:
    ```
-   GET /api/meta/inventory/status?handle={handle}
+   GET /api/meta/inventory/status
    ```
-3. **Monitor logs** — Look for `deliver_feed_success` / `deliver_feed_error` structured log events.
+   Key fields to inspect:
+   - `queue` — current job state (`queued`, `processing`, `retry`, or `null` when idle).
+   - `lastRun` — most recent execution results including `lastRunStatus`, `itemsSucceeded`, `itemsFailed`, `deleteFailed`.
+   - `circuit` — circuit breaker state (`blocked`, `needsReconnect`).
+3. **Monitor observability signals** — After the first push, check:
+   - `delivery_job_enqueued` — job was enqueued successfully (`outcome: "queued"`).
+   - `queue` field — job transitions through `queued` → `processing` → `success`.
+   - `lastRun.lastRunStatus` should be `"success"`, `lastRun.itemsFailed` should be `0`.
+   - `circuit.blocked` — must remain `false`.
+4. **Verify failure counts** — In the status endpoint response:
+   - `lastRun.itemsFailed` must be `0`.
+   - `lastRun.deleteFailed` must be `0` (or absent for first push).
+   - If either is > 0, investigate before proceeding.
 
 ### Rollback
 
@@ -173,6 +184,19 @@ Content-Type: application/json
 
 This immediately stops API pushes. The CSV feed at `/feeds/{dealer-slug}.csv` continues to serve inventory and Meta will resume pulling from it on its next scheduled fetch.
 
+#### Emergency Rollback Verification Checklist
+
+After issuing a rollback, verify each point before closing the incident:
+
+| # | Verification step | Expected result |
+|---|---|---|
+| 1 | `PATCH` response | `{ "ok": true, "dealer": { "metaDeliveryMethod": "csv" } }` |
+| 2 | `GET /api/meta/inventory/status` | `readiness.deliveryModeApi` is `false`, `deliveryMethod` is `"csv"` |
+| 3 | Queue drain idle | `queue` is `null` (no active jobs) — existing in-flight jobs will be skipped on next drain since dealer mode is now CSV |
+| 4 | CSV feed serving | `GET /feeds/{dealer-slug}.csv` returns HTTP 200 with valid inventory rows |
+| 5 | Circuit breaker state | If `circuit.blocked` is `true`, the block is stale post-rollback and does not affect CSV mode. No action required unless re-enabling API later |
+| 6 | No new delivery errors | Monitor logs for 15 minutes — no new `delivery_job_enqueue_exception` events for this dealer |
+
 ### Disconnect Recovery
 
 If a dealer disconnects Meta entirely (`POST /api/fb/disconnect`), all Meta credentials are cleared and `metaDeliveryMethod` is automatically reset to `csv`. The dealer must re-complete the Meta Business Integration wizard before API mode can be re-enabled.
@@ -181,8 +205,8 @@ If a dealer disconnects Meta entirely (`POST /api/fb/disconnect`), all Meta cred
 
 | Responsibility | Owner | Notes |
 |---|---|---|
-| Preflight checks & enablement | **Admin** (via admin dashboard or `PATCH /api/admin/dealers/{id}/meta-delivery`) | Only the `ADMIN_EMAIL` account can toggle delivery method for other dealers. |
-| Post-switch monitoring | **Admin / Support** | Watch for `deliver_feed_error` log events within the first 24 hours after cutover. |
-| Rollback decision | **Admin / Support** | If `itemsFailed` > 0 on the manual push or batch status shows errors, revert immediately to `csv`. |
-| Token refresh monitoring | **Admin** | The cron at `/api/cron/refresh-meta-tokens` must be running. If tokens expire, API pushes will fail silently and require a rollback to CSV until the dealer re-authenticates. |
-| Dealer self-service | **Dealer (Profile UI)** | Dealers on supported verticals (automotive, services) can toggle their own delivery method from Profile & Settings. Unsupported verticals see CSV-only with an explanatory message. |
+| Preflight checks & enablement | **Admin** (via admin dashboard or `PATCH /api/admin/dealers/{id}/meta-delivery`) | Requires `manage_delivery` capability via `adminGuard`: checked against `AdminAllowlist` (role-based), with legacy `ADMIN_EMAIL` env var as fallback. |
+| Post-switch monitoring | **Admin / Support** | Check `/api/meta/inventory/status` `lastRun` and `circuit` fields within the first 24 hours after cutover. |
+| Rollback decision | **Admin / Support** | If `lastRun.itemsFailed` > 0 on the manual push, `circuit.blocked` is `true`, or batch status shows errors, revert immediately to `csv`. |
+| Token refresh monitoring | **Admin** | The cron at `/api/cron/refresh-meta-tokens` must be running. If tokens expire, API pushes will fail and the circuit breaker will block after 3 consecutive auth failures — requiring a rollback to CSV until the dealer re-authenticates. |
+| Dealer self-service | **Dealer (Profile UI)** | Dealers on supported verticals (automotive, services) can toggle their own delivery method from Profile & Settings. Unsupported verticals see CSV-only with an explanatory message. Changes are audit-logged. |

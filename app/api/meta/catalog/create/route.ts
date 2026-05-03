@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { authGuard, loadDealerToken, graphFetch } from "@/lib/meta";
 import { VERTICAL_META_TYPE, type Vertical } from "@/lib/verticals";
 import { CATALOG_OWNERSHIP } from "@/lib/catalogOwnership";
-import { durableRateLimit } from "@/lib/rateLimit";
+import { criticalDurableRateLimit } from "@/lib/rateLimit";
 import { metaCatalogCreateSchema } from "@/lib/requestSchemas";
 
 /**
@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
   const guard = await authGuard();
   if (!guard.ok) return guard.response;
 
-  const rl = await durableRateLimit(`meta-catalog-create:${guard.dealerId}`, 10, 60_000);
+  const rl = await criticalDurableRateLimit(`meta-catalog-create:${guard.dealerId}`, 10, 60_000);
   if (!rl.allowed) {
     return NextResponse.json({ error: "rate_limited", retryAfterMs: rl.retryAfterMs }, { status: 429 });
   }

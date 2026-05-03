@@ -3,51 +3,33 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { generateUniqueSlug } from "@/lib/slug";
 import { sendWelcomeEmail, sendAdminNewSignupEmail } from "@/lib/email";
-import { durableRateLimit } from "@/lib/rateLimit";
+import { criticalDurableRateLimit } from "@/lib/rateLimit";
+import { signupBodySchema } from "@/lib/requestSchemas";
 
 export async function POST(request: NextRequest) {
   const ip = (request.headers.get("x-forwarded-for") ?? "unknown").split(",")[0].trim();
-  const rl = await durableRateLimit(`signup:${ip}`, 5, 60_000);
+  const rl = await criticalDurableRateLimit(`signup:${ip}`, 5, 60_000);
   if (!rl.allowed) {
     return NextResponse.json({ error: "rate_limited", retryAfterMs: rl.retryAfterMs }, { status: 429 });
   }
 
-  let body: unknown;
+  let rawBody: unknown;
   try {
-    body = await request.json();
+    rawBody = await request.json();
   } catch {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
 
-  const { name, email, password, vertical } = body as Record<string, unknown>;
-
-  if (
-    !name ||
-    typeof name !== "string" ||
-    !email ||
-    typeof email !== "string" ||
-    !password ||
-    typeof password !== "string"
-  ) {
+  const parsed = signupBodySchema.safeParse(rawBody);
+  if (!parsed.success) {
     return NextResponse.json(
-      { error: "name, email, and password are required" },
+      { error: "validation_error", issues: parsed.error.flatten().fieldErrors },
       { status: 400 }
     );
   }
 
-  const VALID_VERTICALS = ["automotive", "services", "ecommerce", "realestate"];
-  if (vertical != null && (typeof vertical !== "string" || !VALID_VERTICALS.includes(vertical))) {
-    return NextResponse.json({ error: "invalid_vertical" }, { status: 400 });
-  }
-  const dealerVertical = (typeof vertical === "string" ? vertical : "automotive") as "automotive" | "services" | "ecommerce" | "realestate";
-
-  const trimmedName = name.trim();
-  if (!trimmedName) {
-    return NextResponse.json(
-      { error: "name must not be blank" },
-      { status: 400 }
-    );
-  }
+  const { name: trimmedName, email, password, vertical } = parsed.data;
+  const dealerVertical = vertical ?? "automotive";
 
   try {
     const existing = await prisma.dealer.findUnique({

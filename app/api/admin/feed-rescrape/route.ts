@@ -3,11 +3,10 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse, after } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { Vertical } from "@prisma/client";
 import { scrapeVehicleUrl } from "@/lib/scrape";
 import { dispatchFeedDeliveryInBackground } from "@/lib/metaDelivery";
 import { adminGuard } from "@/lib/auth";
-import { durableRateLimit } from "@/lib/rateLimit";
+import { criticalDurableRateLimit } from "@/lib/rateLimit";
 import { adminFeedRescrapeBodySchema, adminFeedRescrapeQuerySchema } from "@/lib/requestSchemas";
 import { writeAuditLog } from "@/lib/adminAudit";
 
@@ -88,9 +87,9 @@ async function rescrapeInBackground(
 }
 
 export async function POST(request: NextRequest) {
-  // Rate limit
+  // Rate limit (critical: fail-closed)
   const ip = (request.headers.get("x-forwarded-for") ?? "unknown").split(",")[0].trim();
-  const rl = await durableRateLimit(`admin-feed-rescrape:${ip}`, 5, 60_000);
+  const rl = await criticalDurableRateLimit(`admin-feed-rescrape:${ip}`, 5, 60_000);
   if (!rl.allowed) {
     return NextResponse.json({ error: "rate_limited", retryAfterMs: rl.retryAfterMs }, { status: 429 });
   }
@@ -98,6 +97,16 @@ export async function POST(request: NextRequest) {
   // Admin authorization
   const auth = await adminGuard("trigger_rescrape");
   if (!auth.ok) return auth.response!;
+
+  // Post-auth actor-scoped rate limit (identity-aware abuse control)
+  const actorRl = await criticalDurableRateLimit(
+    `admin-feed-rescrape:actor:${auth.email}:${ip}`,
+    5,
+    60_000
+  );
+  if (!actorRl.allowed) {
+    return NextResponse.json({ error: "rate_limited", retryAfterMs: actorRl.retryAfterMs }, { status: 429 });
+  }
 
   // Validate body
   let rawBody: unknown;
@@ -116,25 +125,29 @@ export async function POST(request: NextRequest) {
   }
 
   const { dealerId, vertical } = parsed.data;
-  const verticalFilter: Vertical = (vertical ?? "automotive") as Vertical;
+  const verticalFilter = vertical ?? "automotive";
 
   let dealerIds: string[];
+  let auditVertical: string = verticalFilter;
 
   if (dealerId) {
     const dealer = await prisma.dealer.findUnique({
       where: { id: dealerId },
-      select: { id: true },
+      select: { id: true, vertical: true },
     });
     if (!dealer) {
       return NextResponse.json({ error: "dealer not found" }, { status: 404 });
     }
     dealerIds = [dealerId];
+    auditVertical = dealer.vertical;
   } else {
     const dealers = await prisma.dealer.findMany({
-      where: { vertical: verticalFilter, active: true },
-      select: { id: true },
+      where: { active: true },
+      select: { id: true, vertical: true },
     });
-    dealerIds = dealers.map((d) => d.id);
+    dealerIds = dealers
+      .filter((d) => d.vertical === verticalFilter)
+      .map((d) => d.id);
   }
 
   const vehicles = await prisma.vehicle.findMany({
@@ -159,7 +172,7 @@ export async function POST(request: NextRequest) {
     targetDealerId: dealerId ?? null,
     beforeState: {
       dealerId: dealerId ?? null,
-      vertical: verticalFilter,
+      vertical: auditVertical,
       scope: dealerId ? "single_dealer" : "bulk_vertical",
     },
     afterState: {
@@ -169,7 +182,7 @@ export async function POST(request: NextRequest) {
     },
     metadata: {
       scope: dealerId ? "single_dealer" : "bulk_vertical",
-      vertical: verticalFilter,
+      vertical: auditVertical,
       dealerCount: dealerIds.length,
       vehicleCount: vehicles.length,
     },

@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
 import { prisma } from "@/lib/prisma";
 import { checkSubscription } from "@/lib/checkSubscription";
 import { getEffectiveDealerContext } from "@/lib/impersonation";
+import { authOptions } from "@/lib/auth";
 import { decrypt } from "@/lib/crypto";
 import { VERTICAL_META_TYPE, VALID_VERTICALS, type Vertical } from "@/lib/verticals";
 import { API_SUPPORTED_VERTICALS } from "@/lib/metaDelivery";
 import { loadDealerToken } from "@/lib/meta";
+import { writeAuditLog } from "@/lib/adminAudit";
 
 const VALID_CTA_PREFERENCES = ["sms", "whatsapp", "messenger"];
 const VALID_TRANSLATION_LANGS = ["en", "es-MX", "es-PR", "pt-BR", "ko-KR", "fr", "de"];
@@ -79,6 +82,7 @@ export async function PATCH(request: NextRequest) {
   try {
   // Collect simple field updates into a single batch
   const batchData: Record<string, unknown> = {};
+  let pendingDeliveryChange: { previousMethod: string | null; newMethod: string } | null = null;
 
   // Handle profile image removal
   if ("profileImageUrl" in b && b.profileImageUrl === null) {
@@ -243,22 +247,25 @@ export async function PATCH(request: NextRequest) {
     if (typeof raw !== "string" || (raw !== "csv" && raw !== "api")) {
       return NextResponse.json({ error: "invalid_metaDeliveryMethod" }, { status: 400 });
     }
+
+    // Fetch current value for audit before/after state
+    const dealerForDelivery = await prisma.dealer.findUnique({
+      where: { id: effectiveDealerId },
+      select: { vertical: true, metaCatalogId: true, metaAccessToken: true, metaTokenExpiresAt: true, metaDeliveryMethod: true },
+    });
+    if (!dealerForDelivery) {
+      return NextResponse.json({ error: "dealer_not_found" }, { status: 404 });
+    }
+
     if (raw === "api") {
-      const dealer = await prisma.dealer.findUnique({
-        where: { id: effectiveDealerId },
-        select: { vertical: true, metaCatalogId: true, metaAccessToken: true, metaTokenExpiresAt: true },
-      });
-      if (!dealer) {
-        return NextResponse.json({ error: "dealer_not_found" }, { status: 404 });
-      }
       const issues: string[] = [];
-      if (!API_SUPPORTED_VERTICALS.has(dealer.vertical)) {
+      if (!API_SUPPORTED_VERTICALS.has(dealerForDelivery.vertical)) {
         issues.push("api_delivery_unsupported_vertical");
       }
-      if (!dealer.metaCatalogId) {
+      if (!dealerForDelivery.metaCatalogId) {
         issues.push("catalog_not_selected");
       }
-      if (!dealer.metaAccessToken) {
+      if (!dealerForDelivery.metaAccessToken) {
         issues.push("meta_token_missing");
       } else {
         try {
@@ -267,7 +274,7 @@ export async function PATCH(request: NextRequest) {
           issues.push("meta_token_decrypt_failed");
         }
       }
-      if (dealer.metaTokenExpiresAt && dealer.metaTokenExpiresAt <= new Date()) {
+      if (dealerForDelivery.metaTokenExpiresAt && dealerForDelivery.metaTokenExpiresAt <= new Date()) {
         issues.push("meta_token_expired");
       }
       if (issues.length > 0) {
@@ -277,7 +284,15 @@ export async function PATCH(request: NextRequest) {
         );
       }
     }
-    batchData.metaDeliveryMethod = raw;
+    // Only include in batch if value is unchanged; otherwise handle in transaction below
+    const previousMethod = dealerForDelivery.metaDeliveryMethod;
+    if (previousMethod === raw) {
+      // No change — skip audit and transactional write
+      batchData.metaDeliveryMethod = raw;
+    } else {
+      // Track for post-batch transactional update + audit
+      pendingDeliveryChange = { previousMethod, newMethod: raw };
+    }
   }
 
   // Handle metaPixelId update
@@ -295,6 +310,27 @@ export async function PATCH(request: NextRequest) {
     await prisma.dealer.update({
       where: { id: effectiveDealerId },
       data: batchData,
+    });
+  }
+
+  // Transactional delivery method update + audit (only when value actually changed)
+  if (pendingDeliveryChange) {
+    const session = await getServerSession(authOptions);
+    const actorEmail = session?.user?.email ?? "unknown";
+    await prisma.$transaction(async (tx) => {
+      await tx.dealer.update({
+        where: { id: effectiveDealerId },
+        data: { metaDeliveryMethod: pendingDeliveryChange!.newMethod },
+      });
+      await writeAuditLog({
+        action: "profile.meta_delivery_method.update",
+        actorEmail,
+        actorRole: "dealer",
+        actorDealerId: effectiveDealerId,
+        targetDealerId: effectiveDealerId,
+        beforeState: { metaDeliveryMethod: pendingDeliveryChange!.previousMethod },
+        afterState: { metaDeliveryMethod: pendingDeliveryChange!.newMethod },
+      }, tx);
     });
   }
 

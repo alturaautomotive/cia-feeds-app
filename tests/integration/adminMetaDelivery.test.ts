@@ -75,7 +75,9 @@ describe("PATCH /api/admin/dealers/[id]/meta-delivery", () => {
     (getServerSession as ReturnType<typeof vi.fn>).mockResolvedValue({
       user: { email: "admin@test.com" },
     });
-    (prisma.adminAllowlist.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    (prisma.adminAllowlist.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      email: "admin@test.com", role: "admin", isActive: true,
+    });
 
     const req = makeRequest({ metaDeliveryMethod: "invalid" });
     const res = await PATCH(req as Parameters<typeof PATCH>[0], {
@@ -88,7 +90,9 @@ describe("PATCH /api/admin/dealers/[id]/meta-delivery", () => {
     (getServerSession as ReturnType<typeof vi.fn>).mockResolvedValue({
       user: { email: "admin@test.com" },
     });
-    (prisma.adminAllowlist.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    (prisma.adminAllowlist.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      email: "admin@test.com", role: "admin", isActive: true,
+    });
 
     const req = makeRequest({ metaDeliveryMethod: "csv" });
     const res = await PATCH(req as Parameters<typeof PATCH>[0], {
@@ -101,7 +105,9 @@ describe("PATCH /api/admin/dealers/[id]/meta-delivery", () => {
     (getServerSession as ReturnType<typeof vi.fn>).mockResolvedValue({
       user: { email: "admin@test.com" },
     });
-    (prisma.adminAllowlist.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    (prisma.adminAllowlist.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      email: "admin@test.com", role: "admin", isActive: true,
+    });
     (prisma.dealer.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: VALID_ID,
       vertical: "automotive",
@@ -138,7 +144,9 @@ describe("PATCH /api/admin/dealers/[id]/meta-delivery", () => {
     (getServerSession as ReturnType<typeof vi.fn>).mockResolvedValue({
       user: { email: "admin@test.com" },
     });
-    (prisma.adminAllowlist.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    (prisma.adminAllowlist.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      email: "admin@test.com", role: "admin", isActive: true,
+    });
 
     const req = makeRequest({ metaDeliveryMethod: "csv", unknownField: "foo" });
     const res = await PATCH(req as Parameters<typeof PATCH>[0], {
@@ -209,5 +217,131 @@ describe("PATCH /api/admin/dealers/[id]/meta-delivery", () => {
       params: Promise.resolve({ id: VALID_ID }),
     });
     expect(res.status).toBe(200);
+  });
+
+  it("returns 403 for inactive allowlist entry", async () => {
+    (getServerSession as ReturnType<typeof vi.fn>).mockResolvedValue({
+      user: { email: "inactive@test.com" },
+    });
+    (prisma.adminAllowlist.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      email: "inactive@test.com",
+      role: "admin",
+      isActive: false,
+    });
+
+    const req = makeRequest({ metaDeliveryMethod: "csv" });
+    const res = await PATCH(req as Parameters<typeof PATCH>[0], {
+      params: Promise.resolve({ id: VALID_ID }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 403 for viewer role (insufficient capability for manage_delivery)", async () => {
+    (getServerSession as ReturnType<typeof vi.fn>).mockResolvedValue({
+      user: { email: "viewer@test.com" },
+    });
+    (prisma.adminAllowlist.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      email: "viewer@test.com",
+      role: "viewer",
+      isActive: true,
+    });
+
+    const req = makeRequest({ metaDeliveryMethod: "csv" });
+    const res = await PATCH(req as Parameters<typeof PATCH>[0], {
+      params: Promise.resolve({ id: VALID_ID }),
+    });
+    expect(res.status).toBe(403);
+    const data = await res.json();
+    expect(data.detail).toBe("insufficient_role");
+  });
+
+  it("does not write audit log when authorization fails", async () => {
+    (getServerSession as ReturnType<typeof vi.fn>).mockResolvedValue({
+      user: { email: "nobody@test.com" },
+    });
+    (prisma.adminAllowlist.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+    const req = makeRequest({ metaDeliveryMethod: "csv" });
+    await PATCH(req as Parameters<typeof PATCH>[0], {
+      params: Promise.resolve({ id: VALID_ID }),
+    });
+
+    expect(prisma.adminAuditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("does not write audit log when validation fails", async () => {
+    (getServerSession as ReturnType<typeof vi.fn>).mockResolvedValue({
+      user: { email: "admin@test.com" },
+    });
+    (prisma.adminAllowlist.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+    const req = makeRequest({ metaDeliveryMethod: "invalid" });
+    await PATCH(req as Parameters<typeof PATCH>[0], {
+      params: Promise.resolve({ id: VALID_ID }),
+    });
+
+    expect(prisma.adminAuditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("enforces actor-scoped rate limit after successful auth", async () => {
+    (getServerSession as ReturnType<typeof vi.fn>).mockResolvedValue({
+      user: { email: "admin@test.com" },
+    });
+    (prisma.adminAllowlist.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      email: "admin@test.com", role: "admin", isActive: true,
+    });
+
+    // First call (pre-auth IP limiter) passes, second call (actor-scoped) is over limit
+    let upsertCallCount = 0;
+    (prisma.rateLimitBucket.upsert as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      upsertCallCount++;
+      if (upsertCallCount <= 1) {
+        // pre-auth IP-based limiter passes
+        return Promise.resolve({ count: 1, windowStart: new Date(), windowMs: 60000, expiresAt: new Date(Date.now() + 120000) });
+      }
+      // actor-scoped limiter exceeds limit
+      return Promise.resolve({ count: 21, windowStart: new Date(), windowMs: 60000, expiresAt: new Date(Date.now() + 120000) });
+    });
+
+    const req = makeRequest({ metaDeliveryMethod: "csv" });
+    const res = await PATCH(req as Parameters<typeof PATCH>[0], {
+      params: Promise.resolve({ id: VALID_ID }),
+    });
+    expect(res.status).toBe(429);
+
+    // Verify actor-scoped key was used (second upsert call includes actor email)
+    const secondCall = (prisma.rateLimitBucket.upsert as ReturnType<typeof vi.fn>).mock.calls[1][0];
+    expect(secondCall.where.key_windowStart.key).toContain("actor:admin@test.com");
+  });
+
+  it("returns 429 (fail-closed) when critical rate limiter DB fails", async () => {
+    (prisma.rateLimitBucket.upsert as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("DB connection timeout")
+    );
+
+    const req = makeRequest({ metaDeliveryMethod: "csv" });
+    const res = await PATCH(req as Parameters<typeof PATCH>[0], {
+      params: Promise.resolve({ id: VALID_ID }),
+    });
+    expect(res.status).toBe(429);
+    const data = await res.json();
+    expect(data.error).toBe("rate_limited");
+  });
+
+  it("ADMIN_EMAIL env does not grant access when allowlist lookup succeeds but entry not found", async () => {
+    (getServerSession as ReturnType<typeof vi.fn>).mockResolvedValue({
+      user: { email: "admin@test.com" },
+    });
+    // Allowlist lookup succeeds but returns null (not in list)
+    (prisma.adminAllowlist.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+    const req = makeRequest({ metaDeliveryMethod: "csv" });
+    const res = await PATCH(req as Parameters<typeof PATCH>[0], {
+      params: Promise.resolve({ id: VALID_ID }),
+    });
+    // With the hardened adminGuard, ADMIN_EMAIL fallback only kicks in
+    // when allowlist DB lookup throws. Since it succeeded (returned null),
+    // the env fallback should NOT grant access.
+    expect(res.status).toBe(403);
   });
 });

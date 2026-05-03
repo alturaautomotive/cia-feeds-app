@@ -125,6 +125,75 @@ describe("POST /api/auth/signup", () => {
     expect(data.error).toBe("rate_limited");
     expect(data.retryAfterMs).toBeDefined();
   });
+
+  it("returns 429 (fail-closed) when critical rate limiter DB fails", async () => {
+    (prisma.rateLimitBucket.upsert as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("DB connection timeout")
+    );
+
+    const req = new Request("http://localhost:3000/api/auth/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Dealer", email: "new@test.com", password: "password123" }),
+    });
+
+    const res = await POST(req as Parameters<typeof POST>[0]);
+    expect(res.status).toBe(429);
+    const data = await res.json();
+    expect(data.error).toBe("rate_limited");
+  });
+
+  it("returns 400 for invalid email format", async () => {
+    const req = new Request("http://localhost:3000/api/auth/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Dealer", email: "not-an-email", password: "password123" }),
+    });
+
+    const res = await POST(req as Parameters<typeof POST>[0]);
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toBe("validation_error");
+  });
+
+  it("returns 400 for password too short", async () => {
+    const req = new Request("http://localhost:3000/api/auth/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Dealer", email: "a@b.com", password: "short" }),
+    });
+
+    const res = await POST(req as Parameters<typeof POST>[0]);
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toBe("validation_error");
+  });
+
+  it("returns 400 for invalid vertical value", async () => {
+    const req = new Request("http://localhost:3000/api/auth/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Dealer", email: "a@b.com", password: "password123", vertical: "invalid" }),
+    });
+
+    const res = await POST(req as Parameters<typeof POST>[0]);
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toBe("validation_error");
+  });
+
+  it("returns 400 for unknown fields in body (strict schema)", async () => {
+    const req = new Request("http://localhost:3000/api/auth/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Dealer", email: "a@b.com", password: "password123", unknownField: "x" }),
+    });
+
+    const res = await POST(req as Parameters<typeof POST>[0]);
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toBe("validation_error");
+  });
 });
 
 describe("POST /api/auth/forgot-password", () => {
@@ -152,6 +221,23 @@ describe("POST /api/auth/forgot-password", () => {
     expect(data.error).toBe("rate_limited");
   });
 
+  it("returns 429 (fail-closed) when critical rate limiter DB fails", async () => {
+    (prisma.rateLimitBucket.upsert as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("DB connection timeout")
+    );
+
+    const req = new Request("http://localhost:3000/api/auth/forgot-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "test@example.com" }),
+    });
+
+    const res = await ForgotPOST(req as Parameters<typeof ForgotPOST>[0]);
+    expect(res.status).toBe(429);
+    const data = await res.json();
+    expect(data.error).toBe("rate_limited");
+  });
+
   it("returns success for valid email (does not reveal existence)", async () => {
     (prisma.dealer.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
 
@@ -165,5 +251,31 @@ describe("POST /api/auth/forgot-password", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.success).toBe(true);
+  });
+
+  it("returns 400 for invalid email format", async () => {
+    const req = new Request("http://localhost:3000/api/auth/forgot-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "not-an-email" }),
+    });
+
+    const res = await ForgotPOST(req as Parameters<typeof ForgotPOST>[0]);
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toBe("validation_error");
+  });
+
+  it("returns 400 for unknown fields in body (strict schema)", async () => {
+    const req = new Request("http://localhost:3000/api/auth/forgot-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "valid@example.com", extra: "field" }),
+    });
+
+    const res = await ForgotPOST(req as Parameters<typeof ForgotPOST>[0]);
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toBe("validation_error");
   });
 });

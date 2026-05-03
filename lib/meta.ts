@@ -100,9 +100,11 @@ export async function exchangeShortToLongLived(
     client_secret: appSecret,
     fb_exchange_token: shortToken,
   });
-  const res = await fetch(
-    `${GRAPH_BASE}/oauth/access_token?${params.toString()}`
-  );
+  const res = await fetch(`${GRAPH_BASE}/oauth/access_token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params.toString(),
+  });
   if (!res.ok) {
     throw new Error(`Token exchange failed: ${res.status}`);
   }
@@ -129,13 +131,16 @@ export async function refreshToken(
 
 /**
  * Make an authenticated request to the Meta Graph API.
+ * Sends the token via the Authorization header to avoid credential exposure
+ * in logs, proxies, and observability tooling.
  */
 export async function graphFetch(
   endpoint: string,
   options: RequestInit = {},
   token: string
 ): Promise<Response> {
-  const separator = endpoint.includes("?") ? "&" : "?";
-  const url = `${GRAPH_BASE}${endpoint}${separator}access_token=${encodeURIComponent(token)}`;
-  return fetch(url, options);
+  const url = `${GRAPH_BASE}${endpoint}`;
+  const headers = new Headers(options.headers);
+  headers.set("Authorization", `Bearer ${token}`);
+  return fetch(url, { ...options, headers });
 }

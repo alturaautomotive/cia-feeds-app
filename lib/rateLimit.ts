@@ -73,6 +73,52 @@ export async function durableRateLimit(
   }
 }
 
+/**
+ * Critical durable rate limiter that fails CLOSED on DB errors.
+ * Use for abuse-sensitive surfaces (auth endpoints, privileged admin mutations,
+ * high-impact Meta mutations) where allowing requests through on DB failure
+ * is worse than denying them.
+ *
+ * Key composition should include authenticated identity (not just IP) where available.
+ */
+export async function criticalDurableRateLimit(
+  key: string,
+  limit: number,
+  windowMs: number
+): Promise<{ allowed: boolean; retryAfterMs: number }> {
+  try {
+    const now = Date.now();
+    const windowStart = new Date(now - (now % windowMs));
+    const expiresAt = new Date(windowStart.getTime() + windowMs * 2);
+
+    const bucket = await prisma.rateLimitBucket.upsert({
+      where: {
+        key_windowStart: { key, windowStart },
+      },
+      create: {
+        key,
+        windowStart,
+        windowMs,
+        count: 1,
+        expiresAt,
+      },
+      update: {
+        count: { increment: 1 },
+      },
+    });
+
+    const retryAfterMs = Math.max(0, windowStart.getTime() + windowMs - Date.now());
+
+    return {
+      allowed: bucket.count <= limit,
+      retryAfterMs,
+    };
+  } catch (err) {
+    console.error("[criticalDurableRateLimit] DB error — denying request (fail-closed):", err);
+    return { allowed: false, retryAfterMs: windowMs };
+  }
+}
+
 /** Clean up expired buckets (call periodically or via cron). */
 export async function cleanupExpiredBuckets(): Promise<number> {
   const result = await prisma.rateLimitBucket.deleteMany({
