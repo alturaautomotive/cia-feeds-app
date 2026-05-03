@@ -58,4 +58,7 @@ export function validateEnv() {
   }
 }
 
+// Optional public env (inlined by Next.js at build time, not validated here):
+// - NEXT_PUBLIC_LANDING_PIXEL_ID: Meta Pixel ID for the landing page analytics.
+
 validateEnv();
