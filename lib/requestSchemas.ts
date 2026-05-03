@@ -68,3 +68,19 @@ export const adminFeedRescrapeBodySchema = z.strictObject({
 export const adminFeedRescrapeQuerySchema = z.strictObject({
   dealerId: z.string().uuid("invalid dealerId").optional(),
 });
+
+// --- Team accept schema ---
+
+export const teamAcceptBodySchema = z.strictObject({
+  token: z.string().min(1, "token is required"),
+  name: z
+    .string()
+    .min(1, "name is required")
+    .max(200, "name must be 200 characters or fewer")
+    .transform((s) => s.trim())
+    .refine((s) => s.length > 0, "name must not be blank"),
+  password: z
+    .string()
+    .min(8, "password must be at least 8 characters")
+    .max(128, "password must be 128 characters or fewer"),
+});

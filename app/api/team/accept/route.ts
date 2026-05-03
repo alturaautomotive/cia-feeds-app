@@ -1,16 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { teamAcceptBodySchema } from "@/lib/requestSchemas";
+import { sendTeamPasswordSetEmail } from "@/lib/email";
 
-export async function POST(request: NextRequest) {
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
-  }
-
-  const b = body as Record<string, unknown>;
-  const token = typeof b.token === "string" ? b.token.trim() : "";
+export async function GET(request: NextRequest) {
+  const token = request.nextUrl.searchParams.get("token") ?? "";
 
   if (!token) {
     return NextResponse.json({ error: "missing_token" }, { status: 400 });
@@ -23,38 +18,108 @@ export async function POST(request: NextRequest) {
   }
 
   if (invite.expiresAt < new Date()) {
+    return NextResponse.json(
+      { email: invite.email, role: invite.role, expired: true },
+      { status: 200 }
+    );
+  }
+
+  const dealer = await prisma.dealer.findUnique({
+    where: { id: invite.dealerId },
+    select: { name: true },
+  });
+
+  return NextResponse.json({
+    email: invite.email,
+    dealerName: dealer?.name ?? "Unknown",
+    role: invite.role,
+    expired: false,
+  });
+}
+
+export async function POST(request: NextRequest) {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+  }
+
+  const parsed = teamAcceptBodySchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "validation_error", details: parsed.error.flatten().fieldErrors },
+      { status: 400 }
+    );
+  }
+
+  const { token, name, password } = parsed.data;
+
+  const invite = await prisma.teamInvite.findUnique({ where: { token } });
+
+  if (!invite) {
+    return NextResponse.json({ error: "invalid_token" }, { status: 404 });
+  }
+
+  if (invite.expiresAt < new Date()) {
     await prisma.teamInvite.delete({ where: { id: invite.id } });
     return NextResponse.json({ error: "token_expired" }, { status: 410 });
   }
 
-  // Check if already a team member (race condition guard)
-  const existing = await prisma.teamUser.findUnique({
-    where: { dealerId_email: { dealerId: invite.dealerId, email: invite.email } },
+  const dealer = await prisma.dealer.findUnique({
+    where: { id: invite.dealerId },
+    select: { name: true },
   });
 
-  if (existing) {
-    await prisma.teamInvite.delete({ where: { id: invite.id } });
-    return NextResponse.json({ error: "already_accepted" }, { status: 409 });
+  const passwordHash = await bcrypt.hash(password, 10);
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const existing = await tx.teamUser.findUnique({
+        where: { dealerId_email: { dealerId: invite.dealerId, email: invite.email } },
+      });
+
+      if (existing && existing.passwordHash) {
+        throw new Error("ALREADY_ACCEPTED");
+      }
+
+      if (existing) {
+        // Re-accept path: existing row with null passwordHash
+        await tx.teamUser.update({
+          where: { id: existing.id },
+          data: {
+            name,
+            passwordHash,
+            subAccountId: invite.subAccountId,
+            role: invite.role,
+            acceptedAt: new Date(),
+          },
+        });
+      } else {
+        await tx.teamUser.create({
+          data: {
+            email: invite.email,
+            dealerId: invite.dealerId,
+            subAccountId: invite.subAccountId,
+            role: invite.role,
+            name,
+            passwordHash,
+            acceptedAt: new Date(),
+          },
+        });
+      }
+
+      await tx.teamInvite.delete({ where: { id: invite.id } });
+    });
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message === "ALREADY_ACCEPTED") {
+      return NextResponse.json({ error: "already_accepted" }, { status: 409 });
+    }
+    throw err;
   }
 
-  // Create TeamUser and delete invite in a transaction
-  const teamUser = await prisma.$transaction(async (tx) => {
-    const tu = await tx.teamUser.create({
-      data: {
-        email: invite.email,
-        dealerId: invite.dealerId,
-        subAccountId: invite.subAccountId,
-        role: invite.role,
-        acceptedAt: new Date(),
-      },
-    });
-    await tx.teamInvite.delete({ where: { id: invite.id } });
-    return tu;
-  });
+  // Fire-and-forget email
+  sendTeamPasswordSetEmail(invite.email, dealer?.name ?? "Your team").catch(() => {});
 
-  return NextResponse.json({
-    success: true,
-    dealerId: teamUser.dealerId,
-    role: teamUser.role,
-  });
+  return NextResponse.json({ success: true, email: invite.email });
 }

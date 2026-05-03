@@ -81,10 +81,29 @@ export async function sendTeamInviteEmail(
       from: FROM,
       to: toEmail,
       subject: `You're invited to join ${dealerName} on CIA Feeds`,
-      html: `<p>Hi,</p><p><strong>${dealerName}</strong> has invited you to join their team on CIA Feeds as <strong>${role}</strong>.</p><p>Click the link below to accept the invitation (valid for 7 days):</p><p><a href="${inviteUrl}">${inviteUrl}</a></p><p>If you did not expect this invitation, you can ignore this email.</p>`,
+      html: `<p>Hi,</p><p><strong>${dealerName}</strong> has invited you to join their team on CIA Feeds as <strong>${role}</strong>.</p><p>On the next screen you'll create your name and password to access <strong>${dealerName}</strong>'s account.</p><p>Click the link below to get started (valid for 7 days):</p><p><a href="${inviteUrl}">${inviteUrl}</a></p><p>If you did not expect this invitation, you can ignore this email.</p>`,
     });
   } catch (err) {
     console.error("[email] sendTeamInviteEmail failed:", err);
+  }
+}
+
+export async function sendTeamPasswordSetEmail(
+  toEmail: string,
+  dealerName: string
+): Promise<void> {
+  const resend = getResend();
+  if (!resend) return;
+  const loginUrl = `${process.env.NEXTAUTH_URL || "https://www.ciafeed.com"}/login`;
+  try {
+    await resend.emails.send({
+      from: FROM,
+      to: toEmail,
+      subject: `You've joined ${dealerName} on CIA Feeds`,
+      html: `<p>Hi,</p><p>Your password has been set and you now have access to <strong>${dealerName}</strong>'s account on CIA Feeds.</p><p>You can log in anytime at: <a href="${loginUrl}">${loginUrl}</a></p>`,
+    });
+  } catch (err) {
+    console.error("[email] sendTeamPasswordSetEmail failed:", err);
   }
 }
 

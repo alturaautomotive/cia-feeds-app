@@ -38,11 +38,13 @@ const VERTICALS = [
 interface TeamMember {
   id: string;
   email: string;
+  name: string | null;
   role: string;
   subAccountId: string | null;
   invitedAt: string;
   acceptedAt: string | null;
   subAccount: { name: string } | null;
+  passwordSet: boolean;
 }
 
 interface PendingInvite {
@@ -79,6 +81,7 @@ interface Props {
   metaDeliveryMethod: string;
   subAccounts?: SubAccountItem[];
   isImpersonating?: boolean;
+  isEditor?: boolean;
 }
 
 type MetaStep =
@@ -107,6 +110,7 @@ export default function ProfileClient({
   metaDeliveryMethod: initialDeliveryMethod,
   subAccounts: initialSubAccounts = [],
   isImpersonating = false,
+  isEditor = false,
 }: Props) {
   const router = useRouter();
   const [photoUrl, setPhotoUrl] = useState<string | null>(initialPhotoUrl);
@@ -288,6 +292,27 @@ export default function ProfileClient({
       }
     } catch {
       setTeamError("Failed to cancel invite.");
+    }
+  }
+
+  async function handleResendInvite(payload: { memberId?: string; inviteId?: string }, email: string) {
+    setTeamError(null);
+    setTeamSuccess(null);
+    try {
+      const res = await fetch("/api/team/invite/resend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        setTeamSuccess(`New invite sent to ${email}`);
+        await loadTeamMembers();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setTeamError(data.error === "already_active" ? "This member already has an active account." : "Failed to resend invite.");
+      }
+    } catch {
+      setTeamError("Network error. Please try again.");
     }
   }
 
@@ -1899,20 +1924,41 @@ export default function ProfileClient({
                   className="flex items-center justify-between px-3 py-2.5 rounded-lg border border-gray-200"
                 >
                   <div>
-                    <div className="text-sm font-medium text-gray-900">{m.email}</div>
+                    <div className="text-sm font-medium text-gray-900">
+                      {m.name ?? m.email}
+                    </div>
                     <div className="text-xs text-gray-500">
+                      {m.name && m.email}
+                      {m.name && " \u00b7 "}
                       {m.role === "admin" ? "Admin" : "Editor"}
                       {m.subAccount ? ` \u00b7 ${m.subAccount.name}` : " \u00b7 All sub-accounts"}
-                      {m.acceptedAt ? "" : " \u00b7 Pending"}
                     </div>
+                    {m.acceptedAt && !m.passwordSet && (
+                      <span className="inline-block mt-1 px-2 py-0.5 text-xs font-medium rounded-full bg-amber-100 text-amber-700">
+                        Pending password setup
+                      </span>
+                    )}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveMember(m.id)}
-                    className="text-xs text-red-500 hover:text-red-600 font-medium"
-                  >
-                    Remove
-                  </button>
+                  {!isEditor && (
+                    <div className="flex items-center gap-2">
+                      {m.acceptedAt && !m.passwordSet && (
+                        <button
+                          type="button"
+                          onClick={() => handleResendInvite({ memberId: m.id }, m.email)}
+                          className="text-xs text-indigo-500 hover:text-indigo-600 font-medium"
+                        >
+                          Resend invite
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveMember(m.id)}
+                        className="text-xs text-red-500 hover:text-red-600 font-medium"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -1935,13 +1981,24 @@ export default function ProfileClient({
                         {new Date(inv.expiresAt).toLocaleDateString()}
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleCancelInvite(inv.id)}
-                      className="text-xs text-gray-500 hover:text-red-500 font-medium"
-                    >
-                      Cancel
-                    </button>
+                    {!isEditor && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleResendInvite({ inviteId: inv.id }, inv.email)}
+                          className="text-xs text-indigo-500 hover:text-indigo-600 font-medium"
+                        >
+                          Resend
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleCancelInvite(inv.id)}
+                          className="text-xs text-gray-500 hover:text-red-500 font-medium"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1949,7 +2006,7 @@ export default function ProfileClient({
           )}
 
           {/* Invite Form */}
-          {showInviteForm ? (
+          {isEditor ? null : showInviteForm ? (
             <div className="border border-gray-200 rounded-lg p-4">
               <h3 className="text-sm font-semibold text-gray-800 mb-3">Invite Team Member</h3>
               <div className="mb-3">

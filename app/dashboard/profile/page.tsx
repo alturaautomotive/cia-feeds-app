@@ -63,6 +63,8 @@ export default async function ProfilePage() {
     createdAt: s.createdAt.toISOString(),
   }));
 
+  const isEditor = session.user.teamUser?.role === "editor";
+
   return (
     <ProfileClient
       slug={dealer?.slug ?? ""}
@@ -82,6 +84,7 @@ export default async function ProfilePage() {
       metaDeliveryMethod={dealer?.metaDeliveryMethod ?? "csv"}
       subAccounts={subAccountsForClient}
       isImpersonating={isImpersonating}
+      isEditor={isEditor}
     />
   );
 }

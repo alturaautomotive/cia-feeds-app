@@ -41,8 +41,51 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        const dealer = await prisma.dealer.findUnique({
-          where: { email: credentials.email },
+        const emailLower = credentials.email.trim().toLowerCase();
+
+        // 1. TeamUser-first path: team members with their own password
+        //    Fetch all matching rows — the same email can be invited to multiple dealers.
+        const teamUsers = await prisma.teamUser.findMany({
+          where: {
+            email: { equals: emailLower, mode: "insensitive" },
+            passwordHash: { not: null },
+            acceptedAt: { not: null },
+          },
+          include: {
+            dealer: {
+              include: { subAccounts: { orderBy: { createdAt: "asc" }, take: 1 } },
+            },
+          },
+        });
+
+        for (const teamUser of teamUsers) {
+          const match = await bcrypt.compare(credentials.password, teamUser.passwordHash!);
+          if (!match) continue;
+          if (!teamUser.dealer.active) continue;
+
+          return {
+            id: teamUser.dealer.id,
+            name: teamUser.name ?? teamUser.dealer.name,
+            email: teamUser.dealer.email,
+            slug: teamUser.dealer.slug,
+            vertical: teamUser.dealer.vertical,
+            subAccountId:
+              teamUser.subAccountId ??
+              (teamUser.dealer as unknown as { defaultSubAccountId?: string }).defaultSubAccountId ??
+              teamUser.dealer.subAccounts[0]?.id ??
+              null,
+            teamUser: {
+              id: teamUser.id,
+              role: teamUser.role as "admin" | "editor",
+              subAccountId: teamUser.subAccountId ?? undefined,
+            },
+          };
+        }
+
+        // 2. Dealer fallback: direct dealer login
+        //    Use case-insensitive lookup to preserve compatibility with mixed-case stored emails.
+        const dealer = await prisma.dealer.findFirst({
+          where: { email: { equals: credentials.email.trim(), mode: "insensitive" } },
           include: { subAccounts: { orderBy: { createdAt: "asc" }, take: 1 } },
         });
 
@@ -63,10 +106,10 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        // Check if this user is a team member for this dealer
-        const teamUser = await prisma.teamUser.findFirst({
+        // Check if this dealer also happens to be a team user of themselves
+        const dealerTeamUser = await prisma.teamUser.findFirst({
           where: {
-            email: credentials.email.toLowerCase(),
+            email: { equals: emailLower, mode: "insensitive" },
             dealerId: dealer.id,
             acceptedAt: { not: null },
           },
@@ -80,8 +123,8 @@ export const authOptions: NextAuthOptions = {
           slug: dealer.slug,
           vertical: dealer.vertical,
           subAccountId: dealer.defaultSubAccountId ?? dealer.subAccounts[0]?.id ?? null,
-          teamUser: teamUser
-            ? { id: teamUser.id, role: teamUser.role as "admin" | "editor", subAccountId: teamUser.subAccountId ?? undefined }
+          teamUser: dealerTeamUser
+            ? { id: dealerTeamUser.id, role: dealerTeamUser.role as "admin" | "editor", subAccountId: dealerTeamUser.subAccountId ?? undefined }
             : undefined,
         };
       },

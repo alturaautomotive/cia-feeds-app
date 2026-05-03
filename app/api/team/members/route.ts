@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
 import { prisma } from "@/lib/prisma";
+import { authOptions } from "@/lib/auth";
 import { getEffectiveDealerContext } from "@/lib/impersonation";
 
 export async function GET() {
@@ -15,10 +17,12 @@ export async function GET() {
       select: {
         id: true,
         email: true,
+        name: true,
         role: true,
         subAccountId: true,
         invitedAt: true,
         acceptedAt: true,
+        passwordHash: true,
         subAccount: { select: { name: true } },
       },
     }),
@@ -36,10 +40,33 @@ export async function GET() {
     }),
   ]);
 
-  return NextResponse.json({ members, pendingInvites });
+  // Map members to avoid leaking passwordHash
+  const mappedMembers = members.map((m) => ({
+    id: m.id,
+    email: m.email,
+    name: m.name,
+    role: m.role,
+    subAccountId: m.subAccountId,
+    invitedAt: m.invitedAt,
+    acceptedAt: m.acceptedAt,
+    subAccount: m.subAccount,
+    passwordSet: m.passwordHash !== null,
+  }));
+
+  return NextResponse.json({ members: mappedMembers, pendingInvites });
 }
 
 export async function DELETE(request: NextRequest) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  // Editors cannot delete team members
+  if (session.user.teamUser?.role === "editor") {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+
   const { effectiveDealerId } = await getEffectiveDealerContext();
   if (!effectiveDealerId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });

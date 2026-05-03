@@ -244,6 +244,8 @@ model OAuthState {
 model TeamUser {
   id           String      @id @default(uuid())
   email        String
+  name         String?
+  passwordHash String?
   dealerId     String
   subAccountId String?
   role         String      // "admin" | "editor"
@@ -255,6 +257,7 @@ model TeamUser {
   @@unique([dealerId, email])
   @@index([dealerId])
   @@index([subAccountId])
+  @@index([email])
 }
 
 model MetaCatalogSyncItem {
