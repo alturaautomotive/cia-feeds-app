@@ -138,16 +138,19 @@ model Vehicle {
 model Lead {
   id        String   @id @default(uuid())
   dealerId  String
-  vehicleId String
+  vehicleId String?
+  listingId String?
   name      String
   email     String?
   phone     String?
   createdAt DateTime @default(now())
   dealer    Dealer   @relation(fields: [dealerId], references: [id], onDelete: Cascade)
-  vehicle   Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  vehicle   Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  listing   Listing? @relation(fields: [listingId], references: [id], onDelete: Cascade)
 
   @@index([dealerId])
   @@index([vehicleId])
+  @@index([listingId])
 }
 
 model Listing {
@@ -172,6 +175,7 @@ model Listing {
   data                Json
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
+  leads               Lead[]
 
   @@index([dealerId, vertical])
   @@index([dealerId, archivedAt])

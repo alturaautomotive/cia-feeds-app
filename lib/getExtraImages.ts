@@ -1,10 +1,16 @@
 import { z } from "zod";
 import { firecrawlClient } from "@/lib/firecrawl";
 
-const IMAGES_EXTRACTION_PROMPT = `
+const VEHICLE_IMAGES_EXTRACTION_PROMPT = `
 Extract all main vehicle gallery photo URLs from this Vehicle Detail Page (VDP).
 Return an array called "images" containing 10-20 absolute, high-resolution image URLs
 of the vehicle itself (not logos, icons, or dealer branding).
+`;
+
+const SERVICES_IMAGES_EXTRACTION_PROMPT = `
+Extract all main service or product gallery photo URLs from this page.
+Return an array called "images" containing 10-20 absolute, high-resolution image URLs
+of the service or product itself (not logos, icons, or dealer branding).
 `;
 
 const IMAGES_SCHEMA = z.object({
@@ -20,11 +26,12 @@ function isValidImageUrl(url: string): boolean {
   return true;
 }
 
-export async function getExtraImages(vehicleUrl: string): Promise<string[]> {
+export async function getExtraImages(url: string, context: "vehicle" | "service" = "vehicle"): Promise<string[]> {
+  const prompt = context === "service" ? SERVICES_IMAGES_EXTRACTION_PROMPT : VEHICLE_IMAGES_EXTRACTION_PROMPT;
   try {
-    const response = await firecrawlClient.scrape(vehicleUrl, {
+    const response = await firecrawlClient.scrape(url, {
       formats: [
-        { type: "json", prompt: IMAGES_EXTRACTION_PROMPT, schema: IMAGES_SCHEMA },
+        { type: "json", prompt, schema: IMAGES_SCHEMA },
       ],
     });
 

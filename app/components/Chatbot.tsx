@@ -26,7 +26,8 @@ declare global {
 }
 
 interface Props {
-  vehicleId: string;
+  vehicleId?: string;
+  listingId?: string;
   dealerId: string;
   vin?: string;
   pixelId?: string;
@@ -44,7 +45,7 @@ const DEFAULT_SCRIPTS: string[] = [
   "Just drop your name and contact info below and we'll send it right over!",
 ];
 
-export default function Chatbot({ vehicleId, dealerId, vin, pixelId, price, translations: t }: Props) {
+export default function Chatbot({ vehicleId, listingId, dealerId, vin, pixelId, price, translations: t }: Props) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [scriptIdx, setScriptIdx] = useState(0);
@@ -97,7 +98,7 @@ export default function Chatbot({ vehicleId, dealerId, vin, pixelId, price, tran
           name: form.name.trim(),
           email: form.email.trim() || undefined,
           phone: form.phone.trim() || undefined,
-          vehicleId,
+          ...(vehicleId ? { vehicleId } : { listingId }),
           dealerId,
         }),
       });
@@ -119,8 +120,8 @@ export default function Chatbot({ vehicleId, dealerId, vin, pixelId, price, tran
 
         if (pixelId && typeof window.fbq === "function") {
           window.fbq("track", "Lead", {
-            content_ids: [vehicleId],
-            content_category: "vehicle_lead",
+            content_ids: [vehicleId || listingId],
+            content_category: listingId ? "service_lead" : "vehicle_lead",
             value: price || 0,
             currency: "USD",
           });
