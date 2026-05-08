@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendNewLeadEmail } from "@/lib/email";
 import { rateLimit } from "@/lib/rateLimit";
+import { sendMetaEvent } from "@/lib/metaTrack";
 
 export async function POST(request: NextRequest) {
   const ip = (request.headers.get("x-forwarded-for") ?? "unknown").split(",")[0].trim();
@@ -22,6 +23,9 @@ export async function POST(request: NextRequest) {
   if (!name || typeof name !== "string" || !dealerId || typeof dealerId !== "string") {
     return NextResponse.json({ error: "name and dealerId are required" }, { status: 400 });
   }
+  if (vehicleId && listingId) {
+    return NextResponse.json({ error: "provide vehicleId or listingId, not both" }, { status: 400 });
+  }
   if (!vehicleId && !listingId) {
     return NextResponse.json({ error: "vehicleId or listingId is required" }, { status: 400 });
   }
@@ -39,14 +43,46 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "phone must be a string" }, { status: 400 });
   }
 
+  // Validate ownership: the referenced entity must belong to the submitted dealer
+  let entityInfo = "Inquiry";
+  let entityPrice: number | null = null;
+  let validatedVehicleId: string | undefined;
+  let validatedListingId: string | undefined;
+
   try {
+    if (typeof vehicleId === "string") {
+      const vehicle = await prisma.vehicle.findFirst({
+        where: { id: vehicleId, dealerId },
+        select: { make: true, model: true, year: true, description: true, price: true },
+      });
+      if (!vehicle) {
+        return NextResponse.json({ error: "vehicle not found for this dealer" }, { status: 400 });
+      }
+      validatedVehicleId = vehicleId;
+      entityInfo =
+        [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(" ") ||
+        (vehicle.description?.slice(0, 100) ?? "Vehicle");
+      entityPrice = vehicle.price;
+    } else if (typeof listingId === "string") {
+      const listing = await prisma.listing.findFirst({
+        where: { id: listingId, dealerId },
+        select: { title: true, price: true },
+      });
+      if (!listing) {
+        return NextResponse.json({ error: "listing not found for this dealer" }, { status: 400 });
+      }
+      validatedListingId = listingId;
+      entityInfo = listing.title || "Service";
+      entityPrice = listing.price;
+    }
+
     const lead = await prisma.lead.create({
       data: {
         name: name.trim(),
         email: typeof email === "string" ? email.trim() : undefined,
         phone: typeof phone === "string" ? phone.trim() : undefined,
-        vehicleId: typeof vehicleId === "string" ? vehicleId : undefined,
-        listingId: typeof listingId === "string" ? listingId : undefined,
+        vehicleId: validatedVehicleId,
+        listingId: validatedListingId,
         dealerId,
       },
     });
@@ -56,32 +92,7 @@ export async function POST(request: NextRequest) {
       select: { email: true, metaPixelId: true },
     });
 
-    // Resolve entity info for email and tracking
-    let entityInfo = "Inquiry";
-    let entityPrice: number | null = null;
-    const contentId = vehicleId || listingId;
-
-    if (typeof vehicleId === "string") {
-      const vehicle = await prisma.vehicle.findUnique({
-        where: { id: vehicleId },
-        select: { make: true, model: true, year: true, description: true, price: true },
-      });
-      if (vehicle) {
-        entityInfo =
-          [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(" ") ||
-          (vehicle.description?.slice(0, 100) ?? "Vehicle");
-        entityPrice = vehicle.price;
-      }
-    } else if (typeof listingId === "string") {
-      const listing = await prisma.listing.findUnique({
-        where: { id: listingId },
-        select: { title: true, price: true },
-      });
-      if (listing) {
-        entityInfo = listing.title || "Service";
-        entityPrice = listing.price;
-      }
-    }
+    const contentId = validatedVehicleId || validatedListingId;
 
     if (dealer) {
       sendNewLeadEmail(
@@ -94,19 +105,15 @@ export async function POST(request: NextRequest) {
 
       // Fire server-side Meta CAPI Lead event
       if (dealer.metaPixelId && entityPrice != null) {
-        fetch('/api/track', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            pixelId: dealer.metaPixelId,
-            eventName: 'Lead',
-            data: {
-              content_ids: [contentId],
-              value: entityPrice,
-              currency: 'USD'
-            },
-            dealerId: dealerId
-          })
+        sendMetaEvent({
+          pixelId: dealer.metaPixelId,
+          eventName: 'Lead',
+          data: {
+            content_ids: [contentId],
+            value: entityPrice,
+            currency: 'USD',
+          },
+          dealerId: dealerId,
         }).catch((err) => console.error('[leads] track error:', err));
       }
     }

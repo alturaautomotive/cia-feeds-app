@@ -13,6 +13,8 @@ interface Props {
     smsBody?: string;
     whatsappBody?: string;
   };
+  /** Render inline (for sidebar) instead of fixed-bottom bar */
+  inline?: boolean;
 }
 
 interface CTAButton {
@@ -21,7 +23,7 @@ interface CTAButton {
   target?: string;
 }
 
-export default function StickyCTAs({ dealer, tCtas }: Props) {
+export default function StickyCTAs({ dealer, tCtas, inline }: Props) {
   const smsBody = tCtas?.smsBody || "Hi, I'm interested in your inventory";
   const whatsappBody = tCtas?.whatsappBody || "Hi, I'm interested in your inventory";
 
@@ -57,8 +59,30 @@ export default function StickyCTAs({ dealer, tCtas }: Props) {
 
   if (buttons.length === 0) return null;
 
+  if (inline) {
+    return (
+      <div className="flex flex-col gap-3">
+        {buttons.map((b, i) => (
+          <a
+            key={b.label}
+            href={b.href}
+            target={b.target}
+            rel={b.target ? "noopener noreferrer" : undefined}
+            className={`block w-full text-center px-6 py-3 rounded-lg font-semibold text-sm transition-colors ${
+              i === 0
+                ? "bg-indigo-600 text-white hover:bg-indigo-700"
+                : "border-2 border-indigo-600 text-indigo-600 hover:bg-indigo-50"
+            }`}
+          >
+            {b.label}
+          </a>
+        ))}
+      </div>
+    );
+  }
+
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-200 p-4 md:p-6 z-50">
+    <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-200 p-4 md:p-6 z-50 md:hidden">
       <div className="max-w-4xl mx-auto flex flex-wrap justify-center gap-3">
         {buttons.map((b, i) => (
           <a

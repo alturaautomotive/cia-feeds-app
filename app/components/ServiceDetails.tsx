@@ -23,15 +23,23 @@ interface Props {
   listing: ListingProps;
   dealer: DealerProps;
   translations?: TranslationProps;
+  /** When true, the booking CTA is rendered in a sidebar instead of inline */
+  sidebarMode?: boolean;
 }
 
 function formatPrice(value: string | number): string {
-  const num = typeof value === "string" ? parseFloat(value) : value;
-  if (Number.isNaN(num)) return String(value);
-  return "$" + num.toLocaleString("en-US");
+  if (typeof value === "number") {
+    return "$" + value.toLocaleString("en-US");
+  }
+  const trimmed = value.trim();
+  // Only format as currency if the string is strictly a single numeric value
+  if (/^\d+(\.\d+)?$/.test(trimmed)) {
+    return "$" + parseFloat(trimmed).toLocaleString("en-US");
+  }
+  return trimmed;
 }
 
-export default function ServiceDetails({ listing, dealer, translations: t }: Props) {
+export default function ServiceDetails({ listing, dealer, translations: t, sidebarMode }: Props) {
   const data = listing.data;
   const name = String(data.name ?? listing.title ?? "");
   const description = String(data.description ?? "");
@@ -48,7 +56,7 @@ export default function ServiceDetails({ listing, dealer, translations: t }: Pro
   if (condition) chips.push({ label: t?.conditionLabel || "Condition", value: condition });
 
   return (
-    <section className="max-w-4xl mx-auto p-6 md:p-8">
+    <section className="p-6 md:p-8">
       <p className="text-sm text-gray-500 mb-1">{dealer.name}</p>
       <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-4">
         {name || "Service"}
@@ -93,7 +101,8 @@ export default function ServiceDetails({ listing, dealer, translations: t }: Pro
         </div>
       )}
 
-      {url && (
+      {/* Show inline booking CTA only on mobile or when not in sidebar mode */}
+      {!sidebarMode && url && (
         <a
           href={url}
           target="_blank"
@@ -104,8 +113,42 @@ export default function ServiceDetails({ listing, dealer, translations: t }: Pro
         </a>
       )}
 
-      {/* Spacer so sticky CTA bar doesn't cover content */}
-      <div className="h-24" />
+      {/* Spacer so sticky CTA bar doesn't cover content on mobile */}
+      <div className="h-24 md:hidden" />
     </section>
+  );
+}
+
+/** Extracted booking sidebar panel for desktop layout */
+export function ServiceBookingSidebar({
+  listing,
+  translations,
+}: {
+  listing: ListingProps;
+  translations?: TranslationProps;
+}) {
+  const data = listing.data;
+  const price = data.price ?? listing.price;
+  const url = String(data.url ?? "");
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 space-y-4">
+      {price != null && price !== "" && (
+        <div>
+          <p className="text-xs uppercase tracking-wider text-gray-500">{translations?.priceLabel || "Price"}</p>
+          <p className="text-2xl font-bold text-gray-900">{formatPrice(price as string | number)}</p>
+        </div>
+      )}
+      {url && (
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block w-full text-center bg-indigo-600 text-white font-semibold px-6 py-3 rounded-lg hover:bg-indigo-700 transition"
+        >
+          {translations?.bookingLabel || "Book Now"}
+        </a>
+      )}
+    </div>
   );
 }

@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import LandingCarousel from "@/app/components/LandingCarousel";
-import ServiceDetails from "@/app/components/ServiceDetails";
+import ServiceDetails, { ServiceBookingSidebar } from "@/app/components/ServiceDetails";
 import StickyCTAs from "@/app/components/StickyCTAs";
 import SocialProof from "@/app/components/SocialProof";
 import Chatbot from "@/app/components/Chatbot";
@@ -11,6 +11,7 @@ import { getGeoCity } from "@/lib/getGeoCity";
 import RelatedServices from "@/app/components/RelatedServices";
 import { translateBatch } from "@/lib/translate";
 import { applyServicesFallbacks } from "@/lib/serviceUrlValidator";
+import { sendMetaEvent } from "@/lib/metaTrack";
 
 export const revalidate = 3600;
 
@@ -105,20 +106,16 @@ export default async function ServiceLandingPage({
 
   // Fire server-side Meta CAPI ViewContent event
   if (dealer.metaPixelId) {
-    fetch("/api/track", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        pixelId: dealer.metaPixelId,
-        eventName: "ViewContent",
-        data: {
-          content_ids: [listingId],
-          content_type: "product",
-          value: listing.price || 0,
-          currency: "USD",
-        },
-        dealerId: dealer.id,
-      }),
+    sendMetaEvent({
+      pixelId: dealer.metaPixelId,
+      eventName: "ViewContent",
+      data: {
+        content_ids: [listingId],
+        content_type: "product",
+        value: listing.price || 0,
+        currency: "USD",
+      },
+      dealerId: dealer.id,
     }).catch((err) => console.error("[services-landing] track error:", err));
   }
 
@@ -255,13 +252,22 @@ export default async function ServiceLandingPage({
       {pixelId && <PixelInitializer pixelId={pixelId} vehicleId={listingId} price={listing.price} />}
       <SocialProof fakeViewer={fakeViewer} tViewed={translations.viewedText} defaultText="viewed this service in" />
       <div className="max-w-5xl mx-auto px-4">
-        <ServiceDetails listing={listingForDetails} dealer={dealer} translations={detailsTranslations} />
+        <div className="md:grid md:grid-cols-[1fr_320px] md:gap-8 md:items-start">
+          {/* Left column: service details */}
+          <ServiceDetails listing={listingForDetails} dealer={dealer} translations={detailsTranslations} sidebarMode />
+          {/* Right column: sticky booking sidebar (desktop only) */}
+          <aside className="hidden md:block md:sticky md:top-6 space-y-4 py-8">
+            <ServiceBookingSidebar listing={listingForDetails} translations={detailsTranslations} />
+            <StickyCTAs dealer={dealer} tCtas={ctaTranslations} inline />
+          </aside>
+        </div>
       </div>
       {dealer.feedUrlMode === "landing" && relatedListings.length > 0 && (
         <div className="max-w-5xl mx-auto px-4 mt-12">
           <RelatedServices dealerName={dealer.name} dealerSlug={slug} listings={relatedListings} />
         </div>
       )}
+      {/* Fixed bottom CTA bar for mobile only */}
       <StickyCTAs dealer={dealer} tCtas={ctaTranslations} />
       <Chatbot listingId={listingId} dealerId={dealer.id} pixelId={pixelId} price={listing.price} translations={chatbotTranslations} />
     </div>
