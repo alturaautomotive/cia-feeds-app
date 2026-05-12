@@ -16,7 +16,7 @@ export const signupBodySchema = z.strictObject({
     .email("invalid email format"),
   password: z
     .string()
-    .min(8, "password must be at least 8 characters")
+    .min(10, "password must be at least 10 characters")
     .max(128, "password must be 128 characters or fewer"),
   vertical: z
     .enum(["automotive", "services", "ecommerce", "realestate"])
@@ -85,6 +85,6 @@ export const teamAcceptBodySchema = z.strictObject({
     .refine((s) => s.length > 0, "name must not be blank"),
   password: z
     .string()
-    .min(8, "password must be at least 8 characters")
+    .min(10, "password must be at least 10 characters")
     .max(128, "password must be 128 characters or fewer"),
 });

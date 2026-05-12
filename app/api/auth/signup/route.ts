@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { generateUniqueSlug } from "@/lib/slug";
 import { sendWelcomeEmail, sendAdminNewSignupEmail } from "@/lib/email";
 import { criticalDurableRateLimit } from "@/lib/rateLimit";
 import { signupBodySchema } from "@/lib/requestSchemas";
+import { hashPassword, validatePasswordStrength } from "@/lib/password";
 
 export async function POST(request: NextRequest) {
   const ip = (request.headers.get("x-forwarded-for") ?? "unknown").split(",")[0].trim();
@@ -40,7 +40,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "email_taken" }, { status: 409 });
     }
 
-    const passwordHash = await bcrypt.hash(password, 10);
+    // Defense-in-depth password policy: HIBP breach check + length floor
+    // (SECURITY_AUDIT.md F-1.5). zod already enforced the length minimum.
+    const strength = await validatePasswordStrength(password);
+    if (!strength.ok) {
+      return NextResponse.json(
+        { error: "validation_error", issues: { password: [strength.reason] } },
+        { status: 400 }
+      );
+    }
+
+    const passwordHash = await hashPassword(password);
     const slug = await generateUniqueSlug(trimmedName, prisma);
 
     const dealer = await prisma.dealer.create({

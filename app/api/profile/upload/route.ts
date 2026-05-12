@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { supabaseAdmin } from "@/lib/supabase";
 import { checkSubscription } from "@/lib/checkSubscription";
+import { validateImageBuffer } from "@/lib/imageValidation";
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -40,9 +41,18 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
+    // Magic-byte validation (SECURITY_AUDIT.md F-5.4).
+    const validation = await validateImageBuffer(buffer);
+    if (!validation.ok) {
+      return NextResponse.json(
+        { error: "File is not a valid image", reason: validation.reason },
+        { status: 400 }
+      );
+    }
+
     const { error: uploadError } = await supabaseAdmin.storage
       .from("vehicle-images")
-      .upload(path, buffer, { contentType: file.type, upsert: true });
+      .upload(path, buffer, { contentType: validation.contentType ?? "application/octet-stream", upsert: true });
 
     if (uploadError) {
       return NextResponse.json({ error: "Upload failed", details: uploadError.message }, { status: 502 });

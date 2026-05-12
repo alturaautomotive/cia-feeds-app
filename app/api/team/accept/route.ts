@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { teamAcceptBodySchema } from "@/lib/requestSchemas";
 import { sendTeamPasswordSetEmail } from "@/lib/email";
+import { hashPassword, validatePasswordStrength } from "@/lib/password";
 
 export async function GET(request: NextRequest) {
   const token = request.nextUrl.searchParams.get("token") ?? "";
@@ -71,7 +71,16 @@ export async function POST(request: NextRequest) {
     select: { name: true },
   });
 
-  const passwordHash = await bcrypt.hash(password, 10);
+  // HIBP breach check + length floor (SECURITY_AUDIT.md F-1.5).
+  const strength = await validatePasswordStrength(password);
+  if (!strength.ok) {
+    return NextResponse.json(
+      { error: "validation_error", issues: { password: [strength.reason] } },
+      { status: 400 }
+    );
+  }
+
+  const passwordHash = await hashPassword(password);
 
   try {
     await prisma.$transaction(async (tx) => {

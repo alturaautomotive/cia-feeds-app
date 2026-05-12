@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse, after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { dispatchFeedDeliveryInBackground } from "@/lib/metaDelivery";
+import { isSafeUrl } from "@/lib/safeUrl";
 
 const BATCH_SIZE = 10;
 const BATCH_DELAY_MS = 1000;
@@ -38,6 +39,14 @@ type CheckResult = {
 };
 
 async function checkUrl(url: string): Promise<CheckResult> {
+  // SSRF defense: reject URLs that resolve to internal services, cloud
+  // metadata endpoints, or private IP space before issuing the fetch
+  // (SECURITY_AUDIT.md F-5.5). Dealer websiteUrl is user-controlled.
+  const safe = await isSafeUrl(url);
+  if (!safe.ok) {
+    return { status: "error" };
+  }
+
   try {
     const response = await fetch(url, {
       method: "HEAD",
@@ -66,6 +75,12 @@ async function checkUrl(url: string): Promise<CheckResult> {
 
       if (!isVdpUrl(resolvedUrl)) {
         return { status: "redirect" };
+      }
+
+      // Re-validate redirect target against SSRF rules (F-5.5).
+      const redirectSafe = await isSafeUrl(resolvedUrl);
+      if (!redirectSafe.ok) {
+        return { status: "error" };
       }
 
       // Follow the redirect to check the final destination

@@ -36,6 +36,9 @@ const csp = [
   "worker-src 'self' blob:",
   "manifest-src 'self'",
   "upgrade-insecure-requests",
+  // Collect violations to /api/csp-report so we can see what would break
+  // before flipping Report-Only → Enforcing.
+  "report-uri /api/csp-report",
 ].join("; ");
 
 const securityHeaders = [

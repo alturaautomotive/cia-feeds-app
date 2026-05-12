@@ -11,6 +11,10 @@ declare module "next-auth" {
       slug: string;
       vertical: string;
       subAccountId: string | null;
+      // userType: discriminator for the identity provider that minted this
+      // session. Used by getEffectiveDealerContext() to refuse non-Dealer
+      // identities even if they somehow obtained a signed JWT.
+      userType: "dealer" | "teamuser";
       teamUser?: {
         id: string;
         role: "admin" | "editor";
@@ -24,6 +28,7 @@ declare module "next-auth" {
     slug: string;
     vertical: string;
     subAccountId: string | null;
+    userType: "dealer" | "teamuser";
     teamUser?: {
       id: string;
       role: "admin" | "editor";
@@ -38,6 +43,7 @@ declare module "next-auth/jwt" {
     slug: string;
     vertical: string;
     subAccountId: string | null;
+    userType: "dealer" | "teamuser";
     teamUser?: {
       id: string;
       role: "admin" | "editor";

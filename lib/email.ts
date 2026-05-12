@@ -2,6 +2,47 @@ import { Resend } from "resend";
 
 const FROM = "CIA Feeds <noreply@ciafeed.com>";
 
+/**
+ * HTML-escape user-controlled strings before interpolating into email HTML
+ * (SECURITY_AUDIT.md F-5.6).
+ *
+ * Threat: dealer names, lead names, lead messages, etc. are stored verbatim
+ * and rendered into outgoing email HTML. Without escaping, a malicious
+ * dealer could set their display name to a phishing payload and have it
+ * delivered (from our verified sender domain) to any user whose email
+ * mentions them \u2014 e.g. team invitees or admins receiving new-lead alerts.
+ *
+ * Most email clients sandbox script tags, but injected `<a>` tags, styled
+ * `<span>` overlays, and form elements still render and can be used to
+ * trick the recipient into clicking attacker-controlled links from a
+ * trusted sender.
+ */
+export function esc(value: string | null | undefined): string {
+  if (value == null) return "";
+  return String(value).replace(/[&<>"']/g, (c) => HTML_ENTITY_MAP[c] ?? c);
+}
+
+const HTML_ENTITY_MAP: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+};
+
+/**
+ * Lighter escape for URL strings that are interpolated into href attributes.
+ * The URL is also HTML-escaped (handles &, <, > inside the path/query) and
+ * the scheme is forced to http(s)/mailto. Any other scheme is replaced with
+ * "#" to prevent javascript:/data:/file: smuggling.
+ */
+export function escUrl(value: string | null | undefined): string {
+  if (value == null) return "#";
+  const v = String(value).trim();
+  if (!/^(https?:|mailto:)/i.test(v)) return "#";
+  return esc(v);
+}
+
 function getResend(): Resend | null {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) return null;
@@ -19,7 +60,7 @@ export async function sendWelcomeEmail(
       from: FROM,
       to: dealerEmail,
       subject: "Welcome to CIA Feeds!",
-      html: `<p>Hi ${dealerName},</p><p>Your CIA Feeds account is ready. Log in at any time to manage your vehicle inventory feed.</p><p>Thanks for signing up!</p>`,
+      html: `<p>Hi ${esc(dealerName)},</p><p>Your CIA Feeds account is ready. Log in at any time to manage your vehicle inventory feed.</p><p>Thanks for signing up!</p>`,
     });
   } catch (err) {
     console.error("[email] sendWelcomeEmail failed:", err);
@@ -39,7 +80,7 @@ export async function sendAdminNewSignupEmail(
       from: FROM,
       to: adminEmail,
       subject: "New CIA Feeds signup",
-      html: `<p>A new dealer just signed up:</p><ul><li><strong>Name:</strong> ${dealerName}</li><li><strong>Email:</strong> ${dealerEmail}</li></ul>`,
+      html: `<p>A new dealer just signed up:</p><ul><li><strong>Name:</strong> ${esc(dealerName)}</li><li><strong>Email:</strong> ${esc(dealerEmail)}</li></ul>`,
     });
   } catch (err) {
     console.error("[email] sendAdminNewSignupEmail failed:", err);
@@ -61,7 +102,7 @@ export async function sendNewLeadEmail(
       from: FROM,
       to: dealerEmail,
       subject: `New lead on ${vehicleInfo}`,
-      html: `<p>You have a new lead on <strong>${vehicleInfo}</strong>:</p><ul><li><strong>Name:</strong> ${leadName}</li><li><strong>Contact:</strong> ${contact}</li></ul>`,
+      html: `<p>You have a new lead on <strong>${esc(vehicleInfo)}</strong>:</p><ul><li><strong>Name:</strong> ${esc(leadName)}</li><li><strong>Contact:</strong> ${esc(contact)}</li></ul>`,
     });
   } catch (err) {
     console.error("[email] sendNewLeadEmail failed:", err);
@@ -81,7 +122,7 @@ export async function sendTeamInviteEmail(
       from: FROM,
       to: toEmail,
       subject: `You're invited to join ${dealerName} on CIA Feeds`,
-      html: `<p>Hi,</p><p><strong>${dealerName}</strong> has invited you to join their team on CIA Feeds as <strong>${role}</strong>.</p><p>On the next screen you'll create your name and password to access <strong>${dealerName}</strong>'s account.</p><p>Click the link below to get started (valid for 7 days):</p><p><a href="${inviteUrl}">${inviteUrl}</a></p><p>If you did not expect this invitation, you can ignore this email.</p>`,
+      html: `<p>Hi,</p><p><strong>${esc(dealerName)}</strong> has invited you to join their team on CIA Feeds as <strong>${esc(role)}</strong>.</p><p>On the next screen you'll create your name and password to access <strong>${esc(dealerName)}</strong>'s account.</p><p>Click the link below to get started (valid for 7 days):</p><p><a href="${escUrl(inviteUrl)}">${esc(inviteUrl)}</a></p><p>If you did not expect this invitation, you can ignore this email.</p>`,
     });
   } catch (err) {
     console.error("[email] sendTeamInviteEmail failed:", err);
@@ -100,7 +141,7 @@ export async function sendTeamPasswordSetEmail(
       from: FROM,
       to: toEmail,
       subject: `You've joined ${dealerName} on CIA Feeds`,
-      html: `<p>Hi,</p><p>Your password has been set and you now have access to <strong>${dealerName}</strong>'s account on CIA Feeds.</p><p>You can log in anytime at: <a href="${loginUrl}">${loginUrl}</a></p>`,
+      html: `<p>Hi,</p><p>Your password has been set and you now have access to <strong>${esc(dealerName)}</strong>'s account on CIA Feeds.</p><p>You can log in anytime at: <a href="${escUrl(loginUrl)}">${esc(loginUrl)}</a></p>`,
     });
   } catch (err) {
     console.error("[email] sendTeamPasswordSetEmail failed:", err);
@@ -118,7 +159,7 @@ export async function sendPasswordResetEmail(
       from: FROM,
       to: toEmail,
       subject: "Reset your CIA Feeds password",
-      html: `<p>You requested a password reset. Click the link below to set a new password (valid for 1 hour):</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>If you did not request this, you can ignore this email.</p>`,
+      html: `<p>You requested a password reset. Click the link below to set a new password (valid for 1 hour):</p><p><a href="${escUrl(resetUrl)}">${esc(resetUrl)}</a></p><p>If you did not request this, you can ignore this email.</p>`,
     });
   } catch (err) {
     console.error("[email] sendPasswordResetEmail failed:", err);

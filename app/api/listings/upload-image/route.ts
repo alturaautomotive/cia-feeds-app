@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { checkSubscription } from "@/lib/checkSubscription";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getEffectiveDealerId } from "@/lib/impersonation";
+import { validateImageBuffer } from "@/lib/imageValidation";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 const MAX_IMAGES = 10;
@@ -72,9 +73,20 @@ export async function POST(request: NextRequest) {
       const arrayBuffer = await fileRaw.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
 
+      // Magic-byte validation (SECURITY_AUDIT.md F-5.4): never trust the
+      // client's Content-Type. Reject anything that isn't a real raster
+      // image (SVG/HTML/JS payloads disguised as image/jpeg).
+      const validation = await validateImageBuffer(buffer);
+      if (!validation.ok) {
+        return NextResponse.json(
+          { error: `File "${fileRaw.name}" is not a valid image`, reason: validation.reason },
+          { status: 400 }
+        );
+      }
+
       const { error: uploadError } = await supabaseAdmin.storage
         .from("vehicle-images")
-        .upload(path, buffer, { contentType: fileRaw.type, upsert: false });
+        .upload(path, buffer, { contentType: validation.contentType ?? "application/octet-stream", upsert: false });
 
       if (uploadError) {
         console.error({

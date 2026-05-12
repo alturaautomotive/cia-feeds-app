@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { hashPassword, validatePasswordStrength, MIN_PASSWORD_LENGTH } from "@/lib/password";
 
 export async function POST(request: NextRequest) {
   let body: unknown;
@@ -15,9 +15,9 @@ export async function POST(request: NextRequest) {
   if (!token || typeof token !== "string") {
     return NextResponse.json({ error: "token is required" }, { status: 400 });
   }
-  if (!newPassword || typeof newPassword !== "string" || newPassword.length < 8) {
+  if (!newPassword || typeof newPassword !== "string" || newPassword.length < MIN_PASSWORD_LENGTH) {
     return NextResponse.json(
-      { error: "newPassword must be at least 8 characters" },
+      { error: `newPassword must be at least ${MIN_PASSWORD_LENGTH} characters` },
       { status: 400 }
     );
   }
@@ -34,7 +34,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const passwordHash = await bcrypt.hash(newPassword, 10);
+    // HIBP breach check + length floor (SECURITY_AUDIT.md F-1.5).
+    const strength = await validatePasswordStrength(newPassword);
+    if (!strength.ok) {
+      return NextResponse.json({ error: strength.reason }, { status: 400 });
+    }
+
+    const passwordHash = await hashPassword(newPassword);
 
     await prisma.dealer.update({
       where: { email: resetToken.email },

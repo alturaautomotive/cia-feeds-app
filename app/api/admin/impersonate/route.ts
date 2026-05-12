@@ -5,6 +5,21 @@ import { signImpersonationToken, IMPERSONATION_COOKIE } from "@/lib/impersonatio
 import { writeAuditLog } from "@/lib/adminAudit";
 import { cookies } from "next/headers";
 
+/**
+ * Start an impersonation session.
+ *
+ * Security (SECURITY_AUDIT.md F-1.4): this endpoint now SETS the
+ * IMPERSONATION_COOKIE directly on its same-origin POST response. The old
+ * design returned a token and required the client to GET /activate?token=,
+ * which was vulnerable to CSRF \u2014 an attacker could craft a link with their
+ * chosen token and trick an admin into clicking it. By setting the cookie
+ * here we eliminate the GET path entirely (kept only as a redirect to /dashboard
+ * for backwards compatibility).
+ *
+ * POST is inherently CSRF-resistant: browsers will not auto-send credentials
+ * to a cross-origin POST with a JSON content-type. The dashboard frontend
+ * makes this call via same-origin fetch.
+ */
 export async function POST(request: Request) {
   const auth = await adminGuard("manage_delivery");
   if (!auth.ok) return auth.response!;
@@ -15,7 +30,7 @@ export async function POST(request: Request) {
   }
 
   const dealer = await prisma.dealer.findUnique({
-    where: { id: dealerId },
+    where: { id: dealerId, active: true },
     select: { id: true },
   });
   if (!dealer) {
@@ -32,7 +47,16 @@ export async function POST(request: Request) {
     metadata: { source: "admin_panel" },
   });
 
-  return NextResponse.json({ token });
+  // Set the cookie inline so the client never holds the raw token.
+  const response = NextResponse.json({ ok: true });
+  response.cookies.set(IMPERSONATION_COOKIE, token, {
+    httpOnly: true,
+    sameSite: "strict",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: 3600,
+    path: "/",
+  });
+  return response;
 }
 
 export async function DELETE() {

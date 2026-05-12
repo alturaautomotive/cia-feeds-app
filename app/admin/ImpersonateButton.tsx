@@ -21,8 +21,9 @@ export function ImpersonateButton({ dealerId, className }: { dealerId: string; c
         return;
       }
 
-      const { token } = await res.json();
-      window.location.href = `/api/admin/impersonate/activate?token=${encodeURIComponent(token)}`;
+      // The POST above sets the impersonation cookie inline (SECURITY_AUDIT.md F-1.4).
+      // No more token-in-URL handoff.
+      window.location.href = "/dashboard";
     } catch {
       alert("Network error");
       setLoading(false);

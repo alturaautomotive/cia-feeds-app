@@ -118,6 +118,10 @@ export const authOptions: NextAuthOptions = {
 
           return {
             id: teamUser.dealer.id,
+            // userType: explicit discriminator for downstream defense-in-depth
+            // (SECURITY_AUDIT.md F-1.2). All session.user.id values must come
+            // from one of the two issuance paths in this file.
+            userType: "teamuser" as const,
             name: teamUser.name ?? teamUser.dealer.name,
             email: teamUser.dealer.email,
             slug: teamUser.dealer.slug,
@@ -171,6 +175,8 @@ export const authOptions: NextAuthOptions = {
 
         return {
           id: dealer.id,
+          // userType: explicit discriminator (SECURITY_AUDIT.md F-1.2).
+          userType: "dealer" as const,
           name: dealer.name,
           email: dealer.email,
           slug: dealer.slug,
@@ -196,6 +202,10 @@ export const authOptions: NextAuthOptions = {
         token.vertical = (user as { slug: string; vertical: string; subAccountId: string | null }).vertical;
         token.subAccountId = (user as { subAccountId: string | null }).subAccountId ?? null;
         token.teamUser = (user as { teamUser?: { id: string; role: "admin" | "editor"; subAccountId?: string } }).teamUser;
+        // userType claim (SECURITY_AUDIT.md F-1.2): immutable for the life
+        // of the JWT; downstream code can sanity-check session.user.id is a
+        // Dealer/TeamUser ID and not a foreign identity type.
+        token.userType = (user as { userType?: "dealer" | "teamuser" }).userType ?? "dealer";
       }
       return token;
     },
@@ -206,6 +216,7 @@ export const authOptions: NextAuthOptions = {
         session.user.vertical = token.vertical as string;
         session.user.subAccountId = (token.subAccountId as string) ?? null;
         session.user.teamUser = token.teamUser;
+        session.user.userType = (token.userType as "dealer" | "teamuser") ?? "dealer";
       }
       return session;
     },
