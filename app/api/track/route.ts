@@ -2,18 +2,31 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { durableRateLimit } from "@/lib/rateLimit";
 import { decryptToken, graphFetch } from "@/lib/meta";
+import { verifyTrackingSignature, TRACKING_SIGNATURE_HEADER } from "@/lib/trackingSignature";
 
+/**
+ * Public Conversions API proxy.
+ *
+ * Security layers (SECURITY_AUDIT.md F-2.6 + F-5.2):
+ *  1. Durable per-IP rate limit (5/min)
+ *  2. HMAC signature verification using the dealer's trackingSecret
+ *     - When TRACK_REQUIRE_SIGNATURE=true, unsigned requests are rejected.
+ *     - During grace period (default), unsigned requests succeed but log
+ *       `unsigned_track` so we can quantify adoption before flipping.
+ *  3. pixelId-belongs-to-dealer check (existing)
+ */
 export async function POST(request: NextRequest) {
-  // Public Conversions API proxy — DB-backed rate limiter (SECURITY_AUDIT.md F-5.2).
   const ip = (request.headers.get("x-forwarded-for") ?? "unknown").split(",")[0].trim();
   const rl = await durableRateLimit(`track:${ip}`, 5, 60_000);
   if (!rl.allowed) {
     return NextResponse.json({ error: "rate_limited", retryAfterMs: rl.retryAfterMs }, { status: 429 });
   }
 
+  // We need the raw body bytes to verify the signature. Buffer once, parse from there.
+  const rawBody = await request.text();
   let body: unknown;
   try {
-    body = await request.json();
+    body = JSON.parse(rawBody);
   } catch {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
@@ -26,15 +39,47 @@ export async function POST(request: NextRequest) {
 
   const dealer = await prisma.dealer.findUnique({
     where: { id: dealerId },
-    select: { metaAccessToken: true, metaPixelId: true },
+    select: {
+      metaAccessToken: true,
+      metaPixelId: true,
+      trackingSecret: true,
+      active: true,
+      deletedAt: true,
+    },
   });
 
-  if (!dealer) {
+  if (!dealer || !dealer.active || dealer.deletedAt) {
     return NextResponse.json({ error: "dealer_not_found" }, { status: 400 });
   }
 
   if (pixelId !== dealer.metaPixelId) {
-    return NextResponse.json({ error: 'pixelId_mismatch' }, { status: 400 });
+    return NextResponse.json({ error: "pixelId_mismatch" }, { status: 400 });
+  }
+
+  // F-2.6: HMAC verification.
+  const signatureHeader = request.headers.get(TRACKING_SIGNATURE_HEADER);
+  const signatureValid = verifyTrackingSignature(rawBody, signatureHeader, dealer.trackingSecret);
+
+  const requireSignature = process.env.TRACK_REQUIRE_SIGNATURE === "true";
+
+  if (!signatureValid) {
+    if (requireSignature) {
+      console.warn({
+        event: "track_signature_invalid_rejected",
+        dealerId,
+        hasHeader: !!signatureHeader,
+        hasSecret: !!dealer.trackingSecret,
+      });
+      return NextResponse.json({ error: "signature_required_or_invalid" }, { status: 401 });
+    }
+    console.warn({
+      event: "unsigned_track",
+      dealerId,
+      hasHeader: !!signatureHeader,
+      hasSecret: !!dealer.trackingSecret,
+      ip,
+    });
+    // Allow during grace period.
   }
 
   if (!dealer.metaAccessToken && !process.env.META_PUBLIC_ACCESS_TOKEN) {

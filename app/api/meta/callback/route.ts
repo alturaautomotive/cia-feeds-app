@@ -95,8 +95,20 @@ export async function GET(request: NextRequest) {
         metaTokenExpiresAt: expiresAt,
         metaConnectedAt: new Date(),
         metaTokenType: "user_token",
+        // F-2.7: clear invalid marker on successful reconnect.
+        metaTokenInvalidAt: null,
       },
     });
+
+    // F-8.1: audit Meta connection events.
+    await (await import("@/lib/adminAudit")).writeAuditLog({
+      action: "dealer.meta.connect",
+      actorEmail: "unknown",
+      actorRole: "dealer",
+      actorDealerId: dealerId,
+      targetDealerId: dealerId,
+      metadata: { tokenExpiresAt: expiresAt.toISOString() },
+    }).catch(() => {});
 
     return NextResponse.redirect(`${appUrl}/dashboard/profile?meta=connected`);
   } catch (err) {

@@ -29,7 +29,10 @@ const csp = [
   "img-src 'self' data: blob: https: https://*.supabase.co https://graph.facebook.com https://*.fbcdn.net https://*.googleusercontent.com https://maps.googleapis.com https://maps.gstatic.com",
   "font-src 'self' data: https://fonts.gstatic.com",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://connect.facebook.net https://maps.googleapis.com",
+  // 'unsafe-eval' deliberately omitted — Stripe & Maps SDKs no longer
+  // require it as of 2024. If a CSP violation report shows otherwise we'll
+  // add it back before flipping Report-Only → Enforcing.
+  "script-src 'self' 'unsafe-inline' https://js.stripe.com https://connect.facebook.net https://maps.googleapis.com",
   "connect-src 'self' https://*.supabase.co https://api.stripe.com https://graph.facebook.com https://www.facebook.com https://maps.googleapis.com https://api.openai.com https://generativelanguage.googleapis.com",
   "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://www.facebook.com",
   "media-src 'self' blob: data:",
@@ -65,9 +68,18 @@ const securityHeaders = [
     value:
       "camera=(), microphone=(), geolocation=(self), payment=(self), usb=(), magnetometer=(), gyroscope=(), accelerometer=(), midi=(), interest-cohort=()",
   },
-  // CSP in Report-Only first so we can see what would have broken without
-  // actually breaking anything. Switch to "Content-Security-Policy" after
-  // monitoring for a few days with no violations from real user paths.
+  // CSP in Report-Only mode while we tune.
+  //
+  // Promotion runbook (flip to Enforcing):
+  //   1. Watch Vercel logs for `"event": "csp_violation"` entries from
+  //      /api/csp-report over a 7-day window.
+  //   2. For every legitimate violation, either:
+  //        - add the source to the matching directive above, or
+  //        - convert the inline construct into a hashed/nonced one.
+  //   3. Once 7 days pass with no legit violations, change this key from
+  //      "Content-Security-Policy-Report-Only" to "Content-Security-Policy".
+  //   4. Push to a preview deploy first; smoke-test Stripe Elements, FB
+  //      Pixel, Google Maps, and image uploads before promoting to prod.
   {
     key: "Content-Security-Policy-Report-Only",
     value: csp,

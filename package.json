@@ -12,7 +12,8 @@
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "sbom": "npm sbom --sbom-format=spdx > public/security/sbom.json"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

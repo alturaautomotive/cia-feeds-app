@@ -130,5 +130,14 @@ export async function POST(request: NextRequest) {
   // Fire-and-forget email
   sendTeamPasswordSetEmail(invite.email, dealer?.name ?? "Your team").catch(() => {});
 
+  // F-8.1: audit account-creation events for the parent dealer.
+  await (await import("@/lib/adminAudit")).writeAuditLog({
+    action: "team.invite.accepted",
+    actorEmail: invite.email,
+    actorRole: "teamuser",
+    targetDealerId: invite.dealerId,
+    metadata: { invitedRole: invite.role, subAccountId: invite.subAccountId ?? null },
+  }).catch(() => {});
+
   return NextResponse.json({ success: true, email: invite.email });
 }

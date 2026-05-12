@@ -165,3 +165,58 @@ export async function sendPasswordResetEmail(
     console.error("[email] sendPasswordResetEmail failed:", err);
   }
 }
+
+/**
+ * Trial-ending notification (SECURITY_AUDIT.md F-4.2).
+ * Sent when Stripe fires `customer.subscription.trial_will_end`, ~3 days
+ * before billing kicks in. Dedupe-protected by Dealer.trialEndingNotifiedAt.
+ */
+export async function sendTrialEndingEmail(
+  toEmail: string,
+  dealerName: string,
+  trialEndDate: Date
+): Promise<void> {
+  const resend = getResend();
+  if (!resend) return;
+  const billingUrl = `${process.env.NEXTAUTH_URL || "https://www.ciafeed.com"}/dashboard/billing`;
+  const dateStr = trialEndDate.toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  try {
+    await resend.emails.send({
+      from: FROM,
+      to: toEmail,
+      subject: "Your CIA Feeds trial ends soon",
+      html: `<p>Hi ${esc(dealerName)},</p><p>Your CIA Feeds trial ends on <strong>${esc(dateStr)}</strong>. Your saved payment method will be charged automatically to continue service.</p><p>If you'd like to make any changes, visit your <a href="${escUrl(billingUrl)}">billing settings</a>.</p><p>Thanks for trying CIA Feeds!</p>`,
+    });
+  } catch (err) {
+    console.error("[email] sendTrialEndingEmail failed:", err);
+  }
+}
+
+/**
+ * Meta-disconnected notification (SECURITY_AUDIT.md F-2.7).
+ * Sent when the refresh-meta-tokens cron exhausts a dealer's refresh path,
+ * so they reconnect before their CSV feed becomes the only fallback.
+ */
+export async function sendMetaTokenInvalidEmail(
+  toEmail: string,
+  dealerName: string
+): Promise<void> {
+  const resend = getResend();
+  if (!resend) return;
+  const connectUrl = `${process.env.NEXTAUTH_URL || "https://www.ciafeed.com"}/dashboard/integrations`;
+  try {
+    await resend.emails.send({
+      from: FROM,
+      to: toEmail,
+      subject: "Your Meta connection on CIA Feeds needs attention",
+      html: `<p>Hi ${esc(dealerName)},</p><p>We weren't able to refresh your Meta (Facebook/Instagram) connection on CIA Feeds. Until you reconnect, your inventory will be delivered to Meta via CSV feed instead of the live API.</p><p>It only takes a moment to reconnect: <a href="${escUrl(connectUrl)}">go to your integrations settings</a>.</p>`,
+    });
+  } catch (err) {
+    console.error("[email] sendMetaTokenInvalidEmail failed:", err);
+  }
+}

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
+import { getServerSession } from "next-auth";
 import { prisma } from "@/lib/prisma";
+import { authOptions } from "@/lib/auth";
 import { getEffectiveDealerContext } from "@/lib/impersonation";
 import { sendTeamInviteEmail } from "@/lib/email";
 
@@ -86,6 +88,17 @@ export async function POST(request: NextRequest) {
   const origin = request.headers.get("origin") || process.env.NEXTAUTH_URL || "https://www.ciafeed.com";
   const inviteUrl = `${origin}/team/accept?token=${token}`;
   await sendTeamInviteEmail(email, dealer.name, role, inviteUrl);
+
+  // F-8.1: audit every privileged dealer action.
+  const session = await getServerSession(authOptions);
+  await (await import("@/lib/adminAudit")).writeAuditLog({
+    action: "team.invite.sent",
+    actorEmail: session?.user?.email ?? "unknown",
+    actorRole: "dealer",
+    actorDealerId: effectiveDealerId,
+    targetDealerId: effectiveDealerId,
+    metadata: { invitedEmail: email, role, subAccountId: subAccountId ?? null },
+  }).catch(() => {});
 
   return NextResponse.json({ success: true });
 }

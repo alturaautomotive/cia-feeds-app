@@ -5,6 +5,26 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { criticalDurableRateLimit } from "@/lib/rateLimit";
+import { hashPassword, BCRYPT_COST } from "@/lib/password";
+
+/**
+ * Lazy bcrypt cost-factor upgrade (SECURITY_AUDIT.md follow-up).
+ *
+ * Legacy hashes were created with cost-10 (the previous OWASP minimum).
+ * On every successful login, peek at the existing hash's cost. If it's
+ * below BCRYPT_COST (currently 12), re-hash and overwrite. The user pays
+ * a one-time ~400ms cost on the upgrade login, then is fast forever after.
+ *
+ * Bcrypt hash format: `$2<a|b>$<cost>$<salt+digest>`, e.g. `$2a$10$...`.
+ * We parse the cost field; if it's malformed for any reason we leave the
+ * hash alone (fail safe).
+ */
+function shouldRehash(hash: string): boolean {
+  const match = hash.match(/^\$2[aby]?\$(\d{2})\$/);
+  if (!match) return false;
+  const cost = parseInt(match[1], 10);
+  return Number.isFinite(cost) && cost < BCRYPT_COST;
+}
 
 /**
  * Brute-force protection for credentials login.
@@ -115,6 +135,26 @@ export const authOptions: NextAuthOptions = {
           const match = await bcrypt.compare(credentials.password, teamUser.passwordHash!);
           if (!match) continue;
           if (!teamUser.dealer.active) continue;
+          // F-8.3: soft-deleted accounts can't log in.
+          if (teamUser.dealer.deletedAt) continue;
+
+          // Lazy bcrypt upgrade.
+          if (shouldRehash(teamUser.passwordHash!)) {
+            try {
+              const newHash = await hashPassword(credentials.password);
+              await prisma.teamUser.update({
+                where: { id: teamUser.id },
+                data: { passwordHash: newHash },
+              });
+            } catch (err) {
+              console.warn({
+                event: "bcrypt_upgrade_failed",
+                userType: "teamuser",
+                id: teamUser.id,
+                message: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }
 
           return {
             id: teamUser.dealer.id,
@@ -161,6 +201,28 @@ export const authOptions: NextAuthOptions = {
 
         if (!dealer.active) {
           return null;
+        }
+        // F-8.3: soft-deleted accounts can't log in.
+        if (dealer.deletedAt) {
+          return null;
+        }
+
+        // Lazy bcrypt upgrade.
+        if (shouldRehash(dealer.passwordHash)) {
+          try {
+            const newHash = await hashPassword(credentials.password);
+            await prisma.dealer.update({
+              where: { id: dealer.id },
+              data: { passwordHash: newHash },
+            });
+          } catch (err) {
+            console.warn({
+              event: "bcrypt_upgrade_failed",
+              userType: "dealer",
+              id: dealer.id,
+              message: err instanceof Error ? err.message : String(err),
+            });
+          }
         }
 
         // Check if this dealer also happens to be a team user of themselves

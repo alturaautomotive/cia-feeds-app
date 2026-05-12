@@ -62,6 +62,11 @@ model Dealer {
   longitude            Float?
   feedUrlMode          String    @default("original")
   defaultSubAccountId  String?   @unique
+  // Enterprise features (SECURITY_AUDIT.md)
+  trackingSecret         String?    // F-2.6: HMAC key for /api/track signature
+  metaTokenInvalidAt     DateTime?  // F-2.7: marker for refresh-failed; user must reconnect
+  trialEndingNotifiedAt  DateTime?  // F-4.2: dedupe trial-ending email
+  deletedAt              DateTime?  // F-8.3: GDPR soft-delete; 30-day grace before hard delete
   vehicles             Vehicle[]
   listings             Listing[]
   crawlJobs            CrawlJob[]

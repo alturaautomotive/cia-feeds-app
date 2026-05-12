@@ -2,41 +2,21 @@
   "framework": "nextjs",
   "buildCommand": "prisma generate && next build",
   "functions": {
-    "app/api/vehicles/scrape/route.ts": {
-      "maxDuration": 300
-    },
-    "app/api/listings/scrape/route.ts": {
-      "maxDuration": 300
-    },
-    "app/api/cron/crawl/route.ts": {
-      "maxDuration": 300
-    },
-    "app/api/cron/url-health/route.ts": {
-      "maxDuration": 300
-    },
-    "app/api/cron/refresh-meta-tokens/route.ts": {
-      "maxDuration": 300
-    },
-    "app/api/cron/meta-delivery-drain/route.ts": {
-      "maxDuration": 300
-    }
+    "app/api/vehicles/scrape/route.ts": { "maxDuration": 300 },
+    "app/api/listings/scrape/route.ts": { "maxDuration": 300 },
+    "app/api/cron/crawl/route.ts": { "maxDuration": 300 },
+    "app/api/cron/url-health/route.ts": { "maxDuration": 300 },
+    "app/api/cron/refresh-meta-tokens/route.ts": { "maxDuration": 300 },
+    "app/api/cron/meta-delivery-drain/route.ts": { "maxDuration": 300 },
+    "app/api/cron/delivery-health/route.ts": { "maxDuration": 60 },
+    "app/api/cron/data-retention/route.ts": { "maxDuration": 120 }
   },
   "crons": [
-    {
-      "path": "/api/cron/crawl",
-      "schedule": "0 6 * * 1"
-    },
-    {
-      "path": "/api/cron/url-health",
-      "schedule": "0 3 * * *"
-    },
-    {
-      "path": "/api/cron/refresh-meta-tokens",
-      "schedule": "0 0 * * 0"
-    },
-    {
-      "path": "/api/cron/meta-delivery-drain",
-      "schedule": "*/5 * * * *"
-    }
+    { "path": "/api/cron/crawl", "schedule": "0 6 * * 1" },
+    { "path": "/api/cron/url-health", "schedule": "0 3 * * *" },
+    { "path": "/api/cron/refresh-meta-tokens", "schedule": "0 0 * * 0" },
+    { "path": "/api/cron/meta-delivery-drain", "schedule": "*/5 * * * *" },
+    { "path": "/api/cron/delivery-health", "schedule": "0 14 * * *" },
+    { "path": "/api/cron/data-retention", "schedule": "0 4 * * 1" }
   ]
 }

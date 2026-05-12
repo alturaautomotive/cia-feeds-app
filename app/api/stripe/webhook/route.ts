@@ -141,7 +141,28 @@ export async function POST(request: Request) {
       }
       case "customer.subscription.trial_will_end": {
         const subscription = event.data.object as Stripe.Subscription;
-        // Log-only; no DB mutation needed
+        // F-4.2: notify the dealer so the trial doesn't end silently.
+        // Dedupe via Dealer.trialEndingNotifiedAt so we never send twice.
+        const dealer = await prisma.dealer.findFirst({
+          where: {
+            stripeCustomerId: subscription.customer as string,
+            trialEndingNotifiedAt: null,
+            deletedAt: null,
+          },
+          select: { id: true, email: true, name: true },
+        });
+        if (dealer && subscription.trial_end) {
+          const { sendTrialEndingEmail } = await import("@/lib/email");
+          await sendTrialEndingEmail(
+            dealer.email,
+            dealer.name,
+            new Date(subscription.trial_end * 1000)
+          );
+          await prisma.dealer.update({
+            where: { id: dealer.id },
+            data: { trialEndingNotifiedAt: new Date() },
+          });
+        }
         await prisma.stripeWebhookEvent.create({
           data: { id: event.id, type: event.type },
         });

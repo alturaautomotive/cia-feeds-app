@@ -5,6 +5,7 @@ import { checkSubscription } from "@/lib/checkSubscription";
 import { criticalDurableRateLimit } from "@/lib/rateLimit";
 import { getEffectiveDealerId } from "@/lib/impersonation";
 import OpenAI from "openai";
+import { withBreaker, CircuitOpenError } from "@/lib/circuitBreaker";
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -51,12 +52,23 @@ export async function POST(request: NextRequest) {
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
   try {
-    const result = await openai.audio.transcriptions.create({
-      model: "whisper-1",
-      file: audioFile,
-    });
+    const result = await withBreaker(
+      "openai.transcriptions",
+      () =>
+        openai.audio.transcriptions.create({
+          model: "whisper-1",
+          file: audioFile,
+        }),
+      { timeoutMs: 30_000 }
+    );
     return NextResponse.json({ transcript: result.text });
-  } catch {
+  } catch (err) {
+    if (err instanceof CircuitOpenError) {
+      return NextResponse.json(
+        { error: "transcription_unavailable", retry: true },
+        { status: 503 }
+      );
+    }
     return NextResponse.json({ error: "transcription_failed" }, { status: 502 });
   }
 }
