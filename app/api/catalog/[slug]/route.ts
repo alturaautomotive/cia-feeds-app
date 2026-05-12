@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { rateLimit } from "@/lib/rateLimit";
+import { durableRateLimit } from "@/lib/rateLimit";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -17,9 +17,10 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   // --- Rate Limiting ---
+  // Public catalog endpoint — DB-backed rate limiter (SECURITY_AUDIT.md F-5.2).
   const forwarded = request.headers.get("x-forwarded-for");
   const ip = forwarded ? forwarded.split(",")[0].trim() : "unknown";
-  const { allowed, retryAfterMs } = rateLimit(ip, 30, 60_000);
+  const { allowed, retryAfterMs } = await durableRateLimit(`catalog:${ip}`, 30, 60_000);
 
   if (!allowed) {
     return NextResponse.json(

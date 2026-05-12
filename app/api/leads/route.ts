@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendNewLeadEmail } from "@/lib/email";
-import { rateLimit } from "@/lib/rateLimit";
+import { durableRateLimit } from "@/lib/rateLimit";
 import { sendMetaEvent } from "@/lib/metaTrack";
 
 export async function POST(request: NextRequest) {
+  // Public lead-submission endpoint — DB-backed rate limiter so the bucket
+  // survives serverless cold starts (see SECURITY_AUDIT.md F-5.2).
   const ip = (request.headers.get("x-forwarded-for") ?? "unknown").split(",")[0].trim();
-  const rl = rateLimit(`lead:${ip}`, 10, 60_000);
+  const rl = await durableRateLimit(`lead:${ip}`, 10, 60_000);
   if (!rl.allowed) {
     return NextResponse.json({ error: "rate_limited", retryAfterMs: rl.retryAfterMs }, { status: 429 });
   }

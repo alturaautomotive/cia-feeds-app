@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { rateLimit } from "@/lib/rateLimit";
+import { durableRateLimit } from "@/lib/rateLimit";
 import { decryptToken, graphFetch } from "@/lib/meta";
 
 export async function POST(request: NextRequest) {
+  // Public Conversions API proxy — DB-backed rate limiter (SECURITY_AUDIT.md F-5.2).
   const ip = (request.headers.get("x-forwarded-for") ?? "unknown").split(",")[0].trim();
-  const rl = rateLimit(`track:${ip}`, 5, 60_000);
+  const rl = await durableRateLimit(`track:${ip}`, 5, 60_000);
   if (!rl.allowed) {
     return NextResponse.json({ error: "rate_limited", retryAfterMs: rl.retryAfterMs }, { status: 429 });
   }

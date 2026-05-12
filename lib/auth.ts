@@ -4,6 +4,48 @@ import { getServerSession } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { criticalDurableRateLimit } from "@/lib/rateLimit";
+
+/**
+ * Brute-force protection for credentials login.
+ *
+ * Two layered buckets (both fail closed via criticalDurableRateLimit):
+ *  - per-(IP, email): 5 attempts / 5 minutes — stops targeted attacks on one
+ *    victim from a single IP.
+ *  - per-IP: 30 attempts / 5 minutes — stops credential stuffing across many
+ *    accounts from one IP.
+ *
+ * NextAuth's CredentialsProvider doesn't expose the request to `authorize()`
+ * as a typed parameter, but the second argument is the raw Request object.
+ * We extract the X-Forwarded-For IP from there.
+ *
+ * Refs: SECURITY_AUDIT.md F-7.3.
+ */
+async function enforceLoginRateLimit(
+  email: string,
+  req: { headers?: Record<string, string | string[] | undefined> } | undefined
+): Promise<{ allowed: boolean; reason?: string }> {
+  const xff = req?.headers?.["x-forwarded-for"];
+  const xffStr = Array.isArray(xff) ? xff[0] : xff;
+  const ip = (xffStr ?? "unknown").split(",")[0].trim();
+  const emailLower = email.toLowerCase();
+
+  const perPair = await criticalDurableRateLimit(
+    `login:${ip}:${emailLower}`,
+    5,
+    5 * 60_000
+  );
+  if (!perPair.allowed) return { allowed: false, reason: "per_pair" };
+
+  const perIp = await criticalDurableRateLimit(
+    `login_ip:${ip}`,
+    30,
+    5 * 60_000
+  );
+  if (!perIp.allowed) return { allowed: false, reason: "per_ip" };
+
+  return { allowed: true };
+}
 
 if (process.env.NODE_ENV === "production") {
   if (!process.env.NEXTAUTH_SECRET) {
@@ -36,12 +78,23 @@ export const authOptions: NextAuthOptions = {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, req) {
         if (!credentials?.email || !credentials?.password) {
           return null;
         }
 
         const emailLower = credentials.email.trim().toLowerCase();
+
+        // Brute-force protection — fail closed on DB errors.
+        const rl = await enforceLoginRateLimit(emailLower, req as unknown as { headers?: Record<string, string | string[] | undefined> });
+        if (!rl.allowed) {
+          console.warn({
+            event: "login_rate_limited",
+            reason: rl.reason,
+            email_hash: Buffer.from(emailLower).toString("base64").slice(0, 12),
+          });
+          return null;
+        }
 
         // 1. TeamUser-first path: team members with their own password
         //    Fetch all matching rows — the same email can be invited to multiple dealers.

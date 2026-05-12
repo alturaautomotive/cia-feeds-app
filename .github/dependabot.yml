@@ -1,0 +1,36 @@
+# Dependabot config — automatic dependency-update PRs.
+# Security advisories are handled separately by the "Dependabot security
+# updates" toggle in repo settings (already enabled).
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+    groups:
+      # Group all minor + patch upgrades together to keep PR noise low.
+      # Major-version bumps still get their own PR.
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # Don't auto-bump Prisma 5 → 7 (major); needs hand-holding.
+      - dependency-name: "prisma"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@prisma/client"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    labels:
+      - "dependencies"
+      - "github-actions"
