@@ -67,6 +67,10 @@ model Dealer {
   metaTokenInvalidAt     DateTime?  // F-2.7: marker for refresh-failed; user must reconnect
   trialEndingNotifiedAt  DateTime?  // F-4.2: dedupe trial-ending email
   deletedAt              DateTime?  // F-8.3: GDPR soft-delete; 30-day grace before hard delete
+  // Storefront / white-label (whitelabel)
+  themePreset            String?    // key into lib/brandPresets.ts
+  themeOverrides         Json?      // CSS-var overrides for "custom" preset
+  logoUrl                String?    // storefront-quality logo (profileImageUrl as fallback)
   vehicles             Vehicle[]
   listings             Listing[]
   crawlJobs            CrawlJob[]
