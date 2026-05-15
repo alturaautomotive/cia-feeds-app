@@ -92,7 +92,8 @@ export async function POST(request: NextRequest) {
     const schema = vertical === "services" ? SERVICES_EXTRACTION_SCHEMA : ECOMMERCE_EXTRACTION_SCHEMA;
     const prompt = vertical === "services" ? SERVICES_EXTRACTION_PROMPT : EXTRACTION_PROMPT;
     const response = await firecrawlClient.scrape(url, {
-      formats: [{ type: "json", prompt, schema }],
+      // Firecrawl typings still target zod 3; runtime accepts zod 4 schemas.
+      formats: [{ type: "json", prompt, schema: schema as unknown as Record<string, unknown> }],
     });
 
     const extractionPayload = (response as { json?: unknown })?.json;

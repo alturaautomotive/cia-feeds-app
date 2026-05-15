@@ -63,7 +63,8 @@ export async function POST(
         {
           type: "json",
           prompt: SERVICES_EXTRACTION_PROMPT,
-          schema: SERVICES_EXTRACTION_SCHEMA,
+          // Firecrawl typings still target zod 3; runtime accepts zod 4 schemas.
+          schema: SERVICES_EXTRACTION_SCHEMA as unknown as Record<string, unknown>,
         },
       ],
     });

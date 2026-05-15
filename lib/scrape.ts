@@ -48,7 +48,8 @@ export async function scrapeVehicleUrl(
   const startMs = Date.now();
 
       const response = await firecrawlClient.scrape(url, {
-      formats: [{ type: "json", prompt: EXTRACTION_PROMPT, schema: EXTRACTION_SCHEMA }],
+      // Firecrawl typings still target zod 3; runtime accepts zod 4 schemas.
+      formats: [{ type: "json", prompt: EXTRACTION_PROMPT, schema: EXTRACTION_SCHEMA as unknown as Record<string, unknown> }],
     });
 
   const durationMs = Date.now() - startMs;

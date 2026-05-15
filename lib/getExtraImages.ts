@@ -31,7 +31,10 @@ export async function getExtraImages(url: string, context: "vehicle" | "service"
   try {
     const response = await firecrawlClient.scrape(url, {
       formats: [
-        { type: "json", prompt, schema: IMAGES_SCHEMA },
+        // Firecrawl's TS types still reference zod 3's ZodTypeAny; the runtime
+        // accepts zod 4 schemas fine. Cast through unknown to silence the
+        // bogus TS2322 until Firecrawl publishes zod 4 typings.
+        { type: "json", prompt, schema: IMAGES_SCHEMA as unknown as Record<string, unknown> },
       ],
     });
 
