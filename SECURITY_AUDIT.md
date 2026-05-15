@@ -1,11 +1,30 @@
 # CIA FEEDS — Enterprise Security & Resilience Audit
 
 **Audit date:** May 12, 2026
+**Last updated:** May 15, 2026
 **Auditor:** Perplexity Computer Agent (on behalf of Luis Delgado)
 **Scope:** Full-stack: Next.js app, Vercel deploy, Prisma + Supabase Postgres 17, Stripe billing, Meta Graph API, Resend, Firecrawl, OpenAI, Gemini, Google Maps.
-**Codebase:** `Altura-Apps/cia-feeds-app` @ commit `ae01b06` (3 files / 1.27 KB security fix already shipped today)
+**Codebase:** `Altura-Apps/cia-feeds-app`
 **Production URL:** https://www.ciafeed.com
 **Database:** `ciafeeds-production` (Supabase project `tnqrqimwfhiwjthahwbu`, Postgres 17.6, us-east-1, ACTIVE_HEALTHY)
+
+---
+
+## 🟢 May 15, 2026 update — Roadmap status
+
+All **today / this week / this month** roadmap items (#1–25) have shipped. Posture is now **A−** (was B−). Outstanding items are limited to:
+
+- **Quarterly nice-to-haves** (#26–30): SOC-2 Type-I readiness, third-party pen test, bug bounty, Lead PII app-layer encryption, PITR retention verification.
+- **CSP enforce flip**: Report-Only since May 12, zero violations logged. Cutover target Tuesday May 19 (7-day soak).
+- **Dependabot deferred majors**: vitest 2→4 (PR #5), `@google/genai` 0.x→2.x (PR #7), vite+vitest (PR #8). zod 3→4 (PR #6) and Next.js 16.2.6 (PR #1) merged May 15.
+
+This week's adds beyond the original roadmap:
+- Migration drift reconciliation + `prisma migrate deploy` in Vercel build (no more silent schema gaps).
+- Tracking-secret backfill for all 22 dealers + `TRACK_REQUIRE_SIGNATURE=true` (HMAC enforced on `/api/track`).
+- Custom-domain auto-attach env vars wired (`VERCEL_API_TOKEN`/`PROJECT_ID`/`TEAM_ID`).
+- Circuit breakers extended to Gemini + Resend; Firecrawl + OpenAI were already wrapped.
+- DB-outage graceful degradation (`lib/dbResilience.ts`): retry on transient Postgres errors + clean 503 with `Retry-After: 30` on public read paths.
+- `docs/EMPLOYEE_ACCESS_POLICY.md` and `docs/DR_RUNBOOK.md` published in-repo.
 
 ---
 
@@ -32,16 +51,16 @@ With ~3 days of focused work you can credibly market this as "enterprise-ready s
 
 | # | Risk | Severity | Status |
 |---|---|---|---|
-| 1 | Dual auth: orphaned Supabase Auth tables (`profiles`, `dealerships`, `handle_new_user`) coexist with NextAuth/Prisma | 🔴 Critical | Open |
-| 2 | Authenticated-IDOR — `getEffectiveDealerId()` returns `session.user.id` blindly | 🔴 Critical | Open |
-| 3 | Next.js 16.2.1 has two HIGH-severity DoS CVEs (GHSA-q4gf-8mx6-v5v3, GHSA-8h8q-6873-q5fj) | 🟠 High | Open |
-| 4 | No security headers (CSP/XFO/XCTO/RP/PP) | 🟠 High | Open |
-| 5 | In-memory rate limiter (`rateLimit()`) backs public lead/track/catalog endpoints | 🟠 High | Open |
-| 6 | `handle_new_user` SECURITY DEFINER function executable by `anon` + `authenticated` via PostgREST RPC | 🟠 High | Open |
-| 7 | bcrypt cost factor 10 is below current enterprise norm (12+) | 🟡 Medium | Open |
-| 8 | Password policy is min-8 only (no complexity / breach check / common-password block) | 🟡 Medium | Open |
-| 9 | `/api/admin/impersonate/activate` is a GET with no CSRF token — clicking a crafted link could activate impersonation | 🟡 Medium | Open |
-| 10 | Vehicle Pixel `/api/track` cannot verify caller; only checks pixelId belongs to dealer (anyone can spend the dealer's Conversions API quota) | 🟡 Medium | Open |
+| 1 | Dual auth: orphaned Supabase Auth tables (`profiles`, `dealerships`, `handle_new_user`) coexist with NextAuth/Prisma | 🔴 Critical | ✅ Shipped (commit `e723f19`) |
+| 2 | Authenticated-IDOR — `getEffectiveDealerId()` returns `session.user.id` blindly | 🔴 Critical | ✅ Shipped — `verifyDealer()` defense-in-depth + `userType` JWT claim (commit `fbde452`) |
+| 3 | Next.js 16.2.1 has multiple HIGH-severity CVEs (DoS, SSRF, middleware bypass) | 🟠 High | ✅ Shipped — bumped to 16.2.6 via PR #1 on May 15 |
+| 4 | No security headers (CSP/XFO/XCTO/RP/PP) | 🟠 High | ✅ Shipped — full header set; CSP in Report-Only mode through May 19 then enforce |
+| 5 | In-memory rate limiter (`rateLimit()`) backs public lead/track/catalog endpoints | 🟠 High | ✅ Shipped — `durableRateLimit()` on public surfaces (commit `e723f19`) |
+| 6 | `handle_new_user` SECURITY DEFINER function executable by `anon` + `authenticated` via PostgREST RPC | 🟠 High | ✅ Shipped — function + orphan tables dropped (commit `e723f19`) |
+| 7 | bcrypt cost factor 10 is below current enterprise norm (12+) | 🟡 Medium | ✅ Shipped — cost 12 + lazy backfill + HIBP breach check (commit `fbde452`) |
+| 8 | Password policy is min-8 only (no complexity / breach check / common-password block) | 🟡 Medium | ✅ Shipped — min-10 + HIBP k-anonymity check (commit `fbde452`) |
+| 9 | `/api/admin/impersonate/activate` is a GET with no CSRF token | 🟡 Medium | ✅ Shipped — POST + CSRF token (commit `fbde452`) |
+| 10 | `/api/track` cannot verify caller; only checks pixelId belongs to dealer | 🟡 Medium | ✅ Shipped — HMAC signature; `TRACK_REQUIRE_SIGNATURE=true` enforced May 15 |
 
 ---
 
@@ -583,57 +602,55 @@ For enterprise: `SECURITY.md` describing how to report a vulnerability, expected
 
 ## Remediation roadmap
 
-### Today / next 24 hours (must-do before claiming enterprise security)
+### Today / next 24 hours (must-do before claiming enterprise security) — ✅ ALL SHIPPED (commit `e723f19`)
 
-| Task | Effort | Domain |
+| Task | Effort | Domain | Status |
+|---|---|---|---|
+| 1. Update Next.js to 16.2.5+ | 30 min | F-6.4 | ✅ 16.2.6 (PR #1, May 15) |
+| 2. Enable GitHub Dependabot + secret scanning | 5 min | F-6.6 | ✅ |
+| 3. Add security headers in `next.config.ts` (XFO, XCTO, RP, PP; CSP-Report-Only first) | 4 hrs | F-5.1 | ✅ |
+| 4. Replace all `rateLimit()` with `durableRateLimit()` on public endpoints | 1 hr | F-5.2 | ✅ |
+| 5. Rate limit `/api/auth/[...nextauth]` | 1 hr | F-7.3 | ✅ |
+| 6. Drop the orphaned `profiles`/`dealerships`/`handle_new_user` (after confirming unused) | 1 hr | F-1.1, F-3.1 | ✅ |
+| 7. Add Meta token revocation on `/api/fb/disconnect` | 1 hr | F-2.4 | ✅ |
+| 8. Lock down `/api/stripe/validate-promo` (auth + rate limit) | 30 min | F-4.3 | ✅ |
+
+### This week — ✅ ALL SHIPPED (commit `fbde452`) except #17 (scheduled May 19)
+
+| Task | Effort | Domain | Status |
+|---|---|---|---|
+| 9. Add `verifyDealer()` defense-in-depth + `userType` JWT claim + cross-tenant test | 6 hrs | F-1.2 | ✅ |
+| 10. Tighten public storage bucket policy | 2 hrs | F-3.3 | ✅ |
+| 11. Add FK indexes (Lead, TeamInvite, dealerships) | 30 min | F-3.4 | ✅ |
+| 12. SSRF allow-list for url-health + crawl fetches | 3 hrs | F-5.5 | ✅ |
+| 13. Magic-byte validation on file uploads (use `sharp`) | 1 hr | F-5.4 | ✅ |
+| 14. HTML-escape user-controlled fields in email templates | 1 hr | F-5.6 | ✅ |
+| 15. Add CSRF to `/api/admin/impersonate/activate` | 2 hrs | F-1.4 | ✅ |
+| 16. Bcrypt cost factor 10 → 12, add password breach check via HIBP | 4 hrs | F-1.5 | ✅ |
+| 17. CSP from Report-Only → enforcing after monitoring | 2 hrs | F-5.1 | ⏳ Scheduled May 19 (7-day soak) |
+
+### This month — ✅ ALL SHIPPED
+
+| Task | Effort | Domain | Status |
+|---|---|---|---|
+| 18. Meta delivery DLQ + alerting | 3 hrs | F-2.5 | ✅ (commit `ed99611`) |
+| 19. Conversions API `/api/track` HMAC auth | 4 hrs | F-2.6 | ✅ Enforced May 15 (`TRACK_REQUIRE_SIGNATURE=true`) |
+| 20. Circuit breakers around external APIs | 4 hrs | F-7.5 | ✅ Firecrawl + OpenAI + Gemini + Resend all wrapped |
+| 21. Trial-ending email + Meta-disconnected email | 2 hrs | F-2.7, F-4.2 | ✅ (commit `ed99611`) |
+| 22. Data retention cron + GDPR export/delete | 12 hrs | F-8.2, F-8.3 | ✅ (commit `ed99611`) |
+| 23. SBOM generation + `/security/sbom.json` | 1 hr | F-6.7 | ✅ |
+| 24. `SECURITY.md` + IR playbook | 2 hrs | F-8.5 | ✅ (commit `ed99611`); DR runbook added May 15 (`docs/DR_RUNBOOK.md`) |
+| 25. Audit log every dealer-side privileged action (Meta connect, billing, team invite) | 4 hrs | F-8.1 | ✅ (commit `ed99611`) |
+
+### This quarter (nice-to-have for "audited enterprise") — outstanding
+
+| Task | Effort | Status |
 |---|---|---|
-| 1. Update Next.js to 16.2.5+ | 30 min | F-6.4 |
-| 2. Enable GitHub Dependabot + secret scanning | 5 min | F-6.6 |
-| 3. Add security headers in `next.config.ts` (XFO, XCTO, RP, PP; CSP-Report-Only first) | 4 hrs | F-5.1 |
-| 4. Replace all `rateLimit()` with `durableRateLimit()` on public endpoints | 1 hr | F-5.2 |
-| 5. Rate limit `/api/auth/[...nextauth]` | 1 hr | F-7.3 |
-| 6. Drop the orphaned `profiles`/`dealerships`/`handle_new_user` (after confirming unused) | 1 hr | F-1.1, F-3.1 |
-| 7. Add Meta token revocation on `/api/fb/disconnect` | 1 hr | F-2.4 |
-| 8. Lock down `/api/stripe/validate-promo` (auth + rate limit) | 30 min | F-4.3 |
-
-**Total: ~9 hrs of focused work → unblocks honest enterprise security marketing.**
-
-### This week
-
-| Task | Effort | Domain |
-|---|---|---|
-| 9. Add `verifyDealer()` defense-in-depth + `userType` JWT claim + cross-tenant test | 6 hrs | F-1.2 |
-| 10. Tighten public storage bucket policy | 2 hrs | F-3.3 |
-| 11. Add FK indexes (Lead, TeamInvite, dealerships) | 30 min | F-3.4 |
-| 12. SSRF allow-list for url-health + crawl fetches | 3 hrs | F-5.5 |
-| 13. Magic-byte validation on file uploads (use `sharp`) | 1 hr | F-5.4 |
-| 14. HTML-escape user-controlled fields in email templates | 1 hr | F-5.6 |
-| 15. Add CSRF to `/api/admin/impersonate/activate` | 2 hrs | F-1.4 |
-| 16. Bcrypt cost factor 10 → 12, add password breach check via HIBP | 4 hrs | F-1.5 |
-| 17. CSP from Report-Only → enforcing after monitoring | 2 hrs | F-5.1 |
-
-### This month
-
-| Task | Effort | Domain |
-|---|---|---|
-| 18. Meta delivery DLQ + alerting | 3 hrs | F-2.5 |
-| 19. Conversions API `/api/track` HMAC auth | 4 hrs | F-2.6 |
-| 20. Circuit breakers around external APIs | 4 hrs | F-7.5 |
-| 21. Trial-ending email + Meta-disconnected email | 2 hrs | F-2.7, F-4.2 |
-| 22. Data retention cron + GDPR export/delete | 12 hrs | F-8.2, F-8.3 |
-| 23. SBOM generation + `/security/sbom.json` | 1 hr | F-6.7 |
-| 24. `SECURITY.md` + IR playbook | 2 hrs | F-8.5 |
-| 25. Audit log every dealer-side privileged action (Meta connect, billing, team invite) | 4 hrs | F-8.1 |
-
-### This quarter (nice-to-have for "audited enterprise")
-
-| Task | Effort |
-|---|---|
-| 26. SOC-2 Type-I readiness assessment (Drata, Vanta, or self-checklist) | ~$5K + 2 weeks |
-| 27. Annual third-party penetration test | $5–15K |
-| 28. Bug bounty program (HackerOne, Bugcrowd) | $500/mo + bounties |
-| 29. Application-layer encryption for `Lead` PII | 6 hrs |
-| 30. Database PITR retention ≥ 14 days verification + DR runbook | 2 hrs |
+| 26. SOC-2 Type-I readiness assessment (Drata, Vanta, or self-checklist) | ~$5K + 2 weeks | ⏳ Pending decision |
+| 27. Annual third-party penetration test | $5–15K | ⏳ Pending |
+| 28. Bug bounty program (HackerOne, Bugcrowd) | $500/mo + bounties | ⏳ Pending |
+| 29. Application-layer encryption for `Lead` PII | 6 hrs | ⏳ Pending |
+| 30. Database PITR retention ≥ 14 days verification + DR runbook | 2 hrs | 🟡 Partial — `docs/DR_RUNBOOK.md` published May 15; PITR retention still needs verification in Supabase dashboard |
 
 ---
 
