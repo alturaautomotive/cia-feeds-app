@@ -7,6 +7,7 @@ import { criticalDurableRateLimit } from "@/lib/rateLimit";
 import { getEffectiveDealerId } from "@/lib/impersonation";
 import { SERVICES_FIELDS, type VerticalFieldDef } from "@/lib/verticals";
 import { GoogleGenAI } from "@google/genai";
+import { withBreaker, CircuitOpenError } from "@/lib/circuitBreaker";
 
 interface HistoryMessage {
   role: "user" | "assistant";
@@ -183,14 +184,25 @@ Respond with the JSON object now.`;
 
   let response;
   try {
-    response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [{ text: systemPrompt }],
-      config: {
-        responseMimeType: "application/json",
-      },
-    });
-  } catch {
+    response = await withBreaker(
+      "gemini.generateContent",
+      () =>
+        ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: [{ text: systemPrompt }],
+          config: {
+            responseMimeType: "application/json",
+          },
+        }),
+      { timeoutMs: 30_000 }
+    );
+  } catch (err) {
+    if (err instanceof CircuitOpenError) {
+      return NextResponse.json(
+        { error: "generation_unavailable", retry: true },
+        { status: 503 }
+      );
+    }
     return NextResponse.json({ error: "generation_failed" }, { status: 502 });
   }
 

@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { Resend } from "resend";
+import { sendEmail } from "@/lib/email";
 
 /**
  * Daily Meta delivery health check (SECURITY_AUDIT.md F-2.5).
@@ -128,7 +129,7 @@ export async function GET(request: NextRequest) {
 
   const resend = new Resend(resendKey);
   try {
-    await resend.emails.send({
+    await sendEmail(resend, {
       from: "CIA Feeds <noreply@ciafeed.com>",
       to: adminEmail,
       subject: `[CIA Feeds] Delivery health alert — ${totals.blockedJobs}b/${totals.recentFailedJobs}f/${totals.stuckRetryJobs}r`,

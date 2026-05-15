@@ -15,6 +15,7 @@
  * or inactive dealers 404 their storefronts immediately.
  */
 import { prisma } from "@/lib/prisma";
+import { withDbRetry } from "@/lib/dbResilience";
 import { getBrandPreset, type BrandPreset } from "@/lib/brandPresets";
 
 /** Slugs that collide with our own top-level routes \u2014 dealers may never use these. */
@@ -74,14 +75,21 @@ export async function getTenantBySlug(slug: string): Promise<Tenant | null> {
   const lower = slug.toLowerCase();
   if (RESERVED_SLUGS.has(lower)) return null;
 
-  const dealer = await prisma.dealer.findFirst({
-    where: {
-      slug: lower,
-      active: true,
-      deletedAt: null,
-    },
-    select: dealerSelectShape,
-  });
+  // F-7.7: retry transient DB failures so a brief Supabase blip doesn't 500
+  // the entire storefront. ISR (`revalidate = 60`) covers longer outages by
+  // serving stale cached HTML.
+  const dealer = await withDbRetry(
+    async () =>
+      await prisma.dealer.findFirst({
+        where: {
+          slug: lower,
+          active: true,
+          deletedAt: null,
+        },
+        select: dealerSelectShape,
+      }),
+    { label: "tenant.by_slug" }
+  );
 
   return dealer ? toTenant(dealer) : null;
 }

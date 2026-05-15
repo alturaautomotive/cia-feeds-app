@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { supabaseAdmin } from "@/lib/supabase";
 import { GoogleGenAI } from "@google/genai";
+import { withBreaker, CircuitOpenError } from "@/lib/circuitBreaker";
 import sharp from "sharp";
 import { checkSubscription } from "@/lib/checkSubscription";
 import { rateLimit } from "@/lib/rateLimit";
@@ -132,14 +133,25 @@ export async function POST(
 
   let response;
   try {
-    response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-image",
-      contents,
-      config: {
-        responseModalities: ["Image"],
-      },
-    });
-  } catch {
+    response = await withBreaker(
+      "gemini.generateContent.image",
+      () =>
+        ai.models.generateContent({
+          model: "gemini-2.5-flash-image",
+          contents,
+          config: {
+            responseModalities: ["Image"],
+          },
+        }),
+      { timeoutMs: 60_000 } // image generation is slower than text
+    );
+  } catch (err) {
+    if (err instanceof CircuitOpenError) {
+      return NextResponse.json(
+        { error: "generation_unavailable", retry: true },
+        { status: 503 }
+      );
+    }
     return NextResponse.json({ error: "generation_failed" }, { status: 502 });
   }
 

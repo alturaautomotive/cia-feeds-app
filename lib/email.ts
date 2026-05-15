@@ -1,6 +1,31 @@
 import { Resend } from "resend";
+import { withBreaker, CircuitOpenError } from "@/lib/circuitBreaker";
 
 const FROM = "CIA Feeds <noreply@ciafeed.com>";
+
+/**
+ * Centralized send helper that wraps every Resend call in a circuit breaker
+ * (SECURITY_AUDIT.md F-7.5). When Resend is slow or down we fail-fast for
+ * 30 seconds rather than holding Vercel function executions open. Email
+ * sending is best-effort — callers continue normally when the breaker is
+ * open, so no email outage cascades into a user-visible failure.
+ */
+export async function sendEmail(
+  resend: Resend,
+  params: Parameters<Resend["emails"]["send"]>[0]
+): Promise<void> {
+  try {
+    await withBreaker("resend.send", () => resend.emails.send(params), {
+      timeoutMs: 10_000,
+    });
+  } catch (err) {
+    if (err instanceof CircuitOpenError) {
+      console.warn({ event: "email_skipped_breaker_open", to: params.to });
+      return;
+    }
+    throw err;
+  }
+}
 
 /**
  * HTML-escape user-controlled strings before interpolating into email HTML
@@ -56,7 +81,7 @@ export async function sendWelcomeEmail(
   const resend = getResend();
   if (!resend) return;
   try {
-    await resend.emails.send({
+    await sendEmail(resend, {
       from: FROM,
       to: dealerEmail,
       subject: "Welcome to CIA Feeds!",
@@ -76,7 +101,7 @@ export async function sendAdminNewSignupEmail(
   const resend = getResend();
   if (!resend) return;
   try {
-    await resend.emails.send({
+    await sendEmail(resend, {
       from: FROM,
       to: adminEmail,
       subject: "New CIA Feeds signup",
@@ -98,7 +123,7 @@ export async function sendNewLeadEmail(
   if (!resend) return;
   const contact = [leadEmail, leadPhone].filter(Boolean).join(", ") || "No contact info";
   try {
-    await resend.emails.send({
+    await sendEmail(resend, {
       from: FROM,
       to: dealerEmail,
       subject: `New lead on ${vehicleInfo}`,
@@ -118,7 +143,7 @@ export async function sendTeamInviteEmail(
   const resend = getResend();
   if (!resend) return;
   try {
-    await resend.emails.send({
+    await sendEmail(resend, {
       from: FROM,
       to: toEmail,
       subject: `You're invited to join ${dealerName} on CIA Feeds`,
@@ -137,7 +162,7 @@ export async function sendTeamPasswordSetEmail(
   if (!resend) return;
   const loginUrl = `${process.env.NEXTAUTH_URL || "https://www.ciafeed.com"}/login`;
   try {
-    await resend.emails.send({
+    await sendEmail(resend, {
       from: FROM,
       to: toEmail,
       subject: `You've joined ${dealerName} on CIA Feeds`,
@@ -155,7 +180,7 @@ export async function sendPasswordResetEmail(
   const resend = getResend();
   if (!resend) return;
   try {
-    await resend.emails.send({
+    await sendEmail(resend, {
       from: FROM,
       to: toEmail,
       subject: "Reset your CIA Feeds password",
@@ -186,7 +211,7 @@ export async function sendTrialEndingEmail(
     day: "numeric",
   });
   try {
-    await resend.emails.send({
+    await sendEmail(resend, {
       from: FROM,
       to: toEmail,
       subject: "Your CIA Feeds trial ends soon",
@@ -210,7 +235,7 @@ export async function sendMetaTokenInvalidEmail(
   if (!resend) return;
   const connectUrl = `${process.env.NEXTAUTH_URL || "https://www.ciafeed.com"}/dashboard/integrations`;
   try {
-    await resend.emails.send({
+    await sendEmail(resend, {
       from: FROM,
       to: toEmail,
       subject: "Your Meta connection on CIA Feeds needs attention",

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeCSVHeader, serializeCSVRow, mapListingToRow, serializeServicesRow, getCSVHeadersForVertical, VEHICLE_CSV_HEADERS, mapVehicleToRow } from "@/lib/csv";
 import { logCsvGeneration } from "@/lib/logger";
+import { withDbRetry, dbUnavailableResponse } from "@/lib/dbResilience";
 
 const BATCH_SIZE = 100;
 
@@ -12,10 +13,25 @@ export async function GET(
   const { slug: rawSlug } = await params;
   const slug = rawSlug.replace(/\.csv$/i, "");
 
-  const dealer = await prisma.dealer.findUnique({
-    where: { slug },
-    select: { id: true, name: true, vertical: true, address: true, feedUrlMode: true },
-  });
+  let dealer: {
+    id: string;
+    name: string;
+    vertical: string;
+    address: string | null;
+    feedUrlMode: string | null;
+  } | null;
+  try {
+    dealer = await withDbRetry(
+      async () =>
+        await prisma.dealer.findUnique({
+          where: { slug },
+          select: { id: true, name: true, vertical: true, address: true, feedUrlMode: true },
+        }),
+      { label: "feeds.dealer_lookup" }
+    );
+  } catch {
+    return dbUnavailableResponse("feeds.dealer_lookup");
+  }
 
   if (!dealer) {
     return NextResponse.json({ error: "dealer_not_found" }, { status: 404 });
