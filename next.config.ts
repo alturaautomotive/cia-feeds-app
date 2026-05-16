@@ -80,8 +80,12 @@ const securityHeaders = [
   //      "Content-Security-Policy-Report-Only" to "Content-Security-Policy".
   //   4. Push to a preview deploy first; smoke-test Stripe Elements, FB
   //      Pixel, Google Maps, and image uploads before promoting to prod.
+  // PROMOTED to enforcing mode on May 15, 2026. Zero violations were logged
+  // in /api/csp-report during the Report-Only soak (May 12 → May 15). To
+  // roll back: change "Content-Security-Policy" →
+  // "Content-Security-Policy-Report-Only" and redeploy.
   {
-    key: "Content-Security-Policy-Report-Only",
+    key: "Content-Security-Policy",
     value: csp,
   },
   // Cross-Origin Opener Policy — isolates window references to prevent
