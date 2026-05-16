@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getEffectiveDealerId } from "@/lib/impersonation";
 import { criticalDurableRateLimit } from "@/lib/rateLimit";
 import { writeAuditLog } from "@/lib/adminAudit";
+import { decryptLeadRow } from "@/lib/leadCrypto";
 
 /**
  * GET /api/dealer/me/export
@@ -82,6 +83,23 @@ export async function GET(request: Request) {
     targetDealerId: dealerId,
   }).catch(() => {});
 
+  // F-8.4: Lead PII is stored encrypted at the application layer. Decrypt
+  // for the dealer's own GDPR export so they receive the human-readable
+  // values, not ciphertext blobs.
+  type RawLead = {
+    id: string;
+    name: string;
+    email: string | null;
+    phone: string | null;
+    dealerId: string;
+    vehicleId: string | null;
+    listingId: string | null;
+    createdAt: Date;
+  };
+  const decryptedLeads = ((dealer.leads ?? []) as RawLead[]).map((l) =>
+    decryptLeadRow(l)
+  );
+
   const exportPayload = {
     exportedAt: new Date().toISOString(),
     apiVersion: 1,
@@ -89,7 +107,7 @@ export async function GET(request: Request) {
       "This export contains all personal and business data CIA Feeds holds about your account. " +
       "Credentials (password hash, encrypted Meta token, tracking signing secret) are intentionally excluded " +
       "as they are non-portable security artifacts.",
-    dealer,
+    dealer: { ...dealer, leads: decryptedLeads },
   };
 
   const body = JSON.stringify(exportPayload, null, 2);

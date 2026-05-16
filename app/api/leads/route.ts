@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { sendNewLeadEmail } from "@/lib/email";
 import { durableRateLimit } from "@/lib/rateLimit";
 import { sendMetaEvent } from "@/lib/metaTrack";
+import { encryptLeadField, encryptLeadFieldNullable } from "@/lib/leadCrypto";
 
 export async function POST(request: NextRequest) {
   // Public lead-submission endpoint — DB-backed rate limiter so the bucket
@@ -78,11 +79,19 @@ export async function POST(request: NextRequest) {
       entityPrice = listing.price;
     }
 
+    // F-8.4 / #29: encrypt PII at the application layer so even a DB dump
+    // (e.g. via a leaked DATABASE_URL) doesn't yield name/email/phone in
+    // plaintext. Plaintext is preserved in memory only long enough to fire
+    // the dealer notification email + Meta CAPI event below.
+    const plaintextName = name.trim();
+    const plaintextEmail = typeof email === "string" ? email.trim() : undefined;
+    const plaintextPhone = typeof phone === "string" ? phone.trim() : undefined;
+
     const lead = await prisma.lead.create({
       data: {
-        name: name.trim(),
-        email: typeof email === "string" ? email.trim() : undefined,
-        phone: typeof phone === "string" ? phone.trim() : undefined,
+        name: encryptLeadField(plaintextName),
+        email: encryptLeadFieldNullable(plaintextEmail),
+        phone: encryptLeadFieldNullable(plaintextPhone),
         vehicleId: validatedVehicleId,
         listingId: validatedListingId,
         dealerId,
@@ -99,9 +108,9 @@ export async function POST(request: NextRequest) {
     if (dealer) {
       sendNewLeadEmail(
         dealer.email,
-        name.trim(),
-        typeof email === "string" ? email.trim() : undefined,
-        typeof phone === "string" ? phone.trim() : undefined,
+        plaintextName,
+        plaintextEmail,
+        plaintextPhone,
         entityInfo
       ).catch((err) => console.error("[leads] email notification failed:", err));
 
