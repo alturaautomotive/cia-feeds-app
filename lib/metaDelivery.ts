@@ -16,6 +16,28 @@ const META_BATCH_LIMIT = 5000; // Meta items_batch max per request
 const DELETE_BATCH_LIMIT = 5000; // Meta delete batch max per request
 const STALE_MIN_AGE_MS = 60 * 60 * 1000; // 1 hour — items must be unseen for at least this long before deletion
 
+/**
+ * Meta's /<catalog_id>/items_batch endpoint requires a top-level `item_type`
+ * field per the May 2026 API tightening (error: "(#100) The parameter
+ * item_type is required."). Older v17/v18 calls without this field were
+ * tolerated; v19+ rejects.
+ *
+ * Mapping: our internal vertical -> Meta's catalog item_type enum.
+ *   automotive -> VEHICLE  (Auto Inventory / Vehicle Listings catalogs)
+ *   services   -> PRODUCT_ITEM  (Commerce catalogs; Meta has no native
+ *                                "services" item_type, so service
+ *                                listings are uploaded as products)
+ */
+function metaItemTypeForVertical(vertical: string): string {
+  if (vertical === "automotive") return "VEHICLE";
+  if (vertical === "services") return "PRODUCT_ITEM";
+  // Unknown verticals shouldn't reach here (callers gate on
+  // API_SUPPORTED_VERTICALS), but default to PRODUCT_ITEM rather than
+  // omit the field so the API call at least gets a deterministic error
+  // instead of (#100) parameter required.
+  return "PRODUCT_ITEM";
+}
+
 // Queue constants
 const LEASE_DURATION_MS = 8 * 60 * 1000; // 8 minutes — above Vercel function max runtime (300s)
 const DRAIN_BATCH_SIZE = 10; // max jobs per drain run
@@ -726,7 +748,8 @@ export async function deliverFeed(
   const result = await sendBatchesToMeta(
     dealer.metaCatalogId,
     token,
-    typedItems
+    typedItems,
+    vertical
   );
 
   // After fully successful upsert, persist sync state and reconcile stale items.
@@ -785,6 +808,7 @@ export async function pushInventoryToMeta(
       metaCatalogId: true,
       metaAccessToken: true,
       metaTokenExpiresAt: true,
+      vertical: true,
     },
   });
 
@@ -815,7 +839,7 @@ export async function pushInventoryToMeta(
     return { mode: "api", status: "error", error: "no_pushable_inventory" };
   }
 
-  return sendBatchesToMeta(dealer.metaCatalogId, token, items);
+  return sendBatchesToMeta(dealer.metaCatalogId, token, items, dealer.vertical);
 }
 
 // ---------------------------------------------------------------------------
@@ -1005,6 +1029,10 @@ export async function reconcileStaleItems(
     result.deleteAttempted += batch.length;
 
     const payload = {
+      // item_type required by Meta v19+ items_batch (same as upsert path).
+      // For DELETE we map from `entityType` which carries the same value
+      // as the vertical (callers pass dealer.vertical here).
+      item_type: metaItemTypeForVertical(entityType),
       requests: batch.map((item) => ({
         method: "DELETE",
         data: { id: item.catalogItemId },
@@ -1352,9 +1380,11 @@ function isGraphAuthError(body: { error?: { code?: number; error_subcode?: numbe
 async function sendBatchesToMeta(
   catalogId: string,
   token: string,
-  items: Record<string, unknown>[]
+  items: Record<string, unknown>[],
+  vertical: string
 ): Promise<DeliveryResult> {
   const summary = makeEmptySummary();
+  const itemType = metaItemTypeForVertical(vertical);
 
   // Chunk items into META_BATCH_LIMIT-sized batches
   const chunks: Record<string, unknown>[][] = [];
@@ -1367,6 +1397,10 @@ async function sendBatchesToMeta(
     summary.itemsAttempted += chunk.length;
 
     const payload = {
+      // item_type is required at the top level by Meta's items_batch API
+      // (v19+). Without this we get (#100) 'The parameter item_type is
+      // required' and the whole batch fails.
+      item_type: itemType,
       allow_upsert: true,
       requests: chunk.map((item) => ({
         method: "UPSERT",
