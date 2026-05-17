@@ -1,8 +1,9 @@
 import { notFound } from "next/navigation";
+import { headers } from "next/headers";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { getTenantBySlug, getStorefrontCta } from "@/lib/tenant";
-import { getStorefrontLayout } from "@/lib/storefront";
+import { getStorefrontLayout, storefrontBasePath } from "@/lib/storefront";
 import { getSegmentInventory } from "@/lib/storefrontQueries";
 import type { Vertical } from "@/lib/verticals";
 import PixelInitializer from "@/app/components/PixelInitializer";
@@ -51,6 +52,13 @@ export default async function StorefrontHome({
   const layout = await getStorefrontLayout(tenant.id);
   const cta = getStorefrontCta(tenant);
 
+  // Compute the link base path. On the apex (www.ciafeed.com/<slug>) links
+  // need the /<slug> prefix; on the subdomain or custom domain the proxy
+  // adds it server-side, so emit root-relative links to avoid a double
+  // prefix (which produced 404s on every internal nav).
+  const reqHeaders = await headers();
+  const basePath = storefrontBasePath(reqHeaders.get("host"), tenant.slug);
+
   // Multi-segment dealers see the catalog landing page. Single-segment dealers
   // keep the original hero-plus-inventory layout (so legacy single-vertical
   // dealers see no visual change).
@@ -59,7 +67,7 @@ export default async function StorefrontHome({
       <MultiSegmentHome
         tenantId={tenant.id}
         tenantName={tenant.name}
-        tenantSlug={tenant.slug}
+        basePath={basePath}
         metaPixelId={tenant.metaPixelId}
         segments={layout.segments}
         ctaLabel={cta.label}
@@ -139,10 +147,10 @@ export default async function StorefrontHome({
             flexWrap: "wrap",
           }}
         >
-          <Link href={`/${tenant.slug}/${segmentPath}`} className="sf-btn">
+          <Link href={`${basePath}/${segmentPath}`} className="sf-btn">
             View {isAutomotive ? "Inventory" : primaryVertical === "realestate" ? "Listings" : "Services"}
           </Link>
-          <Link href={`/${tenant.slug}/contact`} className="sf-btn-outline">
+          <Link href={`${basePath}/contact`} className="sf-btn-outline">
             {cta.label}
           </Link>
         </div>
@@ -174,7 +182,7 @@ export default async function StorefrontHome({
               : "Featured"}
           </h2>
           <Link
-            href={`/${tenant.slug}/${segmentPath}`}
+            href={`${basePath}/${segmentPath}`}
             style={{
               fontSize: 14,
               fontWeight: 500,
@@ -203,7 +211,7 @@ export default async function StorefrontHome({
                 return (
                   <Link
                     key={v.id}
-                    href={`/${tenant.slug}/vehicles/${v.id}`}
+                    href={`${basePath}/vehicles/${v.id}`}
                     className="sf-card"
                     style={{ display: "block" }}
                   >
@@ -268,7 +276,7 @@ export default async function StorefrontHome({
               return (
                 <Link
                   key={l.id}
-                  href={`/${tenant.slug}/${detailKind}/${l.id}`}
+                  href={`${basePath}/${detailKind}/${l.id}`}
                   className="sf-card"
                   style={{ display: "block" }}
                 >
@@ -332,14 +340,14 @@ export default async function StorefrontHome({
 async function MultiSegmentHome({
   tenantId,
   tenantName,
-  tenantSlug,
+  basePath,
   metaPixelId,
   segments,
   ctaLabel,
 }: {
   tenantId: string;
   tenantName: string;
-  tenantSlug: string;
+  basePath: string;
   metaPixelId: string | null;
   segments: Awaited<ReturnType<typeof getStorefrontLayout>>["segments"];
   ctaLabel: string;
@@ -391,7 +399,7 @@ async function MultiSegmentHome({
           card to dive in.
         </p>
         <div style={{ marginTop: 24 }}>
-          <Link href={`/${tenantSlug}/contact`} className="sf-btn-outline">
+          <Link href={`${basePath}/contact`} className="sf-btn-outline">
             {ctaLabel}
           </Link>
         </div>
@@ -417,7 +425,7 @@ async function MultiSegmentHome({
             return (
               <Link
                 key={seg.slug}
-                href={`/${tenantSlug}/${seg.slug}`}
+                href={`${basePath}/${seg.slug}`}
                 className="sf-card"
                 style={{ display: "block" }}
               >

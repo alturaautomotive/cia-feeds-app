@@ -354,6 +354,50 @@ export function buildListingUrl(
 // Slug helpers
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Request-aware link helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Determine the base path to prefix on storefront <Link> hrefs based on the
+ * incoming request host.
+ *
+ * The proxy (proxy.ts) rewrites subdomain + custom-domain hosts to
+ * /<slug>/<path> internally. So pages always render under /<slug>/* on the
+ * server side, but the URL bar shows just /* on the subdomain. If we emit
+ * `/${slug}/vehicles` as a link, clicking it from beaver-toyota.ciafeed.com
+ * navigates to beaver-toyota.ciafeed.com/beaver-toyota/vehicles — the proxy
+ * then re-prepends the slug, producing /beaver-toyota/beaver-toyota/vehicles
+ * which 404s.
+ *
+ * Pass the request host (read via `next/headers` headers().get("host")) and
+ * the dealer slug; this returns:
+ *   - ""           when the request came in via the subdomain or a custom
+ *                  domain (links should be root-relative: /vehicles, /homes)
+ *   - "/<slug>"    when the request is on the apex (www.ciafeed.com or
+ *                  localhost) and links must include the slug
+ */
+export function storefrontBasePath(
+  host: string | null | undefined,
+  dealerSlug: string
+): string {
+  if (!host) return `/${dealerSlug}`;
+  const lowered = host.toLowerCase();
+  // Apex / dev hosts — render full /<slug>/<path> links.
+  if (
+    lowered === "ciafeed.com" ||
+    lowered === "www.ciafeed.com" ||
+    lowered === "localhost" ||
+    lowered.startsWith("localhost:") ||
+    lowered.endsWith(".vercel.app")
+  ) {
+    return `/${dealerSlug}`;
+  }
+  // Subdomain or custom domain — proxy already adds the slug, so links must
+  // be root-relative.
+  return "";
+}
+
 /** Normalise free-text into a URL slug. */
 export function slugify(input: string): string {
   return input

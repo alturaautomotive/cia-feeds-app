@@ -1,8 +1,9 @@
 import { notFound } from "next/navigation";
+import { headers } from "next/headers";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { getTenantBySlug } from "@/lib/tenant";
-import { resolveSegment } from "@/lib/storefront";
+import { resolveSegment, storefrontBasePath } from "@/lib/storefront";
 import { getSegmentInventory } from "@/lib/storefrontQueries";
 import PixelInitializer from "@/app/components/PixelInitializer";
 
@@ -52,6 +53,10 @@ export default async function SegmentPage({
   }
   if (!seg) notFound();
 
+  // Host-aware link base path — see lib/storefront.storefrontBasePath().
+  const reqHeaders = await headers();
+  const basePath = storefrontBasePath(reqHeaders.get("host"), tenant.slug);
+
   let inventory;
   try {
     inventory = await getSegmentInventory({
@@ -88,7 +93,7 @@ export default async function SegmentPage({
         }}
       >
         <nav style={{ marginBottom: 12, fontSize: 14, opacity: 0.65 }}>
-          <Link href={`/${tenant.slug}`} style={{ textDecoration: "underline" }}>
+          <Link href={basePath || "/"} style={{ textDecoration: "underline" }}>
             ← All catalogs
           </Link>
         </nav>
@@ -150,7 +155,7 @@ export default async function SegmentPage({
               return (
                 <Link
                   key={`v-${v.id}`}
-                  href={`/${tenant.slug}/vehicles/${v.id}`}
+                  href={`${basePath}/vehicles/${v.id}`}
                   className="sf-card"
                   style={{ display: "block" }}
                 >
@@ -207,7 +212,7 @@ export default async function SegmentPage({
               return (
                 <Link
                   key={`l-${l.id}`}
-                  href={`/${tenant.slug}/${detailKind}/${l.id}`}
+                  href={`${basePath}/${detailKind}/${l.id}`}
                   className="sf-card"
                   style={{ display: "block" }}
                 >
