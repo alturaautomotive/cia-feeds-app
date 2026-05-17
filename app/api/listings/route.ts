@@ -39,16 +39,47 @@ export async function POST(request: NextRequest) {
 
   const b = body as Record<string, unknown>;
 
+  const requestedSubAccountId =
+    typeof b.subAccountId === "string" && b.subAccountId.length > 0
+      ? b.subAccountId
+      : null;
+
   const dealer = await prisma.dealer.findUnique({
     where: { id: dealerId },
-    select: { vertical: true, name: true, address: true },
+    select: {
+      vertical: true,
+      name: true,
+      address: true,
+      defaultSubAccountId: true,
+      subAccounts: {
+        select: { id: true, vertical: true, name: true },
+      },
+    },
   });
 
   if (!dealer) {
     return NextResponse.json({ error: "dealer_not_found" }, { status: 404 });
   }
 
-  const vertical = dealer.vertical;
+  // Resolve effective vertical from active sub-account when provided, then
+  // default sub-account, then parent dealer vertical.
+  let resolvedSubAccountId: string | null = null;
+  let vertical = dealer.vertical as string;
+
+  if (requestedSubAccountId) {
+    const sub = dealer.subAccounts.find((s) => s.id === requestedSubAccountId);
+    if (!sub) {
+      return NextResponse.json({ error: "sub_account_not_found" }, { status: 404 });
+    }
+    resolvedSubAccountId = sub.id;
+    vertical = sub.vertical;
+  } else if (dealer.defaultSubAccountId) {
+    const sub = dealer.subAccounts.find((s) => s.id === dealer.defaultSubAccountId);
+    if (sub) {
+      resolvedSubAccountId = sub.id;
+      vertical = sub.vertical;
+    }
+  }
 
   if (vertical === "automotive") {
     return NextResponse.json(
@@ -167,6 +198,7 @@ export async function POST(request: NextRequest) {
   const listing = await prisma.listing.create({
     data: {
       dealerId,
+      subAccountId: resolvedSubAccountId,
       vertical,
       title,
       price: Number.isFinite(price) ? price : null,

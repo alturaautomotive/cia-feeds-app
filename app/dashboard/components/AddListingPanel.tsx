@@ -6,6 +6,7 @@ import { VoiceAddService } from "./VoiceAddService";
 
 interface Props {
   vertical: Vertical;
+  subAccountId?: string | null;
   onListingAdded: () => void;
 }
 
@@ -19,7 +20,7 @@ interface ScrapedListing {
   title?: string;
 }
 
-export function AddListingPanel({ vertical, onListingAdded }: Props) {
+export function AddListingPanel({ vertical, subAccountId = null, onListingAdded }: Props) {
   // URL upload is the dominant flow for services + realestate (dealers
   // paste a Zillow/MLS or service page URL). Ecommerce defaults to manual.
   const [tab, setTab] = useState<Tab>(
@@ -141,7 +142,11 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
       const res = await fetch("/api/listings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...formData, imageUrls }),
+        body: JSON.stringify({
+          ...formData,
+          imageUrls,
+          ...(subAccountId ? { subAccountId } : {}),
+        }),
       });
 
       if (!res.ok) {
@@ -185,7 +190,10 @@ export function AddListingPanel({ vertical, onListingAdded }: Props) {
       const res = await fetch("/api/listings/from-url", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: normalizedUrl }),
+        body: JSON.stringify({
+          url: normalizedUrl,
+          ...(subAccountId ? { subAccountId } : {}),
+        }),
       });
 
       if (!res.ok) {

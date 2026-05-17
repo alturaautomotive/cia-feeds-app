@@ -68,16 +68,64 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "subscription_required" }, { status: 403 });
   }
 
+  // Pre-parse body so we can look at an optional `subAccountId` before the
+  // vertical check. Multi-vertical accounts use sub-accounts to host inventory
+  // for verticals other than the parent dealer's primary vertical, so we must
+  // honour the active sub-account when deciding which vertical to use.
+  let parsedBody: Record<string, unknown> = {};
+  try {
+    parsedBody = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+  }
+
+  const requestedSubAccountId =
+    typeof parsedBody.subAccountId === "string" && parsedBody.subAccountId.length > 0
+      ? parsedBody.subAccountId
+      : null;
+
   const dealer = await prisma.dealer.findUnique({
     where: { id: dealerId },
-    select: { vertical: true, name: true, address: true },
+    select: {
+      vertical: true,
+      name: true,
+      address: true,
+      defaultSubAccountId: true,
+      subAccounts: {
+        select: { id: true, vertical: true, name: true },
+      },
+    },
   });
 
+  if (!dealer) {
+    return NextResponse.json({ error: "dealer_not_found" }, { status: 404 });
+  }
+
+  // Resolve effective vertical: prefer the active sub-account if one is
+  // provided (and owned by this dealer), then default sub-account, then the
+  // parent dealer's vertical as a last resort.
+  let resolvedSubAccountId: string | null = null;
+  let vertical = dealer.vertical as string;
+
+  if (requestedSubAccountId) {
+    const sub = dealer.subAccounts.find((s) => s.id === requestedSubAccountId);
+    if (!sub) {
+      return NextResponse.json({ error: "sub_account_not_found" }, { status: 404 });
+    }
+    resolvedSubAccountId = sub.id;
+    vertical = sub.vertical;
+  } else if (dealer.defaultSubAccountId) {
+    const sub = dealer.subAccounts.find((s) => s.id === dealer.defaultSubAccountId);
+    if (sub) {
+      resolvedSubAccountId = sub.id;
+      vertical = sub.vertical;
+    }
+  }
+
   if (
-    !dealer ||
-    (dealer.vertical !== "ecommerce" &&
-      dealer.vertical !== "services" &&
-      dealer.vertical !== "realestate")
+    vertical !== "ecommerce" &&
+    vertical !== "services" &&
+    vertical !== "realestate"
   ) {
     return NextResponse.json(
       { error: "URL scraping is only available for the E-commerce, Services, and Real Estate verticals" },
@@ -85,21 +133,12 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const vertical = dealer.vertical;
-
   const rl = rateLimit(`scrape-listing:${dealerId}`, 10, 60_000);
   if (!rl.allowed) {
     return NextResponse.json({ error: "rate_limited", retryAfterMs: rl.retryAfterMs }, { status: 429 });
   }
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
-  }
-
-  const { url } = body as Record<string, unknown>;
+  const { url } = parsedBody;
 
   if (!url || typeof url !== "string" || !isValidUrl(url)) {
     return NextResponse.json({ error: "invalid_url" }, { status: 400 });
@@ -123,6 +162,7 @@ export async function POST(request: NextRequest) {
   const listing = await prisma.listing.create({
     data: {
       dealerId,
+      subAccountId: resolvedSubAccountId,
       vertical,
       title: url,
       url,

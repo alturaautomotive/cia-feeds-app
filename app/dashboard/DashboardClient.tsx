@@ -435,6 +435,7 @@ export function DashboardClient({
           ) : (
             <AddListingPanel
               vertical={vertical as Vertical}
+              subAccountId={currentSubAccountId ?? null}
               onListingAdded={refreshListings}
             />
           )}
