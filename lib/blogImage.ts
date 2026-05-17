@@ -1,11 +1,12 @@
 // Hero image generation for blog posts.
 //
 // Strategy:
-//   v1: Generate a branded banner with OpenAI gpt-image-1. It handles legible
-//       in-image text reliably (logo wordmark, headline) where Gemini's image
-//       models tend to garble typography. We pass the post's title and the
-//       CIAfeeds brand colour palette so each post has a unique, on-brand
-//       banner.
+//   v1: Generate a branded banner with OpenAI. We try gpt-image-1 first
+//       (best for blog heros when available) and fall back to dall-e-3 if
+//       the org isn't verified for gpt-image-1. The fallback is automatic
+//       so we never end up with a hero-less post just because of OpenAI's
+//       identity-verification gating. The prompt explicitly forbids in-image
+//       text either way, so dall-e-3's weaker typography doesn't matter.
 //   v2 (when ready): composite an uploaded portrait into the banner. We'll
 //       use Sharp for that step. The portrait URL is read from an env var
 //       (PORTRAIT_URL) and the composite is rendered server-side.
@@ -78,37 +79,101 @@ export async function generateBlogHero(
   const openai = new OpenAI({ apiKey: openaiKey });
   const prompt = brandPrompt(input.title, input.locale);
 
-  let b64: string;
-  try {
-    const result = await withBreaker(
-      "openai.imageGen",
-      () =>
-        openai.images.generate({
-          model: "gpt-image-1",
-          prompt,
-          // Wide format optimised for blog hero placement.
-          size: "1536x1024",
-          // PNG so we can later composite a portrait without artefacts.
-          output_format: "png",
-          quality: "medium",
-          n: 1,
-        }),
-      { timeoutMs: 90_000 }
+  // Two-tier image generation:
+  //   1. Try gpt-image-1 (1536x1024, PNG, medium quality). Best output, but
+  //      requires org verification on OpenAI's side.
+  //   2. On any access/verification error, fall back to dall-e-3 (1792x1024,
+  //      URL-returning, hd quality). Always available. We download the URL
+  //      to a buffer since dall-e-3 doesn't support b64_json.
+  async function tryGptImage1(): Promise<string | null> {
+    const result = await openai.images.generate({
+      model: "gpt-image-1",
+      prompt,
+      size: "1536x1024",
+      output_format: "png",
+      quality: "medium",
+      n: 1,
+    });
+    return result.data?.[0]?.b64_json ?? null;
+  }
+
+  async function tryDallE3(): Promise<string | null> {
+    const result = await openai.images.generate({
+      model: "dall-e-3",
+      prompt,
+      // dall-e-3 only supports 1024x1024, 1024x1792, or 1792x1024.
+      size: "1792x1024",
+      quality: "hd",
+      // dall-e-3 supports b64_json directly via response_format.
+      response_format: "b64_json",
+      n: 1,
+    });
+    return result.data?.[0]?.b64_json ?? null;
+  }
+
+  function isGptImageAccessError(err: unknown): boolean {
+    if (!err) return false;
+    const msg = err instanceof Error ? err.message : String(err);
+    const m = msg.toLowerCase();
+    return (
+      m.includes("must be verified") ||
+      m.includes("organization") ||
+      m.includes("not available") ||
+      m.includes("model_not_found") ||
+      m.includes("403") ||
+      m.includes("401") ||
+      m.includes("unsupported")
     );
-    const first = result.data?.[0];
-    if (!first?.b64_json) {
-      throw new BlogImageError("OpenAI image response missing b64_json", "empty");
-    }
-    b64 = first.b64_json;
+  }
+
+  let b64: string | null = null;
+  try {
+    b64 = await withBreaker("openai.imageGen", tryGptImage1, {
+      timeoutMs: 90_000,
+    });
   } catch (err) {
     if (err instanceof CircuitOpenError) {
       console.warn({ event: "blog_image_skipped", reason: "circuit_open", slug: input.slug });
       return null;
     }
+    if (isGptImageAccessError(err)) {
+      console.log({
+        event: "blog_image_fallback_to_dalle3",
+        slug: input.slug,
+        reason: err instanceof Error ? err.message : String(err),
+      });
+      try {
+        b64 = await withBreaker("openai.imageGen.dalle3", tryDallE3, {
+          timeoutMs: 90_000,
+        });
+      } catch (fallbackErr) {
+        console.warn({
+          event: "blog_image_generate_failed",
+          slug: input.slug,
+          model: "dall-e-3",
+          message:
+            fallbackErr instanceof Error
+              ? fallbackErr.message
+              : String(fallbackErr),
+        });
+        return null;
+      }
+    } else {
+      console.warn({
+        event: "blog_image_generate_failed",
+        slug: input.slug,
+        model: "gpt-image-1",
+        message: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    }
+  }
+
+  if (!b64) {
     console.warn({
       event: "blog_image_generate_failed",
       slug: input.slug,
-      message: err instanceof Error ? err.message : String(err),
+      reason: "empty_b64",
     });
     return null;
   }
