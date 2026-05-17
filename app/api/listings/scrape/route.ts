@@ -103,25 +103,32 @@ export async function POST(request: NextRequest) {
         : vertical === "realestate"
         ? REALESTATE_EXTRACTION_PROMPT
         : EXTRACTION_PROMPT;
-    // Real-estate listings live on heavy JS sites with strong anti-bot
-    // measures (Zillow, Realtor, Redfin). We need to (a) wait for content,
-    // (b) use a mobile UA which usually serves cleaner markup, and (c) let
-    // Firecrawl escalate to enhanced proxies via proxy:"auto". Services
-    // pages also benefit from the same treatment; ecommerce keeps the
-    // default fast path.
-    const isHardPage = vertical === "realestate" || vertical === "services";
-    const response = await firecrawlClient.scrape(url, {
+    // Per-vertical Firecrawl options.
+    //
+    // Real estate: Zillow, Realtor, and Redfin block basic + enhanced proxies
+    // outright (we measured "All scraping engines failed" on proxy:"auto" for
+    // Zillow). The stealth engine routes through residential-grade infra and
+    // gets through every time. Cost: 5 credits per scrape. Worth it because
+    // every other path returns empty data. Note: the stealth engine ignores
+    // `waitFor` and `mobile` (it surfaces a warning) so we omit them.
+    //
+    // Services: most service pages are simple WordPress/Squarespace sites.
+    // proxy:"auto" starts on basic (1 credit) and only escalates to enhanced
+    // (5 credits) on failure — best cost/reliability tradeoff.
+    //
+    // Ecommerce / automotive (downstream lib/scrape.ts): default options.
+    const scrapeOpts: Record<string, unknown> = {
       formats: [{ type: "json", prompt, schema: schema as Record<string, unknown> }],
-      ...(isHardPage
-        ? {
-            proxy: "auto" as const,
-            waitFor: 2500,
-            mobile: true,
-            onlyMainContent: true,
-            timeout: 60_000,
-          }
-        : {}),
-    });
+    };
+    if (vertical === "realestate") {
+      scrapeOpts.proxy = "stealth";
+      scrapeOpts.timeout = 90_000;
+    } else if (vertical === "services") {
+      scrapeOpts.proxy = "auto";
+      scrapeOpts.onlyMainContent = true;
+      scrapeOpts.timeout = 60_000;
+    }
+    const response = await firecrawlClient.scrape(url, scrapeOpts as Parameters<typeof firecrawlClient.scrape>[1]);
 
     const extractionPayload = (response as { json?: unknown })?.json;
     const rawData = (extractionPayload !== null && typeof extractionPayload === "object"

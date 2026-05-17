@@ -223,22 +223,20 @@ export async function POST(request: NextRequest) {
           ? REALESTATE_EXTRACTION_PROMPT
           : EXTRACTION_PROMPT;
       // See app/api/listings/scrape/route.ts for the rationale on these
-      // Firecrawl options. The inline path (no SYNC_SECRET) mirrors the
-      // async path's hardening so both branches behave the same on hard
-      // pages like Zillow, Realtor, and Redfin.
-      const isHardPage = vertical === "realestate" || vertical === "services";
-      const response = await firecrawlClient.scrape(url, {
+      // per-vertical Firecrawl options. Real estate sites (Zillow et al.)
+      // require the stealth proxy outright; services pages do well on auto.
+      const scrapeOpts: Record<string, unknown> = {
         formats: [{ type: "json", prompt, schema: schema as Record<string, unknown> }],
-        ...(isHardPage
-          ? {
-              proxy: "auto" as const,
-              waitFor: 2500,
-              mobile: true,
-              onlyMainContent: true,
-              timeout: 60_000,
-            }
-          : {}),
-      });
+      };
+      if (vertical === "realestate") {
+        scrapeOpts.proxy = "stealth";
+        scrapeOpts.timeout = 90_000;
+      } else if (vertical === "services") {
+        scrapeOpts.proxy = "auto";
+        scrapeOpts.onlyMainContent = true;
+        scrapeOpts.timeout = 60_000;
+      }
+      const response = await firecrawlClient.scrape(url, scrapeOpts as Parameters<typeof firecrawlClient.scrape>[1]);
 
       const extractionPayload = (response as { json?: unknown })?.json;
       const rawData = (extractionPayload !== null && typeof extractionPayload === "object"
