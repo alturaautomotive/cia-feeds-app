@@ -224,26 +224,59 @@ export async function POST(request: NextRequest) {
   );
 }
 
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
   const dealerId = await getEffectiveDealerId();
   if (!dealerId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
+  // Honour the active sub-account so multi-vertical accounts (e.g. Beaver
+  // Toyota with automotive + services + realestate sub-accounts) get the
+  // right inventory. Falls back to the dealer's default sub-account, then to
+  // the parent dealer vertical — same precedence as the POST routes.
+  const requestedSubAccountId = request.nextUrl.searchParams.get("subAccountId");
+
   const dealer = await prisma.dealer.findUnique({
     where: { id: dealerId },
-    select: { vertical: true },
+    select: {
+      vertical: true,
+      defaultSubAccountId: true,
+      subAccounts: { select: { id: true, vertical: true } },
+    },
   });
 
-  if (!dealer || dealer.vertical === "automotive") {
+  if (!dealer) {
+    return NextResponse.json({ listings: [] });
+  }
+
+  let resolvedSubAccountId: string | null = null;
+  let vertical: string = dealer.vertical;
+
+  if (requestedSubAccountId) {
+    const sub = dealer.subAccounts.find((s) => s.id === requestedSubAccountId);
+    if (sub) {
+      resolvedSubAccountId = sub.id;
+      vertical = sub.vertical;
+    }
+  } else if (dealer.defaultSubAccountId) {
+    const sub = dealer.subAccounts.find((s) => s.id === dealer.defaultSubAccountId);
+    if (sub) {
+      resolvedSubAccountId = sub.id;
+      vertical = sub.vertical;
+    }
+  }
+
+  if (vertical === "automotive") {
+    // Automotive uses /api/vehicles, not /api/listings.
     return NextResponse.json({ listings: [] });
   }
 
   const listings = await prisma.listing.findMany({
     where: {
       dealerId,
-      vertical: dealer.vertical,
+      vertical,
       archivedAt: null,
+      ...(resolvedSubAccountId ? { subAccountId: resolvedSubAccountId } : {}),
     },
     orderBy: { createdAt: "desc" },
   });

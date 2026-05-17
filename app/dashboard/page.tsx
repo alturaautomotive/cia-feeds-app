@@ -96,7 +96,7 @@ export default async function DashboardPage({
 
   const dealer = await prisma.dealer.findUnique({
     where: { id: effectiveDealerId },
-    select: { vertical: true, name: true, slug: true, defaultSubAccountId: true, subAccounts: { orderBy: { createdAt: "asc" } } },
+    select: { vertical: true, name: true, slug: true, customDomain: true, defaultSubAccountId: true, subAccounts: { orderBy: { createdAt: "asc" } } },
   });
 
   const subAccounts = dealer?.subAccounts ?? [];
@@ -144,6 +144,8 @@ export default async function DashboardPage({
         vehicles={vehicles}
         listings={[]}
         dealerName={dealer?.name ?? session.user.name ?? "Dealer"}
+        dealerSlug={dealer?.slug ?? ""}
+        customDomain={dealer?.customDomain ?? null}
         vertical={vertical}
         isImpersonating={isImpersonating}
         impersonatedDealerName={impersonatedDealerName}
@@ -170,6 +172,8 @@ export default async function DashboardPage({
       vehicles={[]}
       listings={JSON.parse(JSON.stringify(listings))}
       dealerName={dealer?.name ?? session.user.name ?? "Dealer"}
+      dealerSlug={dealer?.slug ?? ""}
+      customDomain={dealer?.customDomain ?? null}
       vertical={vertical}
       isImpersonating={isImpersonating}
       impersonatedDealerName={impersonatedDealerName}

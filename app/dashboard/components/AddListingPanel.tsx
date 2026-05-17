@@ -250,8 +250,58 @@ export function AddListingPanel({ vertical, subAccountId = null, onListingAdded 
       }
 
       setUrlInput("");
-      setSuccess("URL submitted for scraping!");
-      onListingAdded();
+
+      // Async dispatch path (SYNC_SECRET set in prod): the response is a
+      // stub with scrapeStatus: "pending". The actual scrape runs in the
+      // background and updates the row in 20-90s depending on the proxy
+      // engine. Poll the listing every 3s for up to 120s so the user sees
+      // the inventory populate without having to refresh.
+      if (returned.id && returned.scrapeStatus === "pending") {
+        setSuccess("Scraping URL… this can take up to 90 seconds.");
+        const listingId = returned.id;
+        let attempts = 0;
+        const maxAttempts = 40; // 40 × 3s = 120s
+        const poll = async () => {
+          attempts += 1;
+          try {
+            const r = await fetch(`/api/listings/${listingId}`);
+            if (r.ok) {
+              const body = (await r.json()) as { listing?: { data?: { scrapeStatus?: string; error?: string } } };
+              const status = body.listing?.data?.scrapeStatus;
+              if (status === "complete") {
+                setSuccess("Listing added successfully.");
+                onListingAdded();
+                return;
+              }
+              if (status === "failed") {
+                const errMsg = body.listing?.data?.error;
+                setError(
+                  errMsg
+                    ? `Scrape failed: ${errMsg.slice(0, 240)}`
+                    : "Scrape failed. The listing page may be blocking automated access — try a different URL or paste the details manually."
+                );
+                setSuccess(null);
+                onListingAdded();
+                return;
+              }
+            }
+          } catch {
+            // ignore transient errors and keep polling
+          }
+          if (attempts < maxAttempts) {
+            setTimeout(poll, 3000);
+          } else {
+            setSuccess(
+              "Scraping is taking longer than expected. Refresh the page in a minute to see your listing."
+            );
+            onListingAdded();
+          }
+        };
+        setTimeout(poll, 3000);
+      } else {
+        setSuccess("URL submitted for scraping.");
+        onListingAdded();
+      }
     } catch {
       setError("Network error. Please try again.");
     } finally {

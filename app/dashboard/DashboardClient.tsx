@@ -55,6 +55,8 @@ interface Props {
   vehicles: VehicleRow[];
   listings: ListingRow[];
   dealerName: string;
+  dealerSlug: string;
+  customDomain: string | null;
   vertical: string;
   isImpersonating?: boolean;
   impersonatedDealerName?: string;
@@ -67,6 +69,8 @@ export function DashboardClient({
   vehicles: initialVehicles,
   listings: initialListings,
   dealerName,
+  dealerSlug,
+  customDomain,
   vertical,
   isImpersonating = false,
   impersonatedDealerName = "",
@@ -74,6 +78,14 @@ export function DashboardClient({
   subAccounts = [],
   currentSubAccountId = null,
 }: Props) {
+  // Resolve the live storefront URL. Prefer the dealer's custom domain when
+  // configured, otherwise fall back to the slug-based subdomain. Both are
+  // public, so users can share the link directly with customers.
+  const liveSiteUrl = customDomain
+    ? `https://${customDomain.replace(/^https?:\/\//, "").replace(/\/+$/, "")}`
+    : dealerSlug
+    ? `https://${dealerSlug}.ciafeed.com`
+    : null;
   const router = useRouter();
   const [vehicles, setVehicles] = useState<VehicleRow[]>(initialVehicles);
   const [listings, setListings] = useState<ListingRow[]>(initialListings);
@@ -259,7 +271,13 @@ export function DashboardClient({
 
   async function refreshListings() {
     try {
-      const res = await fetch("/api/listings");
+      // Pass through the active sub-account so /api/listings returns the
+      // right inventory for multi-vertical accounts (parent vertical may
+      // differ from the active sub-account's vertical).
+      const qs = currentSubAccountId
+        ? `?subAccountId=${encodeURIComponent(currentSubAccountId)}`
+        : "";
+      const res = await fetch(`/api/listings${qs}`);
       if (res.ok) {
         const data = await res.json();
         setListings(data.listings ?? []);
@@ -355,6 +373,31 @@ export function DashboardClient({
           </div>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-500">{dealerName}</span>
+            {liveSiteUrl && (
+              <a
+                href={liveSiteUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={`Open ${liveSiteUrl} in a new tab`}
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-md px-2.5 py-1"
+              >
+                <span
+                  aria-hidden="true"
+                  className="inline-block h-2 w-2 rounded-full bg-emerald-500"
+                />
+                View live site
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  className="h-3.5 w-3.5 opacity-70"
+                  aria-hidden="true"
+                >
+                  <path d="M11 3a1 1 0 100 2h2.586L8.293 10.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
+                  <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
+                </svg>
+              </a>
+            )}
             <Link href="/dashboard/retargeting" className="text-sm text-indigo-600 hover:text-indigo-500">
               Retargeting
             </Link>
