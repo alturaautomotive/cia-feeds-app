@@ -9,6 +9,7 @@ import { VERTICAL_META_TYPE, VALID_VERTICALS, type Vertical } from "@/lib/vertic
 import { API_SUPPORTED_VERTICALS } from "@/lib/metaDelivery";
 import { loadDealerToken } from "@/lib/meta";
 import { writeAuditLog } from "@/lib/adminAudit";
+import { normalizePhoneE164 } from "@/lib/twilio";
 
 const VALID_CTA_PREFERENCES = ["sms", "whatsapp", "messenger"];
 const VALID_TRANSLATION_LANGS = ["en", "es-MX", "es-PR", "pt-BR", "ko-KR", "fr", "de"];
@@ -158,26 +159,25 @@ export async function PATCH(request: NextRequest) {
     }
   }
 
-  // Handle phone update
+  // Handle phone update. We normalize to E.164 on write so SMS inbound
+  // matching (lib/twilio.ts:normalizePhoneE164) can do a clean equality
+  // lookup against this column. Accepting any format from the UI (parens,
+  // hyphens, spaces, leading +) and emitting canonical E.164.
   if ("phone" in b) {
     const rawPhone = b.phone;
     if (rawPhone !== null && typeof rawPhone !== "string") {
       return NextResponse.json({ error: "invalid_phone" }, { status: 400 });
     }
     const trimmed = typeof rawPhone === "string" ? rawPhone.trim() : null;
-    const phoneToSave = trimmed || null;
 
-    if (phoneToSave) {
-      const cleaned = phoneToSave.startsWith("+")
-        ? "+" + phoneToSave.slice(1).replace(/\D/g, "")
-        : phoneToSave.replace(/\D/g, "");
-      const digits = cleaned.replace(/\D/g, "");
-      if (digits.length < 7 || digits.length > 20) {
+    if (!trimmed) {
+      batchData.phone = null;
+    } else {
+      const normalized = normalizePhoneE164(trimmed);
+      if (!normalized) {
         return NextResponse.json({ error: "invalid_phone" }, { status: 400 });
       }
-      batchData.phone = cleaned;
-    } else {
-      batchData.phone = null;
+      batchData.phone = normalized;
     }
   }
 
