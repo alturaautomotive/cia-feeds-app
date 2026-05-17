@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
 import { getTenantBySlug, getStorefrontCta } from "@/lib/tenant";
+import PixelInitializer from "@/app/components/PixelInitializer";
 
 export const revalidate = 60; // ISR: regenerate at most every 60s
 
@@ -92,6 +93,11 @@ export default async function StorefrontHome({
 
   return (
     <div>
+      {/* Meta Pixel — fires PageView on every storefront visit, with no
+          contentId since this is the homepage (no single item to attribute). */}
+      {tenant.metaPixelId && (
+        <PixelInitializer pixelId={tenant.metaPixelId} />
+      )}
       {/* Hero */}
       <section
         style={{

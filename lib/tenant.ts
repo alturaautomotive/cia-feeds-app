@@ -62,6 +62,8 @@ export interface Tenant {
   theme: BrandPreset;
   /** True if the dealer has an active or trialing Stripe subscription. */
   hasActiveSubscription: boolean;
+  /** Meta Pixel ID for Pixel injection on storefront pages. Null if not yet set. */
+  metaPixelId: string | null;
 }
 
 /**
@@ -134,6 +136,7 @@ const dealerSelectShape = {
   themePreset: true,
   themeOverrides: true,
   subscriptionStatus: true,
+  metaPixelId: true,
 } as const;
 
 type DealerRow = {
@@ -154,6 +157,7 @@ type DealerRow = {
   themePreset: string | null;
   themeOverrides: unknown;
   subscriptionStatus: string | null;
+  metaPixelId: string | null;
 };
 
 function toTenant(d: DealerRow): Tenant {
@@ -178,6 +182,7 @@ function toTenant(d: DealerRow): Tenant {
     ),
     hasActiveSubscription:
       d.subscriptionStatus === "active" || d.subscriptionStatus === "trialing",
+    metaPixelId: d.metaPixelId,
   };
 }
 

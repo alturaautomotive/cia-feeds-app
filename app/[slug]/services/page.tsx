@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
 import { getTenantBySlug } from "@/lib/tenant";
+import PixelInitializer from "@/app/components/PixelInitializer";
 
 export const revalidate = 60;
 const PAGE_SIZE = 24;
@@ -80,6 +81,11 @@ export default async function ServicesIndex({
 
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto", padding: "32px 20px 64px" }}>
+      {/* Meta Pixel — fires PageView on the listings index. Detail pages
+          fire their own ViewContent events separately. */}
+      {tenant.metaPixelId && (
+        <PixelInitializer pixelId={tenant.metaPixelId} />
+      )}
       <header style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 32, fontWeight: 800, margin: 0 }}>
           {labelForVertical(tenant.vertical).plural}

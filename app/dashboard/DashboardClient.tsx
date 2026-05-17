@@ -355,6 +355,9 @@ export function DashboardClient({
           </div>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-500">{dealerName}</span>
+            <Link href="/dashboard/retargeting" className="text-sm text-indigo-600 hover:text-indigo-500">
+              Retargeting
+            </Link>
             <Link href="/dashboard/profile" className="text-sm text-indigo-600 hover:text-indigo-500">
               Profile
             </Link>

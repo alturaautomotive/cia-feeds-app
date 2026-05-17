@@ -11,7 +11,9 @@ import { getGeoCity } from "@/lib/getGeoCity";
 import RelatedServices from "@/app/components/RelatedServices";
 import { translateBatch } from "@/lib/translate";
 import { applyServicesFallbacks } from "@/lib/serviceUrlValidator";
-import { sendMetaEvent } from "@/lib/metaTrack";
+import { sendMetaEvent, readMetaCookies } from "@/lib/metaTrack";
+import { cookies, headers } from "next/headers";
+import { randomUUID } from "crypto";
 
 export const revalidate = 3600;
 
@@ -104,18 +106,40 @@ export default async function ServiceLandingPage({
   const data = (listing.data ?? {}) as Record<string, unknown>;
   applyServicesFallbacks(data, { name: dealer.name, address: dealer.address ?? null });
 
-  // Fire server-side Meta CAPI ViewContent event
-  if (dealer.metaPixelId) {
+  // Fire server-side Meta CAPI ViewContent event. Shared event_id with the
+  // client-side Pixel for dedup; user_data carries fbp/fbc + IP/UA for
+  // higher match rates in the dealer's Meta Custom Audiences.
+  // This route is the services-listing detail page; the listing query
+  // above is gated on vertical='services', so we use Meta's 'product'
+  // content_type which matches our PRODUCT_ITEM catalog.
+  const listingContentType: "home_listing" | "product" = "product";
+  const viewEventId = dealer.metaPixelId ? randomUUID() : undefined;
+  if (dealer.metaPixelId && viewEventId) {
+    const cookieStore = await cookies();
+    const headerStore = await headers();
+    const { fbp, fbc } = readMetaCookies(cookieStore);
+    const clientIpAddress =
+      headerStore.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+    const clientUserAgent = headerStore.get("user-agent") ?? null;
+    const proto = headerStore.get("x-forwarded-proto") ?? "https";
+    const host = headerStore.get("x-forwarded-host") ?? headerStore.get("host");
+    const eventSourceUrl = host
+      ? `${proto}://${host}/services/${slug}/${listingId}`
+      : undefined;
+
     sendMetaEvent({
       pixelId: dealer.metaPixelId,
       eventName: "ViewContent",
       data: {
         content_ids: [listingId],
-        content_type: "product",
+        content_type: listingContentType,
         value: listing.price || 0,
         currency: "USD",
       },
       dealerId: dealer.id,
+      eventId: viewEventId,
+      userData: { fbp, fbc, clientIpAddress, clientUserAgent },
+      eventSourceUrl,
     }).catch((err) => console.error("[services-landing] track error:", err));
   }
 
@@ -249,7 +273,15 @@ export default async function ServiceLandingPage({
   return (
     <div className="min-h-screen bg-white">
       <div className="py-6"><LandingCarousel images={allImages} /></div>
-      {pixelId && <PixelInitializer pixelId={pixelId} vehicleId={listingId} price={listing.price} />}
+      {pixelId && (
+        <PixelInitializer
+          pixelId={pixelId}
+          contentId={listingId}
+          contentType={listingContentType}
+          price={listing.price}
+          eventId={viewEventId}
+        />
+      )}
       <SocialProof fakeViewer={fakeViewer} tViewed={translations.viewedText} defaultText="viewed this service in" />
       <div className="max-w-5xl mx-auto px-4">
         <div className="md:grid md:grid-cols-[1fr_320px] md:gap-8 md:items-start">

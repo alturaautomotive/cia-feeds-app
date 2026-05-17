@@ -10,6 +10,9 @@ import { getExtraImages } from "@/lib/getExtraImages";
 import { getGeoCity } from "@/lib/getGeoCity";
 import RelatedVehicles from "@/app/components/RelatedVehicles";
 import { translateBatch } from "@/lib/translate";
+import { sendMetaEvent, readMetaCookies } from "@/lib/metaTrack";
+import { cookies, headers } from "next/headers";
+import { randomUUID } from "crypto";
 
 export const revalidate = 3600; // cache for 1 hour
 
@@ -73,23 +76,37 @@ export default async function VehicleLandingPage({
     });
   }
 
-  // Fire server-side Meta CAPI ViewContent event
-  if (dealer.metaPixelId) {
-    fetch('/api/track', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        pixelId: dealer.metaPixelId,
-        eventName: 'ViewContent',
-        data: {
-          content_ids: [vehicleId],
-          content_type: 'product',
-          value: vehicle.price || 0,
-          currency: 'USD'
-        },
-        dealerId: dealer.id
-      })
-    }).catch((err) => console.error('[landing] track error:', err));
+  // Fire server-side Meta CAPI ViewContent event. Shared event_id with
+  // the client-side Pixel ViewContent so Meta dedupes. user_data carries
+  // fbp/fbc cookies + IP/UA for higher match rates (option 1 retargeting).
+  const viewEventId = dealer.metaPixelId ? randomUUID() : undefined;
+  if (dealer.metaPixelId && viewEventId) {
+    const cookieStore = await cookies();
+    const headerStore = await headers();
+    const { fbp, fbc } = readMetaCookies(cookieStore);
+    const clientIpAddress =
+      headerStore.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+    const clientUserAgent = headerStore.get("user-agent") ?? null;
+    const proto = headerStore.get("x-forwarded-proto") ?? "https";
+    const host = headerStore.get("x-forwarded-host") ?? headerStore.get("host");
+    const eventSourceUrl = host
+      ? `${proto}://${host}/w/${slug}/${vehicleId}`
+      : undefined;
+
+    sendMetaEvent({
+      pixelId: dealer.metaPixelId,
+      eventName: "ViewContent",
+      data: {
+        content_ids: [vehicleId],
+        content_type: "vehicle",
+        value: vehicle.price || 0,
+        currency: "USD",
+      },
+      dealerId: dealer.id,
+      eventId: viewEventId,
+      userData: { fbp, fbc, clientIpAddress, clientUserAgent },
+      eventSourceUrl,
+    }).catch((err) => console.error("[vehicle-landing] track error:", err));
   }
 
   const baseImages = [vehicle.imageUrl, ...vehicle.images].filter(
@@ -216,7 +233,15 @@ export default async function VehicleLandingPage({
   return (
     <div className="min-h-screen bg-white">
       <div className="py-6"><LandingCarousel images={allImages} /></div>
-      {pixelId && <PixelInitializer pixelId={pixelId} vehicleId={vehicleId} price={vehicle.price} />}
+      {pixelId && (
+        <PixelInitializer
+          pixelId={pixelId}
+          contentId={vehicleId}
+          contentType="vehicle"
+          price={vehicle.price}
+          eventId={viewEventId}
+        />
+      )}
       <SocialProof fakeViewer={fakeViewer} tViewed={translations.viewedText} />
       <div className="max-w-5xl mx-auto px-4"><VehicleDetails vehicle={vehicleForDetails} dealer={dealer} translations={detailsTranslations} /></div>
       {dealer.feedUrlMode === 'landing' && relatedVehicles.length > 0 && (

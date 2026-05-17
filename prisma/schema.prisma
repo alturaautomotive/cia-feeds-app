@@ -81,6 +81,7 @@ model Dealer {
   metaCatalogSyncItems MetaCatalogSyncItem[]
   metaDeliveryJobs     MetaDeliveryJob[]
   smsConversations     SmsConversation[]
+  metaCustomAudiences  MetaCustomAudience[]
 }
 
 model SubAccount {
@@ -450,4 +451,43 @@ model SmsMessage {
   conversation SmsConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, createdAt])
+}
+
+// Meta Custom Audience tracking. We store one row per dealer-audience tuple,
+// keyed by an internal "audienceKind" so we can re-find it for refresh runs.
+//
+// audienceKind values (extend as we add more audience builders):
+//   "viewed_any_30d"        - any visitor who viewed any listing in 30d
+//   "viewed_listing_30d"    - one row PER listing (visitors who viewed THIS listing)
+//   "lead_no_followup_30d"  - leads submitted in 30d with no follow-up
+//   "lookalike_of_<key>"    - a Lookalike Audience seeded from another row
+//
+// metaAudienceId is the ID Meta assigns when we create the audience.
+// We re-PUT to that ID to refresh the membership rather than creating a
+// new audience each run (audiences rebuild their match in Meta's backend).
+//
+// sourceListingId is set only for "viewed_listing_30d" rows so a single
+// dealer can have many per-listing audiences without name collisions.
+model MetaCustomAudience {
+  id              String   @id @default(uuid())
+  dealerId        String
+  audienceKind    String
+  sourceListingId String?
+  sourceVehicleId String?
+  metaAudienceId  String   // The ID Meta returned, used for PUT refresh
+  metaAdAccountId String   // The ad account this audience lives under
+  name            String
+  description     String?
+  estimatedSize   Int?     // Last-known size from Meta API (refreshed on cron run)
+  lastRefreshedAt DateTime?
+  lastErrorAt     DateTime?
+  lastErrorMessage String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  dealer Dealer @relation(fields: [dealerId], references: [id], onDelete: Cascade)
+
+  @@unique([dealerId, audienceKind, sourceListingId, sourceVehicleId])
+  @@index([dealerId])
+  @@index([metaAudienceId])
 }
