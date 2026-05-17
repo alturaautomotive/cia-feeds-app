@@ -42,6 +42,14 @@ export const RESERVED_SLUGS = new Set([
   "sitemap.xml",
   "favicon.ico",
   "security",
+  // Marketing pages — blog, landing pages, and pillar pages
+  "blog",
+  "es",
+  "lp",
+  "whatsapp-marketing-dealerships",
+  "marketing-whatsapp-concesionarios",
+  "hispanic-auto-marketing",
+  "marketing-automotriz-hispanos",
 ]);
 
 export interface Tenant {

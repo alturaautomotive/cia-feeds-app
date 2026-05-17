@@ -153,6 +153,123 @@ model StorefrontBundle {
 // This is invaluable for support: when a dealer says "my Meta ads stopped
 // working after I touched the bundles", we can show the exact transition
 // and the timestamp.
+// =============================================================================
+// Bi-weekly content engine — keyword-driven blog automation + landing pages +
+// newsletter. Each cron tick picks the next-in-queue KeywordPlan, generates a
+// BlogPost via Gemini, composes a hero image, optionally mirrors to Medium
+// with canonical URL = our domain, sends a newsletter blast, and links every
+// reader to the matching landing page for lead capture.
+// =============================================================================
+
+// One row per target keyword in the editorial calendar. The cron picks the
+// oldest unpublished row, generates content, marks it published. Manual seed
+// for now (db-admin or script); future iteration could auto-rank keywords by
+// Search Console data.
+model KeywordPlan {
+  id           String   @id @default(uuid())
+  // The target search query (e.g. "WhatsApp marketing for car dealerships").
+  keyword      String
+  // Locale of the post we'll generate — 'en' or 'es'. Drives prompt language
+  // and which pillar page we link from.
+  locale       String   @default("en")
+  // Optional short "angle" hint guiding the AI (e.g. "contrast with SMS",
+  // "focus on bilingual templates"). Free text.
+  angle        String?
+  // Suggested landing-page slug to link from this post. If null, we link to
+  // the default landing page that matches the post's pillar.
+  landingSlug  String?
+  // Set when a BlogPost has been generated for this keyword. Cron skips
+  // rows where this is non-null.
+  publishedAt  DateTime?
+  // Display order (lower = sooner). Defaults to creation order via DateTime
+  // tiebreaker.
+  priority     Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  blogPost     BlogPost?
+
+  @@index([publishedAt, priority, createdAt])
+}
+
+model BlogPost {
+  id              String   @id @default(uuid())
+  // SEO slug, unique per locale. We embed locale in the URL via /blog/<slug>
+  // for English and /es/blog/<slug> for Spanish (hreflang twins).
+  slug            String   @unique
+  locale          String   @default("en")
+  // Source keyword (FK back to KeywordPlan).
+  keywordPlanId   String?  @unique
+  keywordPlan     KeywordPlan? @relation(fields: [keywordPlanId], references: [id])
+  title           String
+  // SEO meta description (≤ 160 chars enforced at write time).
+  metaDescription String
+  // Lede paragraph shown above the fold, also used as the email blast hook.
+  excerpt         String
+  // Full article body. MDX-flavoured Markdown so we can drop in <NewsletterForm/>
+  // or other interactive blocks later. v1: plain markdown.
+  bodyMarkdown    String
+  // Hero image composited by lib/blogImage.ts (portrait + branded banner).
+  // Stored as Supabase Storage URL.
+  heroImageUrl    String?
+  // Optional Medium mirror metadata. mediumUrl is the public URL on Medium;
+  // mediumPostId is the API identifier for updates.
+  mediumPostId    String?
+  mediumUrl       String?
+  // Landing page this article funnels readers to. Either a slug under /lp/<slug>
+  // or a pillar slug like "whatsapp-marketing-dealerships".
+  landingSlug     String
+  // Lifecycle.
+  status          String   @default("draft")  // draft | review | published | archived
+  publishedAt     DateTime?
+  // Audit: who/what generated this. "cron:biweekly-content" by default; could
+  // be "manual" for human-written posts inserted via admin.
+  generatedBy     String   @default("cron:biweekly-content")
+  // Light analytics.
+  views           Int      @default(0)
+  emailsSent      Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([status, publishedAt])
+  @@index([locale, status])
+}
+
+// Marketing-side leads / newsletter list. Separate from the dealer-scoped Lead
+// table because these subscribers don't belong to a dealer's inventory — they
+// belong to CIAfeeds itself. Email is encrypted at the application layer
+// (lib/leadCrypto.ts), same scheme as the Lead table, so a DB dump never
+// yields plaintext addresses.
+model NewsletterSubscriber {
+  id              String   @id @default(uuid())
+  // Encrypted email (enc:v1:<hex>). Indexed via a lowercase hash for dedup
+  // without needing to decrypt every row — see emailHash.
+  email           String
+  // Lowercase SHA-256 of email used for unique-constraint lookups while
+  // keeping email itself encrypted at rest.
+  emailHash       String   @unique
+  // Optional name + phone if captured by the landing-page form.
+  name            String?
+  phone           String?
+  // What page / topic they signed up from — "blog:<slug>" or "lp:<slug>" or
+  // "newsletter:footer". Drives segmented sends.
+  source          String
+  // Free-text "interest" set by the landing page (e.g. "hispanic-auto",
+  // "whatsapp-marketing"). Used to route the right bi-weekly email.
+  interest        String?
+  locale          String   @default("en")
+  // CAN-SPAM: tracked opt-out timestamp. Sends skip rows where this is set.
+  unsubscribedAt  DateTime?
+  unsubscribeToken String  @unique @default(uuid())
+  // Last bi-weekly email we sent them, to avoid duplicate sends if the cron
+  // runs twice.
+  lastEmailedAt   DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([source, unsubscribedAt])
+  @@index([interest, unsubscribedAt])
+}
+
 model StorefrontUrlChange {
   id           String   @id @default(uuid())
   dealerId     String
