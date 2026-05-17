@@ -7,6 +7,12 @@ import { getTenantBySlug } from "@/lib/tenant";
 export const revalidate = 60;
 const PAGE_SIZE = 24;
 
+function labelForVertical(vertical: string): { plural: string; cta: string } {
+  if (vertical === "realestate") return { plural: "Listings", cta: "Explore properties" };
+  if (vertical === "ecommerce") return { plural: "Products", cta: "Browse products" };
+  return { plural: "Services", cta: "Explore services" };
+}
+
 export async function generateMetadata({
   params,
 }: {
@@ -15,9 +21,10 @@ export async function generateMetadata({
   const { slug } = await params;
   const tenant = await getTenantBySlug(slug);
   if (!tenant) return { title: "Not found" };
+  const label = labelForVertical(tenant.vertical);
   return {
-    title: `Services — ${tenant.name}`,
-    description: `Explore services at ${tenant.name}.`,
+    title: `${label.plural} — ${tenant.name}`,
+    description: `${label.cta} at ${tenant.name}.`,
   };
 }
 
@@ -74,7 +81,9 @@ export default async function ServicesIndex({
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto", padding: "32px 20px 64px" }}>
       <header style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 32, fontWeight: 800, margin: 0 }}>Services</h1>
+        <h1 style={{ fontSize: 32, fontWeight: 800, margin: 0 }}>
+          {labelForVertical(tenant.vertical).plural}
+        </h1>
         <p style={{ marginTop: 6, opacity: 0.7, fontSize: 15 }}>
           {total.toLocaleString()} listing{total === 1 ? "" : "s"}
         </p>

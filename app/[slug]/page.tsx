@@ -6,6 +6,13 @@ import { getTenantBySlug, getStorefrontCta } from "@/lib/tenant";
 
 export const revalidate = 60; // ISR: regenerate at most every 60s
 
+function storefrontLabel(vertical: string): string {
+  if (vertical === "automotive") return "Vehicle Inventory";
+  if (vertical === "realestate") return "Property Listings";
+  if (vertical === "ecommerce") return "Products";
+  return "Services";
+}
+
 export async function generateMetadata({
   params,
 }: {
@@ -14,7 +21,7 @@ export async function generateMetadata({
   const { slug } = await params;
   const tenant = await getTenantBySlug(slug);
   if (!tenant) return { title: "Not found" };
-  const titleSuffix = tenant.vertical === "automotive" ? "Vehicle Inventory" : "Services";
+  const titleSuffix = storefrontLabel(tenant.vertical);
   return {
     title: `${tenant.name} — ${titleSuffix}`,
     description: `Browse the latest ${titleSuffix.toLowerCase()} from ${tenant.name}.`,
@@ -104,6 +111,8 @@ export default async function StorefrontHome({
         >
           {isAutomotive
             ? `Find your next vehicle at ${tenant.name}`
+            : tenant.vertical === "realestate"
+            ? `Find your next home with ${tenant.name}`
             : `${tenant.name}`}
         </h1>
         <p
@@ -118,6 +127,8 @@ export default async function StorefrontHome({
         >
           {isAutomotive
             ? "Browse our current inventory below or get in touch and we'll help you find the right one."
+            : tenant.vertical === "realestate"
+            ? "Browse the latest property listings below or get in touch to schedule a tour."
             : `Explore our services and reach out anytime.`}
         </p>
         <div
@@ -133,7 +144,7 @@ export default async function StorefrontHome({
             href={`/${tenant.slug}/${isAutomotive ? "vehicles" : "services"}`}
             className="sf-btn"
           >
-            View {isAutomotive ? "Inventory" : "Services"}
+            View {isAutomotive ? "Inventory" : tenant.vertical === "realestate" ? "Listings" : "Services"}
           </Link>
           <Link href={`/${tenant.slug}/contact`} className="sf-btn-outline">
             {cta.label}
@@ -160,7 +171,11 @@ export default async function StorefrontHome({
           }}
         >
           <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>
-            {isAutomotive ? "Latest vehicles" : "Featured"}
+            {isAutomotive
+              ? "Latest vehicles"
+              : tenant.vertical === "realestate"
+              ? "Latest listings"
+              : "Featured"}
           </h2>
           <Link
             href={`/${tenant.slug}/${isAutomotive ? "vehicles" : "services"}`}
@@ -242,7 +257,13 @@ export default async function StorefrontHome({
             </div>
           )
         ) : listings.length === 0 ? (
-          <EmptyState message="No services listed yet — check back soon." />
+          <EmptyState
+            message={
+              tenant.vertical === "realestate"
+                ? "No listings yet — check back soon."
+                : "No services listed yet — check back soon."
+            }
+          />
         ) : (
           <div className="sf-grid">
             {listings.map((l) => {

@@ -42,9 +42,85 @@ export const ECOMMERCE_CSV_HEADERS = [
 ];
 
 export const REALESTATE_CSV_HEADERS = [
-  "id", "name", "description", "price", "address", "city", "region",
-  "postal_code", "num_beds", "num_baths", "property_type", "url", "image_url", "area_size",
+  "home_listing_id", "name", "description", "price", "currency", "address.addr1",
+  "address.city", "address.region", "address.postal_code", "address.country",
+  "num_beds", "num_baths", "property_type", "listing_type", "url", "image[0].url",
+  "image[1].url", "image[2].url", "area_size", "area_unit", "year_built",
+  "latitude", "longitude",
 ];
+
+/**
+ * Serialize a real-estate listing into a row matching Meta's HOME_LISTING
+ * catalog schema (https://developers.facebook.com/docs/marketing-api/catalog/reference#home-listings).
+ *
+ * Field naming follows Meta's CSV import format exactly: `home_listing_id`
+ * (not `id`), nested-dot fields for address (`address.addr1`, etc.) and
+ * images (`image[0].url`), and Meta's `listing_type` enum derived from our
+ * `property_type` ("for_sale" -> "for_sale", "for_rent" -> "for_rent").
+ */
+export function serializeRealestateRow(
+  listing: {
+    id: string;
+    title: string;
+    price: number | null;
+    imageUrls: string[];
+    url: string | null;
+    data: Record<string, unknown>;
+  },
+  opts?: FeedUrlOpts
+): Record<string, unknown> {
+  const d = listing.data;
+  const originalUrl = listing.url || (typeof d.url === "string" ? d.url : "") || "";
+  const urlForRow = resolveFeedUrl(originalUrl, listing.id, opts);
+
+  // Price is required by Meta; default to 0 (rentals showing 0 will be
+  // filtered upstream in isRealestatePushable).
+  const priceNumeric = listing.price ?? (typeof d.price === "number" ? d.price : 0);
+
+  // Meta requires the price formatted as "<number> <ISO-currency>" e.g.
+  // "350000 USD". We default to USD; future i18n can plumb dealer.currency.
+  const priceFormatted = `${priceNumeric} USD`;
+
+  // property_type was captured as Meta's listing_type enum during extraction.
+  // Default to "for_sale" since most US MLS data is sale-side.
+  const listingType = (typeof d.property_type === "string" && d.property_type)
+    ? d.property_type
+    : "for_sale";
+
+  const imgs = listing.imageUrls.filter((u) => typeof u === "string" && u.length > 0);
+
+  return {
+    home_listing_id: listing.id,
+    name: listing.title || (typeof d.name === "string" ? d.name : "") || "Listing",
+    description: typeof d.description === "string" ? d.description : "",
+    price: priceFormatted,
+    currency: "USD",
+    "address.addr1": typeof d.address === "string" ? d.address : "",
+    "address.city": typeof d.city === "string" ? d.city : "",
+    "address.region": typeof d.region === "string" ? d.region : "",
+    "address.postal_code": typeof d.postal_code === "string" ? d.postal_code : "",
+    "address.country": "US",
+    num_beds: typeof d.num_beds === "number" ? d.num_beds
+      : typeof d.num_beds === "string" ? d.num_beds : "",
+    num_baths: typeof d.num_baths === "number" ? d.num_baths
+      : typeof d.num_baths === "string" ? d.num_baths : "",
+    property_type: listingType,
+    listing_type: listingType,
+    url: urlForRow,
+    "image[0].url": imgs[0] || "",
+    "image[1].url": imgs[1] || "",
+    "image[2].url": imgs[2] || "",
+    area_size: typeof d.area_size === "number" ? d.area_size
+      : typeof d.area_size === "string" ? d.area_size : "",
+    area_unit: "sqft",
+    year_built: typeof d.year_built === "number" ? d.year_built
+      : typeof d.year_built === "string" ? d.year_built : "",
+    latitude: typeof d.latitude === "number" ? d.latitude
+      : typeof d.latitude === "string" ? d.latitude : "",
+    longitude: typeof d.longitude === "number" ? d.longitude
+      : typeof d.longitude === "string" ? d.longitude : "",
+  };
+}
 
 export type FeedUrlOpts = { feedUrlMode?: string; slug?: string; appBaseUrl?: string };
 

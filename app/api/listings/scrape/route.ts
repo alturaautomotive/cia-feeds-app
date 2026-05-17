@@ -9,6 +9,8 @@ import {
   ECOMMERCE_EXTRACTION_SCHEMA,
   SERVICES_EXTRACTION_SCHEMA,
   SERVICES_EXTRACTION_PROMPT,
+  REALESTATE_EXTRACTION_SCHEMA,
+  REALESTATE_EXTRACTION_PROMPT,
 } from "@/lib/extractionSchema";
 import {
   canonicalizeUrl,
@@ -89,8 +91,18 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const schema = vertical === "services" ? SERVICES_EXTRACTION_SCHEMA : ECOMMERCE_EXTRACTION_SCHEMA;
-    const prompt = vertical === "services" ? SERVICES_EXTRACTION_PROMPT : EXTRACTION_PROMPT;
+    const schema =
+      vertical === "services"
+        ? SERVICES_EXTRACTION_SCHEMA
+        : vertical === "realestate"
+        ? REALESTATE_EXTRACTION_SCHEMA
+        : ECOMMERCE_EXTRACTION_SCHEMA;
+    const prompt =
+      vertical === "services"
+        ? SERVICES_EXTRACTION_PROMPT
+        : vertical === "realestate"
+        ? REALESTATE_EXTRACTION_PROMPT
+        : EXTRACTION_PROMPT;
     const response = await firecrawlClient.scrape(url, {
       // Firecrawl typings still target zod 3; runtime accepts zod 4 schemas.
       formats: [{ type: "json", prompt, schema: schema as unknown as Record<string, unknown> }],
@@ -101,9 +113,14 @@ export async function POST(request: NextRequest) {
       ? extractionPayload
       : {}) as Record<string, unknown>;
 
-    const title = typeof rawData.title === "string" && rawData.title
-      ? rawData.title
-      : url;
+    // Real estate uses `name` as the title source.
+    const titleSource =
+      vertical === "realestate" && typeof rawData.name === "string" && rawData.name
+        ? rawData.name
+        : typeof rawData.title === "string" && rawData.title
+        ? rawData.title
+        : null;
+    const title = titleSource ?? url;
 
     let price: number | null = null;
     const priceRaw = rawData.price;
@@ -120,7 +137,7 @@ export async function POST(request: NextRequest) {
     }
 
     const imageUrls: string[] = [];
-    if (vertical === "services") {
+    if (vertical === "services" || vertical === "realestate") {
       if (Array.isArray(rawData.images)) {
         for (const img of rawData.images) {
           if (typeof img === "string" && img.trim().length > 0) {

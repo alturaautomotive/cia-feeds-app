@@ -4,6 +4,7 @@ export const VALID_VERTICALS = ["automotive", "services", "realestate", "ecommer
 export const API_SUPPORTED_VERTICALS: ReadonlySet<string> = new Set([
   "automotive",
   "services",
+  "realestate",
 ]);
 export type Vertical = (typeof VALID_VERTICALS)[number];
 

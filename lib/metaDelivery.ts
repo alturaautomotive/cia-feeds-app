@@ -3,6 +3,7 @@ import { loadDealerToken, graphFetch } from "@/lib/meta";
 import {
   mapVehicleToRow,
   serializeServicesRow,
+  serializeRealestateRow,
   type VehicleForCSV,
   type FeedUrlOpts,
 } from "@/lib/csv";
@@ -31,6 +32,7 @@ const STALE_MIN_AGE_MS = 60 * 60 * 1000; // 1 hour — items must be unseen for 
 function metaItemTypeForVertical(vertical: string): string {
   if (vertical === "automotive") return "VEHICLE";
   if (vertical === "services") return "PRODUCT_ITEM";
+  if (vertical === "realestate") return "HOME_LISTING";
   // Unknown verticals shouldn't reach here (callers gate on
   // API_SUPPORTED_VERTICALS), but default to PRODUCT_ITEM rather than
   // omit the field so the API call at least gets a deterministic error
@@ -606,6 +608,12 @@ function resolveCatalogItemId(
     const id = row["id"];
     return typeof id === "string" && id ? id : null;
   }
+  if (vertical === "realestate") {
+    // Meta requires `home_listing_id` as the stable identifier on HOME_LISTING
+    // catalogs (analogous to vehicle_id for VEHICLE and id for PRODUCT_ITEM).
+    const hlid = row["home_listing_id"];
+    return typeof hlid === "string" && hlid ? hlid : null;
+  }
   return null;
 }
 
@@ -857,7 +865,57 @@ async function extractInventory(
   if (vertical === "services") {
     return extractServicesInventory(dealerId, feedUrlOpts);
   }
+  if (vertical === "realestate") {
+    return extractRealestateInventory(dealerId, feedUrlOpts);
+  }
   return [];
+}
+
+/**
+ * Predicate for whether a real-estate listing is ready to push to Meta.
+ * Mirrors the services predicate (must have at least one real image).
+ * Listings without a real photo show poorly in Meta's catalog UI.
+ */
+function isRealestatePushable(listing: { imageUrls: string[]; price: number | null }): boolean {
+  const firstImage = listing.imageUrls[0];
+  const hasImage = !!firstImage && firstImage !== "https://placehold.co/600x400?text=No+Image";
+  // Meta requires a non-zero price even on rentals; zero or null prices
+  // get filtered upstream so they don't fail at Meta's validator.
+  const hasPrice = listing.price != null && listing.price > 0;
+  return hasImage && hasPrice;
+}
+
+async function extractRealestateInventory(
+  dealerId: string,
+  feedUrlOpts: FeedUrlOpts
+): Promise<Record<string, unknown>[]> {
+  const rows: Record<string, unknown>[] = [];
+  let cursor: string | undefined;
+
+  while (true) {
+    const batch = await prisma.listing.findMany({
+      where: {
+        dealerId,
+        vertical: "realestate",
+        archivedAt: null,
+        publishStatus: "published",
+      },
+      orderBy: { createdAt: "asc" },
+      take: BATCH_SIZE,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    });
+
+    for (const listing of batch) {
+      if (!isRealestatePushable(listing)) continue;
+      const data = listing.data as Record<string, unknown>;
+      rows.push(serializeRealestateRow({ ...listing, data }, feedUrlOpts));
+    }
+
+    if (batch.length < BATCH_SIZE) break;
+    cursor = batch[batch.length - 1].id;
+  }
+
+  return rows;
 }
 
 async function extractAutomotiveInventory(
