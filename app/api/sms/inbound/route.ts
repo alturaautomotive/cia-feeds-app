@@ -34,6 +34,14 @@ import {
   normalizePhoneE164,
 } from "@/lib/twilio";
 import { classifyIntent, type SmsIntent } from "@/lib/smsIntent";
+import {
+  parseCommandAuto,
+  searchInventory,
+  stageCommand,
+  executeCommand,
+  CONFIRMATION_TTL_MS,
+  type PendingCommand,
+} from "@/lib/smsCommands";
 
 // Twilio's webhook can take a few seconds to complete; allow up to 30s
 // before responding so we have headroom for URL extraction + dispatch.
@@ -49,9 +57,18 @@ const REPLIES = {
   optedBackIn:
     "Welcome back. Text me a URL of any listing from your website and I'll add it to your catalog. Reply HELP for more.",
   help:
-    "CIA Feeds SMS: text me a URL of any listing/vehicle from your website and I'll import it to your catalog automatically. Reply STOP to opt out.",
+    "CIA Feeds SMS — what I can do:\n" +
+    "• Send a URL to add a listing\n" +
+    "• 'delete <name>' to remove\n" +
+    "• 'price <name> to <number>' to change price\n" +
+    "• 'reset image on <name>'\n" +
+    "• 'mark <name> as sold'\n" +
+    "• 'publish <name>' or 'unpublish <name>'\n" +
+    "• 'WEEKLY' for a weekly metrics digest\n" +
+    "• 'ALERTS' for realtime lead/sync alerts\n" +
+    "• STOP to opt out",
   unknownDealer:
-    "I don't recognize this number. To use SMS uploads, sign in at https://www.ciafeed.com/dashboard and add this number to your profile.",
+    "I don't recognize this number. To use SMS, sign in at https://www.ciafeed.com/dashboard and add this number to your profile.",
   uploadQueuedWithVertical: (kind: string) =>
     `Got it. I'm importing this ${kind} into your catalog now — you'll see it in your dashboard within a minute.`,
   uploadFailedInvalidUrl:
@@ -59,11 +76,27 @@ const REPLIES = {
   uploadFailedNoSubscription:
     "Your subscription is inactive. Activate at https://www.ciafeed.com/billing to enable SMS uploads.",
   questionFallback:
-    "I can help with listing uploads — text me a URL from your website and I'll import it. Reply HELP for what I can do.",
+    "I can help with listing uploads, edits, and alerts — reply HELP for a full list of what I do.",
   genericAck:
     "Got it. If you meant to upload a listing, send me a URL. Reply HELP for options.",
   stopAcknowledged:
     "You're opted out. You won't receive any more messages. Reply START to opt back in.",
+  optedInWeekly:
+    "You're subscribed to the weekly metrics digest. You'll get a summary every Monday morning. Reply STOP anytime.",
+  optedInAlerts:
+    "You're subscribed to realtime alerts (new leads, catalog sync issues, trial reminders). Reply STOP anytime.",
+  commandNotParsed:
+    "I couldn't parse that. Try: 'delete F-150', 'price F-150 to 32500', 'reset image on F-150', 'mark F-150 as sold'. Reply HELP for more.",
+  itemNotFound: (query: string) =>
+    `I couldn't find "${query}" in your inventory. Check the dashboard or try a different name.`,
+  ambiguousChoice: (items: { label: string }[]) =>
+    "I found multiple matches. Reply with the number:\n" +
+    items.map((it, i) => `${i + 1}. ${it.label}`).join("\n"),
+  confirmationExpired:
+    "That confirmation expired. Just text me the command again if you still want to do it.",
+  cancelled: "OK, cancelled.",
+  needToConfirm:
+    "Reply YES to confirm, NO to cancel.",
 } as const;
 
 // ---------------------------------------------------------------------
@@ -146,6 +179,7 @@ export async function POST(request: NextRequest) {
       id: true,
       state: true,
       pendingPayload: true,
+      pendingExpiresAt: true,
       optedOutAt: true,
       dealerId: true,
     },
@@ -162,9 +196,14 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  // Step 5: classify intent.
+  // Step 5: classify intent. "awaiting confirmation" covers both the
+  // old vertical-confirm and the new mutation-confirm flows.
+  const awaitingConfirmOrPick =
+    conversation.state === "awaiting_vertical_confirm" ||
+    conversation.state === "awaiting_confirmation" ||
+    conversation.state === "awaiting_pick";
   const intent = await classifyIntent(body, {
-    isAwaitingConfirmation: conversation.state === "awaiting_vertical_confirm",
+    isAwaitingConfirmation: awaitingConfirmOrPick,
   });
 
   // Step 6: opt-out enforcement. If conversation is opted out, ONLY a
@@ -189,6 +228,8 @@ export async function POST(request: NextRequest) {
     phone: from,
     dealer,
     pendingPayload: conversation.pendingPayload as Record<string, unknown> | null,
+    pendingExpiresAt: conversation.pendingExpiresAt,
+    conversationState: conversation.state,
   });
 
   return twimlResponse();
@@ -203,6 +244,8 @@ interface RouteContext {
   phone: string;
   dealer: { id: string; vertical: string; slug: string } | null;
   pendingPayload: Record<string, unknown> | null;
+  pendingExpiresAt: Date | null;
+  conversationState: string;
 }
 
 async function routeIntent(intent: SmsIntent, ctx: RouteContext): Promise<void> {
@@ -239,10 +282,46 @@ async function routeIntent(intent: SmsIntent, ctx: RouteContext): Promise<void> 
       return;
     }
 
+    case "opt_in_weekly": {
+      if (!ctx.dealer) {
+        await replyAndLog(ctx.conversationId, ctx.phone, REPLIES.unknownDealer);
+        return;
+      }
+      await setProactiveOptIn(ctx.conversationId, { weeklyDigest: true });
+      await replyAndLog(ctx.conversationId, ctx.phone, REPLIES.optedInWeekly);
+      return;
+    }
+
+    case "opt_in_alerts": {
+      if (!ctx.dealer) {
+        await replyAndLog(ctx.conversationId, ctx.phone, REPLIES.unknownDealer);
+        return;
+      }
+      await setProactiveOptIn(ctx.conversationId, {
+        leadAlerts: true,
+        syncAlerts: true,
+        trialAlerts: true,
+      });
+      await replyAndLog(ctx.conversationId, ctx.phone, REPLIES.optedInAlerts);
+      return;
+    }
+
     case "confirmation": {
-      // Confirmations only matter in awaiting_vertical_confirm; if we got
-      // here in idle state it was a stray "yes" — treat as generic ack.
-      await replyAndLog(ctx.conversationId, ctx.phone, REPLIES.genericAck);
+      await handleConfirmation(intent.affirmative, ctx);
+      return;
+    }
+
+    case "pick": {
+      await handlePick(intent.index, ctx);
+      return;
+    }
+
+    case "command": {
+      if (!ctx.dealer) {
+        await replyAndLog(ctx.conversationId, ctx.phone, REPLIES.unknownDealer);
+        return;
+      }
+      await handleCommand(intent.raw, ctx);
       return;
     }
 
@@ -258,6 +337,196 @@ async function routeIntent(intent: SmsIntent, ctx: RouteContext): Promise<void> 
       return;
     }
   }
+}
+
+// ---------------------------------------------------------------------
+// Mutation command handling (Bucket A)
+// ---------------------------------------------------------------------
+
+async function handleCommand(raw: string, ctx: RouteContext): Promise<void> {
+  if (!ctx.dealer) return;
+
+  const parsed = await parseCommandAuto(raw);
+  if (!parsed) {
+    await replyAndLog(ctx.conversationId, ctx.phone, REPLIES.commandNotParsed);
+    return;
+  }
+
+  const matches = await searchInventory(
+    ctx.dealer.id,
+    ctx.dealer.vertical,
+    parsed.query,
+    5
+  );
+
+  if (matches.length === 0) {
+    await replyAndLog(
+      ctx.conversationId,
+      ctx.phone,
+      REPLIES.itemNotFound(parsed.query)
+    );
+    return;
+  }
+
+  if (matches.length === 1) {
+    const target = matches[0];
+    const pending: PendingCommand = {
+      kind: parsed.kind,
+      targetType: target.type,
+      targetId: target.id,
+      targetLabel: target.label,
+      value: parsed.value,
+    };
+    const staged = stageCommand(pending);
+    await persistConversationState(ctx.conversationId, staged);
+    await replyAndLog(ctx.conversationId, ctx.phone, staged.reply);
+    return;
+  }
+
+  // Multiple matches — ask the dealer to pick.
+  await prisma.smsConversation.update({
+    where: { id: ctx.conversationId },
+    data: {
+      state: "awaiting_pick",
+      pendingPayload: {
+        kind: parsed.kind,
+        value: parsed.value,
+        candidates: matches.map((m) => ({
+          type: m.type,
+          id: m.id,
+          label: m.label,
+        })),
+      },
+      pendingExpiresAt: new Date(Date.now() + CONFIRMATION_TTL_MS),
+    },
+  });
+  await replyAndLog(
+    ctx.conversationId,
+    ctx.phone,
+    REPLIES.ambiguousChoice(matches)
+  );
+}
+
+async function handleConfirmation(
+  affirmative: boolean,
+  ctx: RouteContext
+): Promise<void> {
+  // Only valid in awaiting_confirmation state.
+  if (ctx.conversationState !== "awaiting_confirmation") {
+    await replyAndLog(ctx.conversationId, ctx.phone, REPLIES.genericAck);
+    return;
+  }
+
+  if (!affirmative) {
+    await clearPendingState(ctx.conversationId);
+    await replyAndLog(ctx.conversationId, ctx.phone, REPLIES.cancelled);
+    return;
+  }
+
+  // Expiry check.
+  if (ctx.pendingExpiresAt && ctx.pendingExpiresAt.getTime() < Date.now()) {
+    await clearPendingState(ctx.conversationId);
+    await replyAndLog(
+      ctx.conversationId,
+      ctx.phone,
+      REPLIES.confirmationExpired
+    );
+    return;
+  }
+
+  const pending = ctx.pendingPayload as unknown as PendingCommand | null;
+  if (!pending || !pending.kind || !pending.targetId || !ctx.dealer) {
+    await clearPendingState(ctx.conversationId);
+    await replyAndLog(ctx.conversationId, ctx.phone, REPLIES.genericAck);
+    return;
+  }
+
+  const reply = await executeCommand(pending, ctx.dealer.id);
+  await clearPendingState(ctx.conversationId);
+  await replyAndLog(ctx.conversationId, ctx.phone, reply);
+}
+
+async function handlePick(index: number, ctx: RouteContext): Promise<void> {
+  if (ctx.conversationState !== "awaiting_pick") {
+    await replyAndLog(ctx.conversationId, ctx.phone, REPLIES.genericAck);
+    return;
+  }
+
+  const payload = ctx.pendingPayload as {
+    kind?: string;
+    value?: string | number;
+    candidates?: Array<{ type: "vehicle" | "listing"; id: string; label: string }>;
+  } | null;
+
+  if (!payload?.candidates || !payload.kind || !ctx.dealer) {
+    await clearPendingState(ctx.conversationId);
+    await replyAndLog(ctx.conversationId, ctx.phone, REPLIES.genericAck);
+    return;
+  }
+
+  const picked = payload.candidates[index - 1];
+  if (!picked) {
+    await replyAndLog(
+      ctx.conversationId,
+      ctx.phone,
+      `That number isn't on the list. Reply 1-${payload.candidates.length} or 'cancel'.`
+    );
+    return;
+  }
+
+  const pending: PendingCommand = {
+    kind: payload.kind as PendingCommand["kind"],
+    targetType: picked.type,
+    targetId: picked.id,
+    targetLabel: picked.label,
+    value: payload.value,
+  };
+  const staged = stageCommand(pending);
+  await persistConversationState(ctx.conversationId, staged);
+  await replyAndLog(ctx.conversationId, ctx.phone, staged.reply);
+}
+
+async function setProactiveOptIn(
+  conversationId: string,
+  prefs: { weeklyDigest?: boolean; leadAlerts?: boolean; syncAlerts?: boolean; trialAlerts?: boolean }
+): Promise<void> {
+  // Merge with any existing prefs (don't clobber).
+  const existing = await prisma.smsConversation.findUnique({
+    where: { id: conversationId },
+    select: { notificationPrefs: true },
+  });
+  const merged = {
+    ...((existing?.notificationPrefs as Record<string, unknown>) ?? {}),
+    ...prefs,
+  };
+  await prisma.smsConversation.update({
+    where: { id: conversationId },
+    data: {
+      optedInProactiveAt: new Date(),
+      notificationPrefs: merged,
+    },
+  });
+}
+
+async function persistConversationState(
+  conversationId: string,
+  staged: { state?: string; pendingPayload?: Record<string, unknown> | null; pendingExpiresAt?: Date | null }
+): Promise<void> {
+  await prisma.smsConversation.update({
+    where: { id: conversationId },
+    data: {
+      state: staged.state ?? "idle",
+      pendingPayload: (staged.pendingPayload as never) ?? null,
+      pendingExpiresAt: staged.pendingExpiresAt ?? null,
+    },
+  });
+}
+
+async function clearPendingState(conversationId: string): Promise<void> {
+  await prisma.smsConversation.update({
+    where: { id: conversationId },
+    data: { state: "idle", pendingPayload: undefined, pendingExpiresAt: null },
+  });
 }
 
 // ---------------------------------------------------------------------

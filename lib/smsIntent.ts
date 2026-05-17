@@ -21,6 +21,10 @@ export type SmsIntent =
   | { type: "help" }
   | { type: "url_upload"; url: string }
   | { type: "confirmation"; affirmative: boolean }
+  | { type: "pick"; index: number } // dealer picked an option by number
+  | { type: "opt_in_weekly" }
+  | { type: "opt_in_alerts" }
+  | { type: "command"; raw: string } // free-text mutation, parsed later
   | { type: "question"; original: string }
   | { type: "unknown"; original: string };
 
@@ -38,6 +42,20 @@ const STOP_KEYWORDS = new Set([
 const START_KEYWORDS = new Set(["start", "unstop", "yes"]);
 
 const HELP_KEYWORDS = new Set(["help", "info"]);
+const OPT_IN_WEEKLY_KEYWORDS = new Set(["weekly", "digest"]);
+const OPT_IN_ALERTS_KEYWORDS = new Set(["alerts", "notify", "notifications"]);
+
+// Verbs the dealer might use to start a mutation command. We use this
+// to decide "this isn't a question, it's an attempt to issue a command"
+// even if our regex grammar doesn't parse the exact phrasing.
+const COMMAND_VERB_PATTERNS = [
+  /^(delete|remove|archive)\b/i,
+  /^(change|set|update)\b.*\b(price|title|description)\b/i,
+  /^reset\b.*\bimage\b/i,
+  /^(mark|set)\b.*\bsold\b/i,
+  /^(publish|unpublish|draft)\b/i,
+  /^rename\b/i,
+];
 
 const AFFIRMATIVE = new Set(["yes", "y", "yep", "yeah", "sure", "ok", "okay", "confirm"]);
 const NEGATIVE = new Set(["no", "n", "nope", "cancel", "stop"]);
@@ -77,7 +95,15 @@ export function classifyIntentRuleBased(
   if (isAwaitingConfirmation) {
     if (AFFIRMATIVE.has(lower)) return { type: "confirmation", affirmative: true };
     if (NEGATIVE.has(lower)) return { type: "confirmation", affirmative: false };
+    // Numeric pick (e.g. "2") for disambiguation.
+    const numMatch = trimmed.match(/^([1-9])\.?$/);
+    if (numMatch) return { type: "pick", index: parseInt(numMatch[1], 10) };
   }
+
+  // Opt-in / opt-out for proactive notifications. Single-word keywords
+  // chosen to be distinct from the carrier-required STOP/START set.
+  if (OPT_IN_WEEKLY_KEYWORDS.has(lower)) return { type: "opt_in_weekly" };
+  if (OPT_IN_ALERTS_KEYWORDS.has(lower)) return { type: "opt_in_alerts" };
 
   // Single-word keyword check: exact match against the whole message.
   if (START_KEYWORDS.has(lower)) return { type: "start" };
@@ -86,6 +112,12 @@ export function classifyIntentRuleBased(
   // URL extraction (works for both bare URLs and messages containing them).
   const url = extractUrl(trimmed);
   if (url) return { type: "url_upload", url };
+
+  // Free-text command attempt? If the message starts with a known
+  // command verb, route to the command parser rather than Gemini Q&A.
+  if (COMMAND_VERB_PATTERNS.some((re) => re.test(trimmed))) {
+    return { type: "command", raw: trimmed };
+  }
 
   return null;
 }

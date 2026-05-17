@@ -4,6 +4,7 @@ import { sendNewLeadEmail } from "@/lib/email";
 import { durableRateLimit } from "@/lib/rateLimit";
 import { sendMetaEvent } from "@/lib/metaTrack";
 import { encryptLeadField, encryptLeadFieldNullable } from "@/lib/leadCrypto";
+import { sendProactiveSms } from "@/lib/smsNotifications";
 
 export async function POST(request: NextRequest) {
   // Public lead-submission endpoint — DB-backed rate limiter so the bucket
@@ -100,7 +101,7 @@ export async function POST(request: NextRequest) {
 
     const dealer = await prisma.dealer.findUnique({
       where: { id: dealerId },
-      select: { email: true, metaPixelId: true },
+      select: { id: true, email: true, metaPixelId: true },
     });
 
     const contentId = validatedVehicleId || validatedListingId;
@@ -113,6 +114,17 @@ export async function POST(request: NextRequest) {
         plaintextPhone,
         entityInfo
       ).catch((err) => console.error("[leads] email notification failed:", err));
+
+      // Realtime SMS lead alert to the dealer if they're opted in.
+      // Body kept tight (single SMS segment when possible) so dealers
+      // can decide whether to follow up without opening the dashboard.
+      const smsBody =
+        `🔔 New lead on ${entityInfo}: ${plaintextName}` +
+        (plaintextPhone ? ` (${plaintextPhone})` : "") +
+        (plaintextEmail ? ` ${plaintextEmail}` : "");
+      sendProactiveSms(dealerId, "leadAlerts", smsBody).catch((err) =>
+        console.error("[leads] sms alert failed:", err)
+      );
 
       // Fire server-side Meta CAPI Lead event
       if (dealer.metaPixelId && entityPrice != null) {

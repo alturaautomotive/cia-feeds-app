@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { Resend } from "resend";
 import { sendEmail } from "@/lib/email";
+import { sendProactiveSms } from "@/lib/smsNotifications";
 
 /**
  * Daily Meta delivery health check (SECURITY_AUDIT.md F-2.5).
@@ -144,7 +145,38 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "email_failed", totals }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, alerted: true, totals });
+  // SMS-alert the affected dealers if they've opted in for syncAlerts.
+  // We dedupe across all three job lists so a dealer with both a blocked
+  // and a failed job gets exactly one SMS, not three.
+  const affectedDealerIds = new Set<string>();
+  for (const j of blockedJobs) affectedDealerIds.add(j.dealerId);
+  for (const j of recentFailed) affectedDealerIds.add(j.dealerId);
+  for (const j of stuckRetry) affectedDealerIds.add(j.dealerId);
+
+  const smsResults: Array<{ dealerId: string; sent: boolean; reason?: string }> = [];
+  for (const dealerId of affectedDealerIds) {
+    try {
+      const body =
+        "⚠️ Your Meta catalog sync hit an issue. Check the CIA Feeds dashboard at " +
+        "https://www.ciafeed.com/dashboard for details. Reply STOP to unsubscribe.";
+      const r = await sendProactiveSms(dealerId, "syncAlerts", body);
+      smsResults.push({ dealerId, ...r });
+    } catch (err) {
+      smsResults.push({
+        dealerId,
+        sent: false,
+        reason: err instanceof Error ? err.message : "sms_error",
+      });
+    }
+  }
+
+  return NextResponse.json({
+    ok: true,
+    alerted: true,
+    totals,
+    smsAlertsSent: smsResults.filter((r) => r.sent).length,
+    smsResults,
+  });
 }
 
 function escapeHtml(s: string): string {

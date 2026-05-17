@@ -158,6 +158,19 @@ export async function POST(request: Request) {
             dealer.name,
             new Date(subscription.trial_end * 1000)
           );
+          // SMS reminder for dealers who opted into trialAlerts.
+          const { sendProactiveSms } = await import("@/lib/smsNotifications");
+          const endDate = new Date(subscription.trial_end * 1000).toLocaleDateString(
+            "en-US",
+            { month: "short", day: "numeric" }
+          );
+          await sendProactiveSms(
+            dealer.id,
+            "trialAlerts",
+            `⏰ Your CIA Feeds trial ends on ${endDate}. Your saved card will be charged automatically. Manage at https://www.ciafeed.com/billing.`
+          ).catch((err) =>
+            console.error("[stripe webhook] trial sms failed:", err)
+          );
           await prisma.dealer.update({
             where: { id: dealer.id },
             data: { trialEndingNotifiedAt: new Date() },

@@ -423,9 +423,18 @@ model SmsConversation {
   phoneNumber     String    @unique
   state           String    @default("idle")
   pendingPayload  Json?
+  pendingExpiresAt DateTime?
   lastInboundAt   DateTime?
   lastOutboundAt  DateTime?
   optedOutAt      DateTime?
+  // Proactive SMS opt-in. Set when dealer texts a keyword like
+  // "WEEKLY" or "NOTIFY" to opt into proactive notifications (weekly
+  // metrics digest, realtime lead alerts, sync-failure alerts).
+  // STOP/opt-out clears optedOutAt back to now and we never send
+  // proactive messages while optedOutAt is set, even if opted in.
+  optedInProactiveAt DateTime?
+  // JSON: { weeklyDigest?: bool, leadAlerts?: bool, syncAlerts?: bool, trialAlerts?: bool }
+  notificationPrefs Json?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
