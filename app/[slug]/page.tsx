@@ -1,11 +1,13 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
-import { prisma } from "@/lib/prisma";
 import { getTenantBySlug, getStorefrontCta } from "@/lib/tenant";
+import { getStorefrontLayout } from "@/lib/storefront";
+import { getSegmentInventory } from "@/lib/storefrontQueries";
+import type { Vertical } from "@/lib/verticals";
 import PixelInitializer from "@/app/components/PixelInitializer";
 
-export const revalidate = 60; // ISR: regenerate at most every 60s
+export const revalidate = 60;
 
 function storefrontLabel(vertical: string): string {
   if (vertical === "automotive") return "Vehicle Inventory";
@@ -25,11 +27,14 @@ export async function generateMetadata({
   const titleSuffix = storefrontLabel(tenant.vertical);
   return {
     title: `${tenant.name} — ${titleSuffix}`,
-    description: `Browse the latest ${titleSuffix.toLowerCase()} from ${tenant.name}.`,
+    description: `Browse the latest offerings from ${tenant.name}.`,
     openGraph: {
       title: `${tenant.name} — ${titleSuffix}`,
       siteName: tenant.name,
-      images: tenant.logoUrl || tenant.profileImageUrl ? [tenant.logoUrl || tenant.profileImageUrl!] : undefined,
+      images:
+        tenant.logoUrl || tenant.profileImageUrl
+          ? [tenant.logoUrl || tenant.profileImageUrl!]
+          : undefined,
     },
   };
 }
@@ -43,61 +48,49 @@ export default async function StorefrontHome({
   const tenant = await getTenantBySlug(slug);
   if (!tenant) notFound();
 
-  const isAutomotive = tenant.vertical === "automotive";
+  const layout = await getStorefrontLayout(tenant.id);
   const cta = getStorefrontCta(tenant);
 
-  // Pull the 6 most-recent active inventory items for the hero grid.
-  const [vehicles, listings] = await Promise.all([
-    isAutomotive
-      ? prisma.vehicle.findMany({
-          where: {
-            dealerId: tenant.id,
-            archivedAt: null,
-            urlStatus: "active",
-            scrapeStatus: { not: "failed" },
-          },
-          orderBy: { createdAt: "desc" },
-          take: 6,
-          select: {
-            id: true,
-            year: true,
-            make: true,
-            model: true,
-            trim: true,
-            price: true,
-            mileageValue: true,
-            imageUrl: true,
-            spotlightImageUrl: true,
-            images: true,
-          },
-        })
-      : Promise.resolve([]),
-    !isAutomotive
-      ? prisma.listing.findMany({
-          where: {
-            dealerId: tenant.id,
-            archivedAt: null,
-            publishStatus: { in: ["published", "ready_to_publish", "validated"] },
-          },
-          orderBy: { createdAt: "desc" },
-          take: 6,
-          select: {
-            id: true,
-            title: true,
-            price: true,
-            imageUrls: true,
-          },
-        })
-      : Promise.resolve([]),
-  ]);
+  // Multi-segment dealers see the catalog landing page. Single-segment dealers
+  // keep the original hero-plus-inventory layout (so legacy single-vertical
+  // dealers see no visual change).
+  if (layout.segments.length > 1) {
+    return (
+      <MultiSegmentHome
+        tenantId={tenant.id}
+        tenantName={tenant.name}
+        tenantSlug={tenant.slug}
+        metaPixelId={tenant.metaPixelId}
+        segments={layout.segments}
+        ctaLabel={cta.label}
+      />
+    );
+  }
+
+  // Single-segment path. Use the layout's segment if we have one (it carries
+  // the correct subAccountIds for tenants that have a sub-account in the
+  // matching vertical); otherwise fall back to filtering by the parent
+  // dealer's vertical for legacy dealers without sub-accounts.
+  const segment = layout.segments[0];
+  const verticals: Vertical[] = segment
+    ? segment.verticals
+    : [tenant.vertical as Vertical];
+  const subAccountIds = segment ? segment.subAccountIds : [];
+  const isAutomotive = verticals.includes("automotive");
+  const primaryVertical = verticals[0];
+
+  const inventory = await getSegmentInventory({
+    dealerId: tenant.id,
+    verticals,
+    subAccountIds,
+    take: 6,
+  });
+
+  const segmentPath = segment ? segment.slug : isAutomotive ? "vehicles" : "services";
 
   return (
     <div>
-      {/* Meta Pixel — fires PageView on every storefront visit, with no
-          contentId since this is the homepage (no single item to attribute). */}
-      {tenant.metaPixelId && (
-        <PixelInitializer pixelId={tenant.metaPixelId} />
-      )}
+      {tenant.metaPixelId && <PixelInitializer pixelId={tenant.metaPixelId} />}
       {/* Hero */}
       <section
         style={{
@@ -117,7 +110,7 @@ export default async function StorefrontHome({
         >
           {isAutomotive
             ? `Find your next vehicle at ${tenant.name}`
-            : tenant.vertical === "realestate"
+            : primaryVertical === "realestate"
             ? `Find your next home with ${tenant.name}`
             : `${tenant.name}`}
         </h1>
@@ -133,9 +126,9 @@ export default async function StorefrontHome({
         >
           {isAutomotive
             ? "Browse our current inventory below or get in touch and we'll help you find the right one."
-            : tenant.vertical === "realestate"
+            : primaryVertical === "realestate"
             ? "Browse the latest property listings below or get in touch to schedule a tour."
-            : `Explore our services and reach out anytime.`}
+            : "Explore our services and reach out anytime."}
         </p>
         <div
           style={{
@@ -146,11 +139,8 @@ export default async function StorefrontHome({
             flexWrap: "wrap",
           }}
         >
-          <Link
-            href={`/${tenant.slug}/${isAutomotive ? "vehicles" : "services"}`}
-            className="sf-btn"
-          >
-            View {isAutomotive ? "Inventory" : tenant.vertical === "realestate" ? "Listings" : "Services"}
+          <Link href={`/${tenant.slug}/${segmentPath}`} className="sf-btn">
+            View {isAutomotive ? "Inventory" : primaryVertical === "realestate" ? "Listings" : "Services"}
           </Link>
           <Link href={`/${tenant.slug}/contact`} className="sf-btn-outline">
             {cta.label}
@@ -179,12 +169,12 @@ export default async function StorefrontHome({
           <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>
             {isAutomotive
               ? "Latest vehicles"
-              : tenant.vertical === "realestate"
+              : primaryVertical === "realestate"
               ? "Latest listings"
               : "Featured"}
           </h2>
           <Link
-            href={`/${tenant.slug}/${isAutomotive ? "vehicles" : "services"}`}
+            href={`/${tenant.slug}/${segmentPath}`}
             style={{
               fontSize: 14,
               fontWeight: 500,
@@ -197,11 +187,11 @@ export default async function StorefrontHome({
         </div>
 
         {isAutomotive ? (
-          vehicles.length === 0 ? (
+          inventory.vehicles.length === 0 ? (
             <EmptyState message="No vehicles in inventory yet — check back soon." />
           ) : (
             <div className="sf-grid">
-              {vehicles.map((v) => {
+              {inventory.vehicles.map((v) => {
                 const title = [v.year, v.make, v.model, v.trim]
                   .filter(Boolean)
                   .join(" ");
@@ -262,22 +252,23 @@ export default async function StorefrontHome({
               })}
             </div>
           )
-        ) : listings.length === 0 ? (
+        ) : inventory.listings.length === 0 ? (
           <EmptyState
             message={
-              tenant.vertical === "realestate"
+              primaryVertical === "realestate"
                 ? "No listings yet — check back soon."
                 : "No services listed yet — check back soon."
             }
           />
         ) : (
           <div className="sf-grid">
-            {listings.map((l) => {
+            {inventory.listings.map((l) => {
               const img = l.imageUrls?.[0] ?? null;
+              const detailKind = l.vertical === "realestate" ? "homes" : "services";
               return (
                 <Link
                   key={l.id}
-                  href={`/${tenant.slug}/services/${l.id}`}
+                  href={`/${tenant.slug}/${detailKind}/${l.id}`}
                   className="sf-card"
                   style={{ display: "block" }}
                 >
@@ -305,9 +296,7 @@ export default async function StorefrontHome({
                   <div style={{ padding: 16 }}>
                     <div style={{ fontWeight: 600, fontSize: 16 }}>{l.title}</div>
                     {l.price != null && (
-                      <div
-                        style={{ marginTop: 6, fontSize: 14, opacity: 0.7 }}
-                      >
+                      <div style={{ marginTop: 6, fontSize: 14, opacity: 0.7 }}>
                         ${l.price.toLocaleString()}
                       </div>
                     )}
@@ -326,6 +315,183 @@ export default async function StorefrontHome({
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 20px;
+}
+            `.trim(),
+          }}
+        />
+      </section>
+    </div>
+  );
+}
+
+/**
+ * Catalog landing page rendered when a dealer has 2+ storefront segments
+ * (e.g. multiple unbundled verticals, or a mix of bundles and verticals).
+ * Each segment shows up as a card with a "Browse" call-to-action.
+ */
+async function MultiSegmentHome({
+  tenantId,
+  tenantName,
+  tenantSlug,
+  metaPixelId,
+  segments,
+  ctaLabel,
+}: {
+  tenantId: string;
+  tenantName: string;
+  tenantSlug: string;
+  metaPixelId: string | null;
+  segments: Awaited<ReturnType<typeof getStorefrontLayout>>["segments"];
+  ctaLabel: string;
+}) {
+  // Pull a 3-up preview for each segment in parallel.
+  const previews = await Promise.all(
+    segments.map((s) =>
+      getSegmentInventory({
+        dealerId: tenantId,
+        verticals: s.verticals,
+        subAccountIds: s.subAccountIds,
+        take: 3,
+      })
+    )
+  );
+
+  return (
+    <div>
+      {metaPixelId && <PixelInitializer pixelId={metaPixelId} />}
+      <section
+        style={{
+          maxWidth: 1200,
+          margin: "0 auto",
+          padding: "64px 20px 24px",
+          textAlign: "center",
+        }}
+      >
+        <h1
+          style={{
+            fontSize: "clamp(32px, 5vw, 56px)",
+            fontWeight: 800,
+            margin: 0,
+            lineHeight: 1.1,
+          }}
+        >
+          Welcome to {tenantName}
+        </h1>
+        <p
+          style={{
+            fontSize: 18,
+            marginTop: 16,
+            opacity: 0.75,
+            maxWidth: 640,
+            marginLeft: "auto",
+            marginRight: "auto",
+          }}
+        >
+          Browse our catalogs below. Each one is a curated selection — tap any
+          card to dive in.
+        </p>
+        <div style={{ marginTop: 24 }}>
+          <Link href={`/${tenantSlug}/contact`} className="sf-btn-outline">
+            {ctaLabel}
+          </Link>
+        </div>
+      </section>
+
+      <section
+        style={{
+          maxWidth: 1200,
+          margin: "0 auto",
+          padding: "16px 20px 80px",
+        }}
+      >
+        <div className="sf-catalog-grid">
+          {segments.map((seg, i) => {
+            const preview = previews[i];
+            const firstImage =
+              preview.vehicles[0]?.spotlightImageUrl ||
+              preview.vehicles[0]?.imageUrl ||
+              preview.vehicles[0]?.images?.[0] ||
+              preview.listings[0]?.imageUrls?.[0] ||
+              null;
+            const itemCount = preview.vehicles.length + preview.listings.length;
+            return (
+              <Link
+                key={seg.slug}
+                href={`/${tenantSlug}/${seg.slug}`}
+                className="sf-card"
+                style={{ display: "block" }}
+              >
+                {firstImage ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={firstImage}
+                    alt={seg.name}
+                    style={{
+                      width: "100%",
+                      aspectRatio: "16 / 9",
+                      objectFit: "cover",
+                      display: "block",
+                    }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: "100%",
+                      aspectRatio: "16 / 9",
+                      background: "var(--brand-accent)",
+                    }}
+                  />
+                )}
+                <div style={{ padding: 20 }}>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 600,
+                      letterSpacing: 0.5,
+                      textTransform: "uppercase",
+                      opacity: 0.6,
+                      marginBottom: 6,
+                    }}
+                  >
+                    {seg.kind === "bundle" ? "Collection" : "Catalog"}
+                  </div>
+                  <div style={{ fontWeight: 700, fontSize: 22 }}>{seg.name}</div>
+                  {seg.description && (
+                    <div
+                      style={{
+                        marginTop: 8,
+                        fontSize: 14,
+                        opacity: 0.75,
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      {seg.description}
+                    </div>
+                  )}
+                  <div
+                    style={{
+                      marginTop: 14,
+                      fontSize: 13,
+                      opacity: 0.65,
+                    }}
+                  >
+                    {itemCount > 0
+                      ? `${itemCount} ${itemCount === 1 ? "item" : "items"} shown`
+                      : "Coming soon"}
+                  </div>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+        <style
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{
+            __html: `
+.sf-catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 24px;
 }
             `.trim(),
           }}

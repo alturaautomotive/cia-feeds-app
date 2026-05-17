@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { checkSubscription } from "@/lib/checkSubscription";
 import { getEffectiveDealerContext } from "@/lib/impersonation";
 import ProfileClient from "./ProfileClient";
+import BundleManager from "./BundleManager";
 
 export default async function ProfilePage() {
   const session = await getServerSession(authOptions);
@@ -51,7 +52,22 @@ export default async function ProfilePage() {
       metaDeliveryMethod: true,
       subAccounts: {
         orderBy: { createdAt: "asc" },
-        select: { id: true, name: true, vertical: true, createdAt: true },
+        select: {
+          id: true,
+          name: true,
+          vertical: true,
+          createdAt: true,
+          bundleId: true,
+        },
+      },
+      storefrontBundles: {
+        orderBy: { createdAt: "asc" },
+        include: {
+          subAccounts: {
+            select: { id: true, name: true, vertical: true },
+            orderBy: { createdAt: "asc" },
+          },
+        },
       },
     },
   });
@@ -61,6 +77,21 @@ export default async function ProfilePage() {
     name: s.name,
     vertical: s.vertical,
     createdAt: s.createdAt.toISOString(),
+  }));
+
+  const subAccountsForBundles = (dealer?.subAccounts ?? []).map((s) => ({
+    id: s.id,
+    name: s.name,
+    vertical: s.vertical,
+    bundleId: s.bundleId,
+  }));
+
+  const bundlesForClient = (dealer?.storefrontBundles ?? []).map((b) => ({
+    id: b.id,
+    slug: b.slug,
+    name: b.name,
+    description: b.description,
+    subAccounts: b.subAccounts,
   }));
 
   const isEditor = session.user.teamUser?.role === "editor";
@@ -85,6 +116,12 @@ export default async function ProfilePage() {
       subAccounts={subAccountsForClient}
       isImpersonating={isImpersonating}
       isEditor={isEditor}
+      bundleManager={
+        <BundleManager
+          initialBundles={bundlesForClient}
+          subAccounts={subAccountsForBundles}
+        />
+      }
     />
   );
 }

@@ -82,6 +82,8 @@ model Dealer {
   metaDeliveryJobs     MetaDeliveryJob[]
   smsConversations     SmsConversation[]
   metaCustomAudiences  MetaCustomAudience[]
+  storefrontBundles    StorefrontBundle[]    @relation("DealerBundles")
+  storefrontUrlChanges StorefrontUrlChange[] @relation("DealerUrlChanges")
 }
 
 model SubAccount {
@@ -91,6 +93,14 @@ model SubAccount {
   vertical       Vertical        @default(automotive)
   name           String
   stripeSubId    String?
+  // Optional storefront bundle this sub-account belongs to. When set, this
+  // sub-account's listings render under the bundle's storefront page instead
+  // of its own per-vertical page. A sub-account can be in at most one bundle
+  // (enforced by the nullable FK — you can only set one value at a time — plus
+  // application logic in /api/bundles that blocks adding an already-bundled
+  // sub-account to another bundle).
+  bundleId       String?
+  bundle         StorefrontBundle? @relation(fields: [bundleId], references: [id], onDelete: SetNull)
   createdAt      DateTime        @default(now())
   vehicles       Vehicle[]
   listings       Listing[]
@@ -99,6 +109,62 @@ model SubAccount {
   teamUsers      TeamUser[]
 
   @@index([dealerId])
+  @@index([bundleId])
+}
+
+// A storefront bundle groups two or more sub-accounts under a single mini-site
+// page. Visitors land on /<dealer-slug> (or the custom domain root) and see
+// catalog buttons — one per bundle and one per unbundled sub-account. Clicking
+// a button drills into /<dealer-slug>/<segment> where <segment> is either a
+// bundle slug (mixed-vertical grid) or a vertical-name slug (single vertical).
+//
+// Constraint: a sub-account can only be in one bundle at a time (SubAccount.
+// bundleId is a single nullable FK; the dashboard prevents reassignment to a
+// different bundle without first removing it from the current one).
+model StorefrontBundle {
+  id          String       @id @default(uuid())
+  dealerId    String
+  dealer      Dealer       @relation("DealerBundles", fields: [dealerId], references: [id], onDelete: Cascade)
+  // URL slug for this bundle (e.g. "lifestyle", "premium"). Unique per dealer.
+  // Lowercase letters, digits, hyphens; we slugify on input.
+  slug        String
+  // Display name shown on the catalog landing page button (e.g. "Lifestyle Bundle").
+  name        String
+  // Optional one-line description rendered under the catalog button.
+  description String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  subAccounts SubAccount[]
+
+  @@unique([dealerId, slug])
+  @@index([dealerId])
+}
+
+// Audit log for storefront URL transitions. We write a row every time a
+// listing/vehicle's public-facing storefront URL changes — typically because
+// a sub-account was added to or removed from a bundle, the bundle was
+// renamed, or the dealer's custom domain was updated.
+//
+// This is invaluable for support: when a dealer says "my Meta ads stopped
+// working after I touched the bundles", we can show the exact transition
+// and the timestamp.
+model StorefrontUrlChange {
+  id           String   @id @default(uuid())
+  dealerId     String
+  dealer       Dealer   @relation("DealerUrlChanges", fields: [dealerId], references: [id], onDelete: Cascade)
+  // Which inventory model the URL belongs to.
+  entityType   String   // "vehicle" | "listing"
+  entityId     String
+  oldUrl       String
+  newUrl       String
+  // Why the URL changed — "bundle_added", "bundle_removed", "bundle_renamed",
+  // "custom_domain_changed", "slug_changed", etc.
+  reason       String
+  createdAt    DateTime @default(now())
+
+  @@index([dealerId, createdAt])
+  @@index([entityType, entityId])
 }
 
 model Vehicle {

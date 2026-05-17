@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { API_SUPPORTED_VERTICALS } from "@/lib/verticals";
@@ -82,6 +82,8 @@ interface Props {
   subAccounts?: SubAccountItem[];
   isImpersonating?: boolean;
   isEditor?: boolean;
+  /** Server-rendered Storefront Bundle manager. Slotted under Sub-Accounts. */
+  bundleManager?: ReactNode;
 }
 
 type MetaStep =
@@ -111,6 +113,7 @@ export default function ProfileClient({
   subAccounts: initialSubAccounts = [],
   isImpersonating = false,
   isEditor = false,
+  bundleManager,
 }: Props) {
   const router = useRouter();
   const [photoUrl, setPhotoUrl] = useState<string | null>(initialPhotoUrl);
@@ -1890,6 +1893,16 @@ export default function ProfileClient({
             </button>
           )}
         </div>
+
+        {/* Storefront Bundles — lets the dealer group sub-accounts under a
+            single mini-site page. Server-rendered manager component passed
+            in as a slot so this client component doesn't need direct DB
+            access. */}
+        {bundleManager && (
+          <div className="bg-white rounded-lg shadow-sm p-6 mb-4">
+            {bundleManager}
+          </div>
+        )}
 
         {/* Team Members */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-4">

@@ -49,7 +49,20 @@ interface SubAccountInfo {
   id: string;
   name: string;
   vertical: string;
+  /** Bundle slug when this sub-account is part of a storefront bundle, else null. */
+  bundleSlug?: string | null;
 }
+
+/**
+ * Mirror of lib/storefront.VERTICAL_SEGMENT_SLUGS for client-side use.
+ * Keep these two in sync; the lib is server-only.
+ */
+const SEGMENT_FOR_VERTICAL: Record<string, string> = {
+  automotive: "vehicles",
+  realestate: "homes",
+  services: "services",
+  ecommerce: "shop",
+};
 
 interface Props {
   vehicles: VehicleRow[];
@@ -78,14 +91,32 @@ export function DashboardClient({
   subAccounts = [],
   currentSubAccountId = null,
 }: Props) {
-  // Resolve the live storefront URL. Prefer the dealer's custom domain when
-  // configured, otherwise fall back to the slug-based subdomain. Both are
-  // public, so users can share the link directly with customers.
-  const liveSiteUrl = customDomain
+  // Resolve the live storefront origin. Prefer the dealer's custom domain
+  // when configured, otherwise fall back to the slug-based subdomain.
+  const liveSiteOrigin = customDomain
     ? `https://${customDomain.replace(/^https?:\/\//, "").replace(/\/+$/, "")}`
     : dealerSlug
     ? `https://${dealerSlug}.ciafeed.com`
     : null;
+
+  // Resolve the segment for the currently-active sub-account so "View live
+  // site" deep-links into the right vertical/bundle page. Multi-vertical
+  // dealers were landing on the parent vertical's page regardless of which
+  // sub-account they were in — confusing when the parent is automotive but
+  // they're working in real estate.
+  const currentSubAccount =
+    subAccounts.find((s) => s.id === currentSubAccountId) ?? null;
+  const segmentForCurrent = currentSubAccount
+    ? currentSubAccount.bundleSlug ??
+      SEGMENT_FOR_VERTICAL[currentSubAccount.vertical] ??
+      null
+    : null;
+  const liveSiteUrl = liveSiteOrigin
+    ? segmentForCurrent
+      ? `${liveSiteOrigin}/${segmentForCurrent}`
+      : liveSiteOrigin
+    : null;
+  const liveSiteHomeUrl = liveSiteOrigin;
   const router = useRouter();
   const [vehicles, setVehicles] = useState<VehicleRow[]>(initialVehicles);
   const [listings, setListings] = useState<ListingRow[]>(initialListings);
@@ -374,29 +405,42 @@ export function DashboardClient({
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-500">{dealerName}</span>
             {liveSiteUrl && (
-              <a
-                href={liveSiteUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                title={`Open ${liveSiteUrl} in a new tab`}
-                className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-md px-2.5 py-1"
-              >
-                <span
-                  aria-hidden="true"
-                  className="inline-block h-2 w-2 rounded-full bg-emerald-500"
-                />
-                View live site
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                  className="h-3.5 w-3.5 opacity-70"
-                  aria-hidden="true"
+              <div className="inline-flex items-stretch gap-px rounded-md overflow-hidden border border-emerald-200 bg-emerald-50">
+                <a
+                  href={liveSiteUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={`Open ${liveSiteUrl} in a new tab`}
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-700 hover:bg-emerald-100 px-2.5 py-1"
                 >
-                  <path d="M11 3a1 1 0 100 2h2.586L8.293 10.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
-                  <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
-                </svg>
-              </a>
+                  <span
+                    aria-hidden="true"
+                    className="inline-block h-2 w-2 rounded-full bg-emerald-500"
+                  />
+                  View live site
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    className="h-3.5 w-3.5 opacity-70"
+                    aria-hidden="true"
+                  >
+                    <path d="M11 3a1 1 0 100 2h2.586L8.293 10.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
+                    <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
+                  </svg>
+                </a>
+                {liveSiteHomeUrl && liveSiteUrl !== liveSiteHomeUrl && (
+                  <a
+                    href={liveSiteHomeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={`Open the catalog landing page (${liveSiteHomeUrl})`}
+                    className="inline-flex items-center text-xs font-medium text-emerald-700 hover:bg-emerald-100 px-2 border-l border-emerald-200"
+                  >
+                    Home
+                  </a>
+                )}
+              </div>
             )}
             <Link href="/dashboard/retargeting" className="text-sm text-indigo-600 hover:text-indigo-500">
               Retargeting

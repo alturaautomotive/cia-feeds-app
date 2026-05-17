@@ -96,7 +96,17 @@ export default async function DashboardPage({
 
   const dealer = await prisma.dealer.findUnique({
     where: { id: effectiveDealerId },
-    select: { vertical: true, name: true, slug: true, customDomain: true, defaultSubAccountId: true, subAccounts: { orderBy: { createdAt: "asc" } } },
+    select: {
+      vertical: true,
+      name: true,
+      slug: true,
+      customDomain: true,
+      defaultSubAccountId: true,
+      subAccounts: {
+        orderBy: { createdAt: "asc" },
+        include: { bundle: { select: { slug: true } } },
+      },
+    },
   });
 
   const subAccounts = dealer?.subAccounts ?? [];
@@ -127,6 +137,7 @@ export default async function DashboardPage({
     id: s.id,
     name: s.name,
     vertical: s.vertical,
+    bundleSlug: s.bundle?.slug ?? null,
   }));
 
   if (vertical === "automotive") {
