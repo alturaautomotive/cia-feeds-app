@@ -3,7 +3,9 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getEffectiveDealerContext } from "@/lib/impersonation";
-import { Vertical } from "@prisma/client";
+// Vertical used to be a Prisma enum but the DB stores it as text. Use the
+// app-level type from lib/verticals.
+import type { Vertical } from "@/lib/verticals";
 
 const VALID_VERTICALS = ["automotive", "services", "ecommerce", "realestate"];
 

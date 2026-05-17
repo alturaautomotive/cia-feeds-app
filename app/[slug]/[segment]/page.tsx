@@ -38,15 +38,39 @@ export default async function SegmentPage({
   const tenant = await getTenantBySlug(slug);
   if (!tenant) notFound();
 
-  const seg = await resolveSegment(tenant.id, segment);
+  let seg;
+  try {
+    seg = await resolveSegment(tenant.id, segment);
+  } catch (err) {
+    console.error({
+      event: "segment_resolve_error",
+      slug,
+      segment,
+      message: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
+  }
   if (!seg) notFound();
 
-  const inventory = await getSegmentInventory({
-    dealerId: tenant.id,
-    verticals: seg.verticals,
-    subAccountIds: seg.subAccountIds,
-    take: PAGE_SIZE,
-  });
+  let inventory;
+  try {
+    inventory = await getSegmentInventory({
+      dealerId: tenant.id,
+      verticals: seg.verticals,
+      subAccountIds: seg.subAccountIds,
+      take: PAGE_SIZE,
+    });
+  } catch (err) {
+    console.error({
+      event: "segment_inventory_error",
+      slug,
+      segment,
+      verticals: seg.verticals,
+      subAccountIds: seg.subAccountIds,
+      message: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
+  }
 
   const hasVehicles = inventory.vehicles.length > 0;
   const hasListings = inventory.listings.length > 0;

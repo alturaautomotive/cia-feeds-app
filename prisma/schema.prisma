@@ -30,7 +30,10 @@ model Dealer {
   email                String    @unique
   passwordHash         String
   slug                 String    @unique
-  vertical             Vertical  @default(automotive)
+  // Stored as text in Postgres (the Vertical enum type was never created in
+  // production, despite the original migration declaring it). Application-
+  // level validation lives in lib/verticals.ts.
+  vertical             String    @default("automotive")
   active               Boolean   @default(true)
   stripeCustomerId     String?
   stripeSubscriptionId String?
@@ -90,7 +93,8 @@ model SubAccount {
   id             String          @id @default(uuid())
   dealerId       String
   dealer         Dealer          @relation("DealerSubAccounts", fields: [dealerId], references: [id])
-  vertical       Vertical        @default(automotive)
+  // See note on Dealer.vertical above — stored as text.
+  vertical       String          @default("automotive")
   name           String
   stripeSubId    String?
   // Optional storefront bundle this sub-account belongs to. When set, this
