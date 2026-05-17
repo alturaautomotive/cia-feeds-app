@@ -12,6 +12,7 @@ import { ListingsTable } from "./components/ListingsTable";
 import { SuccessBanner } from "./components/SuccessBanner";
 import { ErrorBanner } from "./components/ErrorBanner";
 import { VERTICAL_LABELS, type Vertical } from "@/lib/verticals";
+import { SmsCtaCard } from "./components/SmsCtaCard";
 
 type VehicleRow = Vehicle & { scrapeStatus: string };
 
@@ -386,6 +387,16 @@ export function DashboardClient({
       </div>
 
       <div className="max-w-6xl mx-auto px-6 py-8">
+        {/* Click-to-SMS CTA — only renders when SMS is configured in env. */}
+        {process.env.NEXT_PUBLIC_SMS_NUMBER && (
+          <div className="mb-6">
+            <SmsCtaCard
+              smsNumber={process.env.NEXT_PUBLIC_SMS_NUMBER}
+              dealerVertical={vertical}
+            />
+          </div>
+        )}
+
         {/* Page header */}
         <div className="flex items-center justify-between mb-5">
           <h1 className="text-2xl font-bold text-gray-900">

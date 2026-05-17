@@ -80,12 +80,23 @@ export async function sendWelcomeEmail(
 ): Promise<void> {
   const resend = getResend();
   if (!resend) return;
+
+  // If we have an SMS number configured, include the click-to-SMS link
+  // so dealers can opt into the SMS-upload flow right from the welcome.
+  // This is the ONLY pre-conversation outbound channel they'll see for
+  // SMS — actual SMS sending is strictly inbound-first.
+  const smsNumber = process.env.NEXT_PUBLIC_SMS_NUMBER;
+  const smsBody = `Hi! Please import this listing: https://your-site.com/your-first-listing`;
+  const smsBlock = smsNumber
+    ? `<p style="margin-top:16px"><strong>💬 New: add listings by SMS.</strong><br/>Text us any listing URL from your website and we'll import it automatically. <a href="sms:${smsNumber}?body=${encodeURIComponent(smsBody)}" style="display:inline-block;margin-top:6px;background:#111827;color:#fff;padding:8px 14px;border-radius:6px;text-decoration:none;font-weight:600">Text ${smsNumber}</a></p>`
+    : "";
+
   try {
     await sendEmail(resend, {
       from: FROM,
       to: dealerEmail,
       subject: "Welcome to CIA Feeds!",
-      html: `<p>Hi ${esc(dealerName)},</p><p>Your CIA Feeds account is ready. Log in at any time to manage your vehicle inventory feed.</p><p>Thanks for signing up!</p>`,
+      html: `<p>Hi ${esc(dealerName)},</p><p>Your CIA Feeds account is ready. Log in at any time to manage your catalog.</p>${smsBlock}<p>Thanks for signing up!</p>`,
     });
   } catch (err) {
     console.error("[email] sendWelcomeEmail failed:", err);
