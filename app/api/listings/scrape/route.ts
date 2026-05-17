@@ -5,6 +5,7 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { firecrawlClient } from "@/lib/firecrawl";
 import { dispatchFeedDeliveryInBackground } from "@/lib/metaDelivery";
+import { harvestRealestateImages } from "@/lib/realestateImages";
 import {
   ECOMMERCE_JSON_SCHEMA,
   SERVICES_JSON_SCHEMA,
@@ -186,6 +187,40 @@ export async function POST(request: NextRequest) {
           if (typeof img === "string" && img.trim().length > 0) {
             imageUrls.push(img);
           }
+        }
+      }
+      // Real-estate portals (Zillow / Realtor / Redfin) lazy-load their
+      // photo galleries, so the LLM-extraction path typically returns only
+      // the hero image. Run a CDN-pattern harvester against the raw HTML to
+      // pick up the rest of the gallery. Merge into imageUrls, hero-first,
+      // dedup, cap at 30.
+      if (vertical === "realestate") {
+        try {
+          const harvested = await harvestRealestateImages(url);
+          if (harvested.length > 0) {
+            const seen = new Set(imageUrls);
+            for (const img of harvested) {
+              if (!seen.has(img)) {
+                imageUrls.push(img);
+                seen.add(img);
+              }
+              if (imageUrls.length >= 30) break;
+            }
+            console.log({
+              event: "realestate_image_harvest",
+              listingId,
+              url,
+              harvested: harvested.length,
+              merged_total: imageUrls.length,
+            });
+          }
+        } catch (harvestErr) {
+          console.warn({
+            event: "realestate_image_harvest_failed",
+            listingId,
+            url,
+            message: harvestErr instanceof Error ? harvestErr.message : String(harvestErr),
+          });
         }
       }
     } else {

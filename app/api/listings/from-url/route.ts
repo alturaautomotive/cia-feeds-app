@@ -7,6 +7,7 @@ import { rateLimit } from "@/lib/rateLimit";
 import { getEffectiveDealerId } from "@/lib/impersonation";
 import { firecrawlClient } from "@/lib/firecrawl";
 import { dispatchFeedDeliveryInBackground } from "@/lib/metaDelivery";
+import { harvestRealestateImages } from "@/lib/realestateImages";
 import {
   ECOMMERCE_JSON_SCHEMA,
   SERVICES_JSON_SCHEMA,
@@ -290,6 +291,30 @@ export async function POST(request: NextRequest) {
             if (typeof img === "string" && img.trim().length > 0) {
               imageUrls.push(img);
             }
+          }
+        }
+        // See scrape route for rationale — mirror the realestate image
+        // harvest so the inline path returns the full gallery too.
+        if (vertical === "realestate") {
+          try {
+            const harvested = await harvestRealestateImages(url);
+            if (harvested.length > 0) {
+              const seen = new Set(imageUrls);
+              for (const img of harvested) {
+                if (!seen.has(img)) {
+                  imageUrls.push(img);
+                  seen.add(img);
+                }
+                if (imageUrls.length >= 30) break;
+              }
+            }
+          } catch (harvestErr) {
+            console.warn({
+              event: "realestate_image_harvest_failed",
+              listingId: listing.id,
+              url,
+              message: harvestErr instanceof Error ? harvestErr.message : String(harvestErr),
+            });
           }
         }
       } else {
