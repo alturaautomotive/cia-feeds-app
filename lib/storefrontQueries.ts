@@ -81,19 +81,22 @@ export async function getSegmentInventory(args: {
       ? prisma.listing.findMany({
           where: {
             dealerId,
-            vertical: { in: nonAutoVerticals },
             archivedAt: null,
-            // Real-estate inventory doesn't run the services publish workflow,
-            // so we allow listings with no publishStatus through for those
-            // verticals. Services keeps the original published-only filter.
-            OR: [
-              { vertical: "realestate" },
-              { vertical: "ecommerce" },
-              {
-                vertical: "services",
-                publishStatus: { in: ["published", "ready_to_publish", "validated"] },
-              },
-            ],
+            // Real-estate and ecommerce listings don't go through the
+            // services publish workflow, so we accept them regardless of
+            // publishStatus. Services keeps the original published-only
+            // filter. Encoded as a single OR over (vertical, publishStatus)
+            // tuples — cleaner than mixing with an outer vertical filter.
+            OR: nonAutoVerticals.map((v) =>
+              v === "services"
+                ? {
+                    vertical: "services" as const,
+                    publishStatus: {
+                      in: ["published", "ready_to_publish", "validated"],
+                    },
+                  }
+                : { vertical: v }
+            ),
             ...(subAccountIds.length > 0
               ? { subAccountId: { in: subAccountIds } }
               : {}),
