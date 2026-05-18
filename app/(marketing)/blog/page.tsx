@@ -77,6 +77,9 @@ export async function generateMetadata({
         "en-US": `${origin}/blog`,
         "es-US": `${origin}/es/blog`,
       },
+      types: {
+        "application/rss+xml": `${origin}/blog/rss.xml`,
+      },
     },
     openGraph: {
       title: "CIAfeeds Blog — WhatsApp Marketing, Hispanic Auto, Meta Catalog Feeds",

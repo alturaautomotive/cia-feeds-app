@@ -44,6 +44,8 @@ import {
 } from "@/lib/blogGenerator";
 import { generateBlogHero } from "@/lib/blogImage";
 import { publishToMedium } from "@/lib/mediumPublisher";
+import { publishCrossPosts } from "@/lib/crossPostPublisher";
+import type { Prisma } from "@prisma/client";
 import { sendEmail, esc } from "@/lib/email";
 import { decryptLeadField } from "@/lib/leadCrypto";
 
@@ -274,38 +276,60 @@ async function runCron(): Promise<NextResponse> {
     },
   });
 
-  // 6. Medium mirror with canonical URL (best-effort).
+  // 6. Cross-post fan-out (Medium legacy + Dev.to + Hashnode).
+  // Each publisher checks its own env vars and skips cleanly if not
+  // configured. Medium remains in the list for legacy accounts that still
+  // have an integration token from before 2025-01-01.
   const canonicalUrl = blogUrlFor(finalSlug, plan.locale);
+  const baseTags = [
+    plan.keyword.slice(0, 25),
+    plan.locale === "es" ? "marketing automotriz" : "automotive marketing",
+    "whatsapp",
+    "dealerships",
+    plan.locale === "es" ? "hispanos" : "hispanic",
+  ].slice(0, 5);
   let mediumUrl: string | null = null;
   let mediumPostId: string | null = null;
-  try {
-    const mediumResult = await publishToMedium({
-      title: generated.title,
-      bodyMarkdown: generated.bodyMarkdown,
-      tags: [
-        plan.keyword.slice(0, 25),
-        plan.locale === "es" ? "marketing automotriz" : "automotive marketing",
-        "whatsapp",
-        "dealerships",
-        plan.locale === "es" ? "hispanos" : "hispanic",
-      ].slice(0, 5),
-      canonicalUrl,
-    });
-    if (mediumResult) {
-      mediumUrl = mediumResult.url;
-      mediumPostId = mediumResult.postId;
-      await prisma.blogPost.update({
-        where: { id: created.id },
-        data: { mediumUrl, mediumPostId },
+  // Medium (legacy token only — self-serve was killed on 2025-01-01).
+  if (process.env.MEDIUM_INTEGRATION_TOKEN) {
+    try {
+      const mediumResult = await publishToMedium({
+        title: generated.title,
+        bodyMarkdown: generated.bodyMarkdown,
+        tags: baseTags,
+        canonicalUrl,
+      });
+      if (mediumResult) {
+        mediumUrl = mediumResult.url;
+        mediumPostId = mediumResult.postId;
+      }
+    } catch (err) {
+      console.warn({
+        event: "biweekly_medium_threw",
+        postId: created.id,
+        message: err instanceof Error ? err.message : String(err),
       });
     }
-  } catch (err) {
-    console.warn({
-      event: "biweekly_medium_threw",
-      postId: created.id,
-      message: err instanceof Error ? err.message : String(err),
-    });
   }
+
+  // Dev.to + Hashnode (and any future fan-out targets).
+  const crossPostOutcomes = await publishCrossPosts({
+    title: generated.title,
+    bodyMarkdown: generated.bodyMarkdown,
+    canonicalUrl,
+    tags: baseTags,
+    coverImageUrl: heroImageUrl,
+    subtitle: generated.excerpt.slice(0, 140),
+  });
+
+  // Persist whatever we got from the fan-out + Medium (if any).
+  await prisma.blogPost.update({
+    where: { id: created.id },
+    data: {
+      ...(mediumUrl ? { mediumUrl, mediumPostId } : {}),
+      crossPosts: crossPostOutcomes as unknown as Prisma.InputJsonValue,
+    },
+  });
 
   // 7. Email blast.
   const sendResult = await sendBlastForPost({
@@ -337,6 +361,7 @@ async function runCron(): Promise<NextResponse> {
     heroImage: heroImageUrl ? "yes" : "skipped",
     mediumUrl,
     mediumPostId,
+    crossPosts: crossPostOutcomes,
     emails: sendResult,
   });
 }

@@ -213,8 +213,20 @@ model BlogPost {
   heroImageUrl    String?
   // Optional Medium mirror metadata. mediumUrl is the public URL on Medium;
   // mediumPostId is the API identifier for updates.
+  // NOTE: Medium killed self-serve API tokens on 2025-01-01; new accounts
+  // can no longer obtain integration tokens. These columns are retained
+  // for accounts that already have a legacy token. The active cross-post
+  // surface is `crossPosts` below, which fans out to Dev.to + Hashnode
+  // and persists each platform's response shape.
   mediumPostId    String?
   mediumUrl       String?
+  // Multi-platform cross-post tracking. Shape:
+  //   [{ platform: "devto" | "hashnode", id: string, url: string,
+  //      publishedAt: ISO8601, status: "published" | "failed",
+  //      error?: string }]
+  // Stored as a denormalised JSON array (not a separate table) because we
+  // only ever read it on the post page itself, never query across rows.
+  crossPosts      Json     @default("[]")
   // Landing page this article funnels readers to. Either a slug under /lp/<slug>
   // or a pillar slug like "whatsapp-marketing-dealerships".
   landingSlug     String

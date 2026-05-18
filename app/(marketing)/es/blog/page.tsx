@@ -46,6 +46,9 @@ export async function generateMetadata(): Promise<Metadata> {
     description:
       "Guías prácticas de marketing en WhatsApp y Meta Catalog para concesionarios de autos en EE. UU.",
     alternates: {
+      types: {
+        "application/rss+xml": `${origin}/es/blog/rss.xml`,
+      },
       canonical: `${origin}/es/blog`,
       languages: {
         "es-US": `${origin}/es/blog`,
