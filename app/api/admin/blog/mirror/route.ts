@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
   // platform: a successful re-mirror replaces a prior failed entry for the
   // same platform; we never delete history except for that overwrite.
   const existing = (post.crossPosts as unknown as Array<{ platform: string }>) ?? [];
-  const incomingPlatforms = new Set(outcomes.map((o) => o.platform));
+  const incomingPlatforms = new Set<string>(outcomes.map((o) => o.platform));
   const kept = existing.filter(
     (e) => !incomingPlatforms.has(e.platform)
   );
