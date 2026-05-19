@@ -1,20 +1,23 @@
 // Hero image generation for blog posts.
 //
-// Strategy:
-//   v1: Generate a branded banner with OpenAI. We try gpt-image-1 first
-//       (best for blog heros when available) and fall back to dall-e-3 if
-//       the org isn't verified for gpt-image-1. The fallback is automatic
-//       so we never end up with a hero-less post just because of OpenAI's
-//       identity-verification gating. The prompt explicitly forbids in-image
-//       text either way, so dall-e-3's weaker typography doesn't matter.
-//   v2 (when ready): composite an uploaded portrait into the banner. We'll
-//       use Sharp for that step. The portrait URL is read from an env var
-//       (PORTRAIT_URL) and the composite is rendered server-side.
+// Strategy (post-OpenAI-billing-limit):
+//   v2: Generate the banner with Gemini's nano-banana image model under our
+//       existing GEMINI_API_KEY. Gemini's image generation is metered against
+//       the same project quota we already use for the article body (saves
+//       a vendor and a billing relationship). Models tried:
+//         1. gemini-2.5-flash-image-preview — fast, free-tier friendly
+//         2. gemini-2.5-flash-image-001 — stable alias if preview is gone
+//       The model returns inline image bytes in the response candidates;
+//       we extract the first image part, base64-decode it, and upload to
+//       Supabase Storage exactly like before.
+//   v3 (when ready): composite an uploaded portrait into the banner via
+//       Sharp. Wire up PORTRAIT_URL env var and overlay server-side.
 //
-// We upload the final PNG to Supabase Storage (already used by the rest of
-// the app) and return the public URL.
+// OpenAI fallback removed: original v1 used gpt-image-1 + dall-e-3 fallback,
+// but the OpenAI org hit a billing hard limit (May 2026) so neither worked.
+// Keeping dependencies inside the Google ecosystem also simplifies billing.
 
-import OpenAI from "openai";
+import { GoogleGenAI, Modality } from "@google/genai";
 import { supabaseAdmin } from "@/lib/supabase";
 import { withBreaker, CircuitOpenError } from "@/lib/circuitBreaker";
 
@@ -49,6 +52,9 @@ export class BlogImageError extends Error {
   }
 }
 
+const PREFERRED_MODEL = "gemini-2.5-flash-image-preview";
+const FALLBACK_MODEL = "gemini-2.5-flash-image";
+
 function brandPrompt(title: string, locale: "en" | "es"): string {
   // Keep the prompt brand-consistent across posts so the gallery has a
   // coherent look. Indigo + emerald accents match the dashboard chrome.
@@ -75,13 +81,14 @@ function brandPrompt(title: string, locale: "en" | "es"): string {
 export async function generateBlogHero(
   input: BlogImageInput
 ): Promise<string | null> {
-  const openaiKey = process.env.OPENAI_API_KEY;
-  if (!openaiKey) {
+  const geminiKey = process.env.GEMINI_API_KEY;
+  if (!geminiKey) {
     console.warn({
       event: "blog_image_skipped",
-      reason: "no_openai_key",
+      reason: "no_gemini_key",
       slug: input.slug,
     });
+    _lastImageGenError = "no_gemini_key";
     return null;
   }
 
@@ -89,63 +96,33 @@ export async function generateBlogHero(
   // endpoint reads only THIS run's error, never a stale one.
   _lastImageGenError = null;
 
-  const openai = new OpenAI({ apiKey: openaiKey });
+  const ai = new GoogleGenAI({ apiKey: geminiKey });
   const prompt = brandPrompt(input.title, input.locale);
 
-  // Two-tier image generation:
-  //   1. Try gpt-image-1 (1536x1024, PNG, medium quality). Best output, but
-  //      requires org verification on OpenAI's side.
-  //   2. On any access/verification error, fall back to dall-e-3 (1792x1024,
-  //      URL-returning, hd quality). Always available. We download the URL
-  //      to a buffer since dall-e-3 doesn't support b64_json.
-  async function tryGptImage1(): Promise<string | null> {
-    const result = await openai.images.generate({
-      model: "gpt-image-1",
-      prompt,
-      size: "1536x1024",
-      output_format: "png",
-      quality: "medium",
-      n: 1,
+  // Try preferred model first, fall back if the preview alias is retired.
+  async function callGemini(model: string): Promise<string | null> {
+    const response = await ai.models.generateContent({
+      model,
+      contents: [{ text: prompt }],
+      config: {
+        // Both TEXT and IMAGE modalities required — Gemini emits any image
+        // bytes as inlineData parts on the candidate response.
+        responseModalities: [Modality.IMAGE, Modality.TEXT],
+      },
     });
-    return result.data?.[0]?.b64_json ?? null;
+
+    const parts = response.candidates?.[0]?.content?.parts ?? [];
+    for (const part of parts as Array<{ inlineData?: { data?: string; mimeType?: string } }>) {
+      if (part.inlineData?.data) {
+        return part.inlineData.data;
+      }
+    }
+    return null;
   }
 
-  async function tryDallE3(): Promise<string | null> {
-    const result = await openai.images.generate({
-      model: "dall-e-3",
-      prompt,
-      // dall-e-3 only supports 1024x1024, 1024x1792, or 1792x1024.
-      size: "1792x1024",
-      quality: "hd",
-      // dall-e-3 supports b64_json directly via response_format.
-      response_format: "b64_json",
-      n: 1,
-    });
-    return result.data?.[0]?.b64_json ?? null;
-  }
-
-  function isGptImageAccessError(err: unknown): boolean {
-    if (!err) return false;
-    const msg = err instanceof Error ? err.message : String(err);
-    const m = msg.toLowerCase();
-    return (
-      m.includes("must be verified") ||
-      m.includes("organization") ||
-      m.includes("not available") ||
-      m.includes("model_not_found") ||
-      m.includes("403") ||
-      m.includes("401") ||
-      m.includes("unsupported")
-    );
-  }
-
-  // Track BOTH error messages so the caller surfaces them on diagnostics.
-  // We still return null on overall failure (cron-friendly), but stash the
-  // last error on a module-level WeakMap keyed by input so the backfill
-  // endpoint can read it via getLastImageGenError(input) immediately after.
   let b64: string | null = null;
   try {
-    b64 = await withBreaker("openai.imageGen", tryGptImage1, {
+    b64 = await withBreaker("gemini.imageGen", () => callGemini(PREFERRED_MODEL), {
       timeoutMs: 90_000,
     });
   } catch (err) {
@@ -155,37 +132,34 @@ export async function generateBlogHero(
       return null;
     }
     const errMsg = err instanceof Error ? err.message : String(err);
-    if (isGptImageAccessError(err)) {
-      console.log({
-        event: "blog_image_fallback_to_dalle3",
-        slug: input.slug,
-        reason: errMsg,
-      });
-      try {
-        b64 = await withBreaker("openai.imageGen.dalle3", tryDallE3, {
-          timeoutMs: 90_000,
-        });
-      } catch (fallbackErr) {
-        const fbMsg =
-          fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
-        console.warn({
-          event: "blog_image_generate_failed",
-          slug: input.slug,
-          model: "dall-e-3",
-          message: fbMsg,
-          previousGptError: errMsg,
-        });
-        _lastImageGenError = `gpt-image-1: ${errMsg.slice(0, 200)} | dall-e-3: ${fbMsg.slice(0, 200)}`;
-        return null;
-      }
-    } else {
+    // Try the stable model alias on any failure with the preview model —
+    // common failure mode is the preview model getting retired without
+    // notice.
+    console.log({
+      event: "blog_image_fallback",
+      slug: input.slug,
+      from: PREFERRED_MODEL,
+      to: FALLBACK_MODEL,
+      reason: errMsg,
+    });
+    try {
+      b64 = await withBreaker(
+        "gemini.imageGen.fallback",
+        () => callGemini(FALLBACK_MODEL),
+        { timeoutMs: 90_000 }
+      );
+    } catch (fallbackErr) {
+      const fbMsg =
+        fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
       console.warn({
         event: "blog_image_generate_failed",
         slug: input.slug,
-        model: "gpt-image-1",
-        message: errMsg,
+        primaryModel: PREFERRED_MODEL,
+        primaryError: errMsg,
+        fallbackModel: FALLBACK_MODEL,
+        fallbackError: fbMsg,
       });
-      _lastImageGenError = `gpt-image-1: ${errMsg.slice(0, 400)}`;
+      _lastImageGenError = `${PREFERRED_MODEL}: ${errMsg.slice(0, 200)} | ${FALLBACK_MODEL}: ${fbMsg.slice(0, 200)}`;
       return null;
     }
   }
@@ -194,9 +168,10 @@ export async function generateBlogHero(
     console.warn({
       event: "blog_image_generate_failed",
       slug: input.slug,
-      reason: "empty_b64",
+      reason: "no_image_in_response",
     });
-    _lastImageGenError = "empty_b64";
+    _lastImageGenError =
+      "Gemini returned a response with no inlineData image part. Prompt may have been refused or output was text-only.";
     return null;
   }
 
