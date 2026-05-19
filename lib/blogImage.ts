@@ -20,6 +20,15 @@ import { withBreaker, CircuitOpenError } from "@/lib/circuitBreaker";
 
 const HERO_BUCKET = "blog-heroes";
 
+// Last error message produced inside generateBlogHero, for diagnostic
+// surfacing on the next admin endpoint call. Not a per-request store —
+// fine because admin-triggered backfills are serialised through the
+// route and we read this immediately after the call.
+let _lastImageGenError: string | null = null;
+export function getLastImageGenError(): string | null {
+  return _lastImageGenError;
+}
+
 export interface BlogImageInput {
   slug: string;
   title: string;
@@ -76,6 +85,10 @@ export async function generateBlogHero(
     return null;
   }
 
+  // Reset the diagnostic error before each call so the backfill admin
+  // endpoint reads only THIS run's error, never a stale one.
+  _lastImageGenError = null;
+
   const openai = new OpenAI({ apiKey: openaiKey });
   const prompt = brandPrompt(input.title, input.locale);
 
@@ -126,6 +139,10 @@ export async function generateBlogHero(
     );
   }
 
+  // Track BOTH error messages so the caller surfaces them on diagnostics.
+  // We still return null on overall failure (cron-friendly), but stash the
+  // last error on a module-level WeakMap keyed by input so the backfill
+  // endpoint can read it via getLastImageGenError(input) immediately after.
   let b64: string | null = null;
   try {
     b64 = await withBreaker("openai.imageGen", tryGptImage1, {
@@ -134,28 +151,31 @@ export async function generateBlogHero(
   } catch (err) {
     if (err instanceof CircuitOpenError) {
       console.warn({ event: "blog_image_skipped", reason: "circuit_open", slug: input.slug });
+      _lastImageGenError = "circuit_open";
       return null;
     }
+    const errMsg = err instanceof Error ? err.message : String(err);
     if (isGptImageAccessError(err)) {
       console.log({
         event: "blog_image_fallback_to_dalle3",
         slug: input.slug,
-        reason: err instanceof Error ? err.message : String(err),
+        reason: errMsg,
       });
       try {
         b64 = await withBreaker("openai.imageGen.dalle3", tryDallE3, {
           timeoutMs: 90_000,
         });
       } catch (fallbackErr) {
+        const fbMsg =
+          fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
         console.warn({
           event: "blog_image_generate_failed",
           slug: input.slug,
           model: "dall-e-3",
-          message:
-            fallbackErr instanceof Error
-              ? fallbackErr.message
-              : String(fallbackErr),
+          message: fbMsg,
+          previousGptError: errMsg,
         });
+        _lastImageGenError = `gpt-image-1: ${errMsg.slice(0, 200)} | dall-e-3: ${fbMsg.slice(0, 200)}`;
         return null;
       }
     } else {
@@ -163,8 +183,9 @@ export async function generateBlogHero(
         event: "blog_image_generate_failed",
         slug: input.slug,
         model: "gpt-image-1",
-        message: err instanceof Error ? err.message : String(err),
+        message: errMsg,
       });
+      _lastImageGenError = `gpt-image-1: ${errMsg.slice(0, 400)}`;
       return null;
     }
   }
@@ -175,6 +196,7 @@ export async function generateBlogHero(
       slug: input.slug,
       reason: "empty_b64",
     });
+    _lastImageGenError = "empty_b64";
     return null;
   }
 
@@ -212,14 +234,17 @@ export async function generateBlogHero(
             slug: input.slug,
             message: retry.error.message,
           });
+          _lastImageGenError = `supabase_upload_retry: ${retry.error.message}`;
           return null;
         }
       } catch (bucketErr) {
+        const bm = bucketErr instanceof Error ? bucketErr.message : String(bucketErr);
         console.warn({
           event: "blog_image_bucket_create_failed",
           slug: input.slug,
-          message: bucketErr instanceof Error ? bucketErr.message : String(bucketErr),
+          message: bm,
         });
+        _lastImageGenError = `supabase_bucket_create: ${bm}`;
         return null;
       }
     } else {
@@ -228,6 +253,7 @@ export async function generateBlogHero(
         slug: input.slug,
         message: uploadErr.message,
       });
+      _lastImageGenError = `supabase_upload: ${uploadErr.message}`;
       return null;
     }
   }

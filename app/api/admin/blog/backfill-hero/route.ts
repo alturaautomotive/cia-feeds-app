@@ -13,7 +13,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { generateBlogHero } from "@/lib/blogImage";
+import { generateBlogHero, getLastImageGenError } from "@/lib/blogImage";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 180;
@@ -54,10 +54,12 @@ export async function POST(request: NextRequest) {
   });
 
   if (!heroImageUrl) {
+    const diagnostic = getLastImageGenError();
     return NextResponse.json(
       {
         error: "image_generation_failed",
-        hint: "Check Vercel logs for blog_image_* events. Possible causes: OpenAI org not verified for gpt-image-1 (dall-e-3 fallback also failed), Supabase Storage bucket creation blocked, or transient timeout.",
+        diagnostic: diagnostic ?? "no_diagnostic_captured",
+        hint: "Diagnostic shows the actual OpenAI / Supabase error from this run. Common causes: org needs identity verification for gpt-image-1, OPENAI_API_KEY has expired billing, Supabase Storage bucket policy blocks server-side createBucket calls.",
       },
       { status: 502 }
     );
