@@ -290,10 +290,18 @@ export const authOptions: NextAuthOptions = {
 
 const ADMIN_EMAIL_LEGACY = (process.env.ADMIN_EMAIL ?? "").toLowerCase();
 
-export type AdminCapability = "manage_delivery" | "trigger_rescrape" | "view_audit";
+export type AdminCapability =
+  | "manage_delivery"
+  | "trigger_rescrape"
+  | "view_audit"
+  // manage_accounts gates the destructive admin actions: suspend / restore /
+  // hard-delete dealers, remove team members, and prune newsletter
+  // subscribers. Intentionally super_admin-only so a regular admin can't
+  // accidentally hard-delete a tenant.
+  | "manage_accounts";
 
 const ROLE_CAPABILITIES: Record<string, AdminCapability[]> = {
-  super_admin: ["manage_delivery", "trigger_rescrape", "view_audit"],
+  super_admin: ["manage_delivery", "trigger_rescrape", "view_audit", "manage_accounts"],
   admin: ["manage_delivery", "trigger_rescrape", "view_audit"],
   viewer: ["view_audit"],
 };

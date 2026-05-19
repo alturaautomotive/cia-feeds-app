@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
 import { getEffectiveDealerId } from "@/lib/impersonation";
 import { criticalDurableRateLimit } from "@/lib/rateLimit";
-import { writeAuditLog } from "@/lib/adminAudit";
+import { suspendDealer, restoreDealer } from "@/lib/accountManagement";
 
 /**
  * Account deletion endpoints (SECURITY_AUDIT.md F-8.3 \u2014 GDPR Article 17).
@@ -54,25 +53,24 @@ export async function POST(request: Request) {
     );
   }
 
-  const result = await prisma.dealer.update({
-    where: { id: dealerId },
-    data: { deletedAt: new Date(), active: false },
-    select: { id: true, deletedAt: true },
+  // Delegate to the shared lifecycle helper so self-serve and admin paths
+  // behave identically: same audit-log shape, same Stripe-cancel-at-period-end
+  // behaviour, same idempotency.
+  const result = await suspendDealer({
+    dealerId,
+    actor: {
+      email: session.user.email ?? "unknown",
+      role: "dealer",
+      actorDealerId: dealerId,
+    },
+    reason: "self_serve_delete_request",
   });
-
-  await writeAuditLog({
-    action: "dealer.account.delete_requested",
-    actorEmail: session.user.email ?? "unknown",
-    actorRole: "dealer",
-    actorDealerId: dealerId,
-    targetDealerId: dealerId,
-    metadata: { gracePeriodDays: 30 },
-  }).catch(() => {});
 
   return NextResponse.json({
     ok: true,
-    deletedAt: result.deletedAt,
+    deletedAt: result.dealer.deletedAt,
     gracePeriodDays: 30,
+    stripe: result.stripe,
     note: "Account is scheduled for permanent deletion in 30 days. POST DELETE /api/dealer/me/delete before then to cancel.",
   });
 }
@@ -90,18 +88,14 @@ export async function DELETE() {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  await prisma.dealer.update({
-    where: { id: dealerId },
-    data: { deletedAt: null, active: true },
+  await restoreDealer({
+    dealerId,
+    actor: {
+      email: session.user.email ?? "unknown",
+      role: "dealer",
+      actorDealerId: dealerId,
+    },
   });
-
-  await writeAuditLog({
-    action: "dealer.account.delete_cancelled",
-    actorEmail: session.user.email ?? "unknown",
-    actorRole: "dealer",
-    actorDealerId: dealerId,
-    targetDealerId: dealerId,
-  }).catch(() => {});
 
   return NextResponse.json({ ok: true });
 }

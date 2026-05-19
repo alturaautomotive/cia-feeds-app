@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ImpersonateButton } from "@/app/admin/ImpersonateButton";
 import { FeedRescrapeButton } from "@/app/admin/FeedRescrapeButton";
 import { MetaDeliveryMethodToggle } from "@/app/admin/MetaDeliveryMethodToggle";
+import { AccountActions } from "@/app/admin/AccountActions";
 
 
 function getSubscriptionBadge(status: string | null): {
@@ -126,8 +127,20 @@ export default async function DealerDetailPage({
             )}
           </div>
           <div className="flex-1">
-            <h2 className="text-xl font-bold text-gray-900 mb-1">
+            <h2 className="text-xl font-bold text-gray-900 mb-1 flex items-center gap-2">
               {dealer.name}
+              {(!dealer.active || dealer.deletedAt) && (
+                <span
+                  className="text-xs font-semibold uppercase tracking-wide bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 rounded"
+                  title={
+                    dealer.deletedAt
+                      ? `Suspended on ${new Date(dealer.deletedAt).toLocaleDateString()}. Hard-delete cron runs 30 days after suspend.`
+                      : "Account inactive"
+                  }
+                >
+                  {dealer.deletedAt ? "Suspended" : "Inactive"}
+                </span>
+              )}
             </h2>
             <p className="text-sm text-gray-500">{dealer.email}</p>
             <p className="text-sm text-gray-500 mt-0.5">
@@ -175,6 +188,12 @@ export default async function DealerDetailPage({
               dealerId={dealer.id}
               vertical={dealer.vertical}
               className="bg-white text-emerald-700 border border-emerald-300 px-4 py-2 rounded-md text-sm font-semibold text-center hover:bg-emerald-50"
+            />
+            <AccountActions
+              dealerId={dealer.id}
+              dealerSlug={dealer.slug}
+              dealerName={dealer.name}
+              isSuspended={!dealer.active || !!dealer.deletedAt}
             />
             <a
               href={feedUrl}
